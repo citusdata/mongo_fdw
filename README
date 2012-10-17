@@ -2,9 +2,9 @@ MongoDB FDW for PostgreSQL 9.1
 ==============================
 
 This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for MongoDB.
-For an example setup that demonstrates this wrapper's use, please see: XXXX
-[link to blog]. Also note that this version of mongo_fdw only works with
-PostgreSQL 9.1.
+For an example setup that demonstrates this wrapper's use, please see
+http://www.citusdata.com/blog/51-run-sql-on-mongodb. Please also note that this
+version of mongo_fdw only works with PostgreSQL 9.1.
 
 
 Building
@@ -44,7 +44,6 @@ creating a server, and then creating a foreign table associated with a MongoDB
 collection. The commands also show specifying option values in the OPTIONS
 clause. If an option value isn't provided, the wrapper uses the default value
 mentioned above.
-
 
 -- load extension first time after install
 CREATE EXTENSION mongo_fdw;
