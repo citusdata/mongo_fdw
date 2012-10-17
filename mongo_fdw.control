@@ -1,0 +1,5 @@
+# mongo_fdw extension
+comment = 'foreign data wrapper for MongoDB access'
+default_version = '1.0'
+module_pathname = '$libdir/mongo_fdw'
+relocatable = true
