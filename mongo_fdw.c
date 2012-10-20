@@ -874,6 +874,19 @@ ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId)
 			}
 			break;
 		}
+	    case NAMEOID:
+		{
+			/*
+			 * We currently overload the NAMEOID type to represent the BSON
+			 * object identifier. We can safely overload this 64-byte data type
+			 * since it's reserved for internal use in PostgreSQL.
+			 */
+			if (bsonType == BSON_OID)
+			{
+				compatibleTypes = true;
+			}
+			break;
+		}
 		case DATEOID:
 		case TIMESTAMPOID:
 		case TIMESTAMPTZOID:
@@ -1037,6 +1050,20 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		{
 			const char *value = bson_iterator_string(bsonIterator);
 			columnValue = CStringGetTextDatum(value);
+			break;
+		}
+    	case NAMEOID:
+		{
+			char value[NAMEDATALEN];
+			Datum valueDatum = 0;
+
+			bson_oid_t *bsonObjectId = bson_iterator_oid(bsonIterator);
+			bson_oid_to_string(bsonObjectId, value);
+
+			valueDatum = CStringGetDatum(value);
+			columnValue = DirectFunctionCall3(namein, valueDatum,
+											  ObjectIdGetDatum(InvalidOid),
+											  Int32GetDatum(columnTypeMod));
 			break;
 		}
 		case DATEOID:

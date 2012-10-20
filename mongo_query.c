@@ -434,6 +434,21 @@ AppendConstantValue(bson *queryDocument, const char *keyName, Const *constant)
 			bson_append_string(queryDocument, keyName, outputString);
 			break;
 		}
+	    case NAMEOID:
+		{
+			char *outputString = NULL;
+			Oid outputFunctionId = InvalidOid;
+			bool typeVarLength = false;
+			bson_oid_t bsonObjectId;
+			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
+
+			getTypeOutputInfo(constantTypeId, &outputFunctionId, &typeVarLength);
+			outputString = OidOutputFunctionCall(outputFunctionId, constantValue);
+			bson_oid_from_string(&bsonObjectId, outputString);
+
+			bson_append_oid(queryDocument, keyName, &bsonObjectId);
+			break;
+		}
 		case DATEOID:
 		{
 			Datum valueDatum = DirectFunctionCall1(date_timestamp, constantValue);

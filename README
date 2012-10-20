@@ -45,6 +45,9 @@ collection. The commands also show specifying option values in the OPTIONS
 clause. If an option value isn't provided, the wrapper uses the default value
 mentioned above.
 
+We also currently use the internal PostgreSQL NAME type to represent the BSON
+object identifier type (_id field).
+
 -- load extension first time after install
 CREATE EXTENSION mongo_fdw;
 
@@ -55,6 +58,7 @@ OPTIONS (address '127.0.0.1', port '27017');
 -- create foreign table
 CREATE FOREIGN TABLE customer_reviews
 (
+    _id NAME,
     customer_id TEXT,
     review_date TIMESTAMP,
     review_rating INTEGER,
