@@ -21,6 +21,10 @@ same as your PostgreSQL installation's bin/ directory path. For example:
 $ PATH=/usr/local/pgsql/bin/:$PATH make
 $ sudo PATH=/usr/local/pgsql/bin/:$PATH make install
 
+You must have the postgres libraries and headers for C language backend
+development installed.  These are available by installing the package
+'postgresql-server-dev-9.1'.
+
 Note that we have tested the mongo_fdw extension only on Fedora and Ubuntu
 systems. Please let us know if you run into any issues on other systems.
 
