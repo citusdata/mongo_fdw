@@ -767,8 +767,8 @@ static void
 FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 			  Datum *columnValues, bool *columnNulls)
 {
-  FillTupleSlotHelper(bsonDocument, columnMappingHash, columnValues,
-      columnNulls, NULL);
+	FillTupleSlotHelper(bsonDocument, columnMappingHash, columnValues,
+			columnNulls, NULL);
 }
 
 static void
@@ -788,34 +788,37 @@ FillTupleSlotHelper(const bson *bsonDocument, HTAB *columnMappingHash,
 		Oid columnArrayTypeId = InvalidOid;
 		bool compatibleTypes = false;
 		bool handleFound = false;
-    const char *qualifiedKey = NULL;
+		const char *qualifiedKey = NULL;
 
-    if (prefix)
-    {
-      StringInfo qualifiedKeyInfo = makeStringInfo();
-      appendStringInfo(qualifiedKeyInfo, "%s$%s", prefix, bsonKey);
-      qualifiedKey = qualifiedKeyInfo->data;
-    }
-    else
-    {
-      qualifiedKey = bsonKey;
-    }
+		if (prefix)
+		{
+			/* for fields in nested BSON objects, use fully qualified field
+			 * name to check the column mapping */
+			StringInfo qualifiedKeyInfo = makeStringInfo();
+			appendStringInfo(qualifiedKeyInfo, "%s$%s", prefix, bsonKey);
+			qualifiedKey = qualifiedKeyInfo->data;
+		}
+		else
+		{
+			qualifiedKey = bsonKey;
+		}
 
 		/* look up the corresponding column for this bson key */
 		void *hashKey = (void *) qualifiedKey;
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
-													  HASH_FIND, &handleFound);
+														HASH_FIND, &handleFound);
 
-    if (bsonType == BSON_OBJECT)
-    {
-      bson *sub = bson_create();
-      bson_iterator_subobject(&bsonIterator, sub);
-      FillTupleSlotHelper(sub, columnMappingHash, columnValues,
-          columnNulls, qualifiedKey);
-      bson_dispose(sub);
-      continue;
-    }
-    
+		/* recurse into nested objects */
+		if (bsonType == BSON_OBJECT)
+		{
+			bson *sub = bson_create();
+			bson_iterator_subobject(&bsonIterator, sub);
+			FillTupleSlotHelper(sub, columnMappingHash, columnValues,
+					columnNulls, qualifiedKey);
+			bson_dispose(sub);
+			continue;
+		}
+		
 		/* if no corresponding column or null bson value, continue */
 		if (columnMapping == NULL || bsonType == BSON_NULL)
 		{
