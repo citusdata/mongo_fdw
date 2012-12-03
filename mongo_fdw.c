@@ -52,6 +52,8 @@ static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 						  Datum *columnValues, bool *columnNulls);
+static void FillTupleSlotHelper(const bson *bsonDocument, HTAB *columnMappingHash,
+						  Datum *columnValues, bool *columnNulls, const char *prefix);
 static bool ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId);
 static Datum ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId,
@@ -765,6 +767,14 @@ static void
 FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 			  Datum *columnValues, bool *columnNulls)
 {
+  FillTupleSlotHelper(bsonDocument, columnMappingHash, columnValues,
+      columnNulls, NULL);
+}
+
+static void
+FillTupleSlotHelper(const bson *bsonDocument, HTAB *columnMappingHash,
+			  Datum *columnValues, bool *columnNulls, const char *prefix)
+{
 	bson_iterator bsonIterator = { NULL, 0 };
 	bson_iterator_init(&bsonIterator, bsonDocument);
 
@@ -778,12 +788,34 @@ FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 		Oid columnArrayTypeId = InvalidOid;
 		bool compatibleTypes = false;
 		bool handleFound = false;
+    const char *qualifiedKey = NULL;
+
+    if (prefix)
+    {
+      StringInfo qualifiedKeyInfo = makeStringInfo();
+      appendStringInfo(qualifiedKeyInfo, "%s$%s", prefix, bsonKey);
+      qualifiedKey = qualifiedKeyInfo->data;
+    }
+    else
+    {
+      qualifiedKey = bsonKey;
+    }
 
 		/* look up the corresponding column for this bson key */
-		void *hashKey = (void *) bsonKey;
+		void *hashKey = (void *) qualifiedKey;
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
 													  HASH_FIND, &handleFound);
 
+    if (bsonType == BSON_OBJECT)
+    {
+      bson *sub = bson_create();
+      bson_iterator_subobject(&bsonIterator, sub);
+      FillTupleSlotHelper(sub, columnMappingHash, columnValues,
+          columnNulls, qualifiedKey);
+      bson_dispose(sub);
+      continue;
+    }
+    
 		/* if no corresponding column or null bson value, continue */
 		if (columnMapping == NULL || bsonType == BSON_NULL)
 		{
