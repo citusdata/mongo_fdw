@@ -334,6 +334,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	/* create cursor for collection name and set query */
 	mongoCursor = mongo_cursor_create();
 	mongo_cursor_init(mongoCursor, mongoConnection, namespaceName->data);
+	mongo_cursor_set_options(mongoCursor, MONGO_SLAVE_OK);
 	mongo_cursor_set_query(mongoCursor, queryDocument);
 
 	/* create and set foreign execution state */
