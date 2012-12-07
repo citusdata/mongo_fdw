@@ -64,7 +64,7 @@ typedef struct MongoValidOption
 
 
 /* Array of options that are valid for mongo_fdw */
-static const uint32 ValidOptionCount = 6;
+static const uint32 ValidOptionCount = 7;
 static const MongoValidOption ValidOptionArray[] =
 {
 	/* foreign server options */
