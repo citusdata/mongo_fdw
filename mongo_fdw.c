@@ -274,11 +274,15 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	mongo *mongoConnection = NULL;
 	mongo_cursor *mongoCursor = NULL;
 	int32 connectStatus = MONGO_ERROR;
+	int32 authStatus = MONGO_ERROR;
 	Oid foreignTableId = InvalidOid;
 	List *columnList = NIL;
 	HTAB *columnMappingHash = NULL;
 	char *addressName = NULL;
 	int32 portNumber = 0;
+	char *username = NULL;
+	char *password = NULL;
+	char *databaseName = NULL;
 	int32 errorCode = 0;
 	StringInfo namespaceName = NULL;
 	ForeignScan *foreignScan = NULL;
@@ -314,6 +318,26 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 
 		ereport(ERROR, (errmsg("could not connect to %s:%d", addressName, portNumber),
 						errhint("Mongo driver connection error: %d", errorCode)));
+	}
+
+	username = mongoFdwOptions->username;
+	password = mongoFdwOptions->password;
+	databaseName = mongoFdwOptions->databaseName;
+
+	if (username && password)
+	{
+		authStatus = mongo_cmd_authenticate(
+				mongoConnection, databaseName, username, password);
+
+		if (authStatus != MONGO_OK)
+		{
+			mongo_destroy(mongoConnection);
+			mongo_dispose(mongoConnection);
+
+			ereport(ERROR, (errmsg("could not authenticate with user %s on database %s", 
+								   username, databaseName),
+							errhint("Update user mapping for user.")));
+		}
 	}
 
 	/* deserialize query document; and create column info hash */
@@ -523,7 +547,8 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	MongoFdwOptions *options = NULL;
 	mongo *mongoConnection = NULL;
 	const bson *emptyQuery = NULL;
-	int32 status = MONGO_ERROR;
+	int32 connectStatus = MONGO_ERROR;
+	int32 authStatus = MONGO_OK;
 	double documentCount = 0.0;
 
 	/* resolve foreign table options; and connect to mongo server */
@@ -532,9 +557,18 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	mongoConnection = mongo_create();
 	mongo_init(mongoConnection);
 
-	status = mongo_connect(mongoConnection, options->addressName, options->portNumber);
-	if (status == MONGO_OK)
+	connectStatus = mongo_connect(mongoConnection, options->addressName, options->portNumber);
+
+	if (connectStatus == MONGO_OK && options->username && options->password)
 	{
+		authStatus = mongo_cmd_authenticate(
+				mongoConnection, options->databaseName, options->username,
+				options->password);
+	}
+
+	if (connectStatus == MONGO_OK && authStatus == MONGO_OK)
+	{
+
 		documentCount = mongo_count(mongoConnection, options->databaseName,
 									options->collectionName, emptyQuery);
 	}
@@ -632,6 +666,8 @@ MongoGetOptions(Oid foreignTableId)
 	int32 portNumber = 0;
 	char *databaseName = NULL;
 	char *collectionName = NULL;
+	char *username = NULL;
+	char *password = NULL;
 
 	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -666,6 +702,8 @@ MongoGetOptions(Oid foreignTableId)
 	mongoFdwOptions->portNumber = portNumber;
 	mongoFdwOptions->databaseName = databaseName;
 	mongoFdwOptions->collectionName = collectionName;
+	mongoFdwOptions->username = username;
+	mongoFdwOptions->password = password;
 
 	return mongoFdwOptions;
 }
@@ -681,15 +719,18 @@ MongoGetOptionValue(Oid foreignTableId, const char *optionName)
 {
 	ForeignTable *foreignTable = NULL;
 	ForeignServer *foreignServer = NULL;
+	UserMapping *userMapping = NULL;
 	List *optionList = NIL;
 	ListCell *optionCell = NULL;
 	char *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
+	userMapping = GetUserMapping(GetUserId(), foreignTable->serverid);
 
 	optionList = list_concat(optionList, foreignTable->options);
 	optionList = list_concat(optionList, foreignServer->options);
+	optionList = list_concat(optionList, userMapping->options);
 
 	foreach(optionCell, optionList)
 	{
