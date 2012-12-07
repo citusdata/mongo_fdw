@@ -34,6 +34,7 @@
 #define OPTION_NAME_COLLECTION "collection"
 #define OPTION_NAME_USERNAME "username"
 #define OPTION_NAME_PASSWORD "password"
+#define OPTION_NAME_USE_AUTH "use_auth"
 
 /* Default values for option parameters */
 #define DEFAULT_IP_ADDRESS "127.0.0.1"
@@ -69,14 +70,15 @@ static const MongoValidOption ValidOptionArray[] =
 	/* foreign server options */
 	{ OPTION_NAME_ADDRESS, ForeignServerRelationId },
 	{ OPTION_NAME_PORT,  ForeignServerRelationId },
+	{ OPTION_NAME_USE_AUTH,  ForeignServerRelationId },
 
 	/* foreign table options */
 	{ OPTION_NAME_DATABASE, ForeignTableRelationId },
 	{ OPTION_NAME_COLLECTION, ForeignTableRelationId },
 
-  /* user mapping options */
-  { OPTION_NAME_USERNAME, UserMappingRelationId },
-  { OPTION_NAME_PASSWORD, UserMappingRelationId }
+	  /* user mapping options */
+	{ OPTION_NAME_USERNAME, UserMappingRelationId },
+	{ OPTION_NAME_PASSWORD, UserMappingRelationId }
 };
 
 
@@ -93,6 +95,7 @@ typedef struct MongoFdwOptions
 	char *collectionName;
 	char *username;
 	char *password;
+	bool useAuth;
 
 } MongoFdwOptions;
 
