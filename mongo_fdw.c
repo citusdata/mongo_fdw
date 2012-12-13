@@ -217,6 +217,7 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 	 * and if we can, we provide cost estimates to the query planner.
 	 */
 	documentCount = ForeignTableDocumentCount(foreignTableId);
+	ereport(INFO, (errmsg_internal("Planning foreign scan, found %f documents in collection", documentCount)));
 	if (documentCount > 0.0)
 	{
 		double outputRowCount = 0.0;
@@ -226,6 +227,7 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 		ForeignTableEstimateCosts(root, baserel, opExpressionList, documentCount,
 								  &outputRowCount, &startupCost, &totalCost);
 
+		ereport(INFO, (errmsg_internal("Found %f documents after applying quals", outputRowCount)));
 		baserel->rows = outputRowCount;
 		foreignPlan->startup_cost = startupCost;
 		foreignPlan->total_cost = totalCost;
@@ -429,6 +431,10 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 			ereport(ERROR, (errmsg("could not iterate over mongo collection"),
 							errhint("Mongo driver cursor error code: %d", errorCode)));
 		}
+		else
+		{
+			ereport(INFO, (errmsg_internal("Mongo cursor exhausted")));
+		}
 	}
 
 	return tupleSlot;
@@ -442,7 +448,15 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 static void
 MongoEndForeignScan(ForeignScanState *scanState)
 {
+	ForeignScan *foreignScan = NULL;
+	mongo_cursor *mongoCursor = NULL;
+
 	MongoFdwExecState *executionState = (MongoFdwExecState *) scanState->fdw_state;
+	mongoCursor = executionState->mongoCursor;
+
+	ereport(INFO, (errmsg_internal("Query returned %d documents.", 
+								   mongoCursor->seen)));
+
 
 	/* if we executed a query, reclaim mongo related resources */
 	if (executionState != NULL)

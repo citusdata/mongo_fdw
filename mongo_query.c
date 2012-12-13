@@ -105,6 +105,8 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 		mongoOperatorName = MongoOperatorName(operatorName);
 		if (!equalsOperator && mongoOperatorName == NULL)
 		{
+			ereport(INFO, (errmsg_internal("Ignoring unsupported operator %s", 
+							               operatorName)));
 			continue;
 		}
 
@@ -129,7 +131,14 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 			if (constantArrayTypeId != InvalidOid)
 			{
 				constantIsArray = true;
+				ereport(INFO, (errmsg_internal("Ignoring %s expression with array",
+											   operatorName)));
 			}
+		}
+		else
+		{
+			ereport(INFO, (errmsg_internal("Ignoring %s expression without a constant",
+										   operatorName)));
 		}
 
 		if (column != NULL && constant != NULL && !constantIsArray)
