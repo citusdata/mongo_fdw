@@ -48,10 +48,12 @@ static void ForeignTableEstimateCosts(PlannerInfo *root, RelOptInfo *baserel,
 									  List *documentClauseList, double documentCount,
 									  double *rows, Cost *startupCost, Cost *totalCost);
 static MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
-static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
+static char * MongoGetOptionValue(List *optionList, const char *optionName);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 						  Datum *columnValues, bool *columnNulls);
+static void FillTupleSlotHelper(const bson *bsonDocument, HTAB *columnMappingHash,
+						  Datum *columnValues, bool *columnNulls, const char *prefix);
 static bool ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId);
 static Datum ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId,
@@ -215,6 +217,7 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 	 * and if we can, we provide cost estimates to the query planner.
 	 */
 	documentCount = ForeignTableDocumentCount(foreignTableId);
+	ereport(INFO, (errmsg_internal("Planning foreign scan, found %f documents in collection", documentCount)));
 	if (documentCount > 0.0)
 	{
 		double outputRowCount = 0.0;
@@ -224,6 +227,7 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 		ForeignTableEstimateCosts(root, baserel, opExpressionList, documentCount,
 								  &outputRowCount, &startupCost, &totalCost);
 
+		ereport(INFO, (errmsg_internal("Found %f documents after applying quals", outputRowCount)));
 		baserel->rows = outputRowCount;
 		foreignPlan->startup_cost = startupCost;
 		foreignPlan->total_cost = totalCost;
@@ -272,11 +276,16 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	mongo *mongoConnection = NULL;
 	mongo_cursor *mongoCursor = NULL;
 	int32 connectStatus = MONGO_ERROR;
+	int32 authStatus = MONGO_ERROR;
 	Oid foreignTableId = InvalidOid;
 	List *columnList = NIL;
 	HTAB *columnMappingHash = NULL;
 	char *addressName = NULL;
 	int32 portNumber = 0;
+	bool useAuth = false;
+	char *username = NULL;
+	char *password = NULL;
+	char *databaseName = NULL;
 	int32 errorCode = 0;
 	StringInfo namespaceName = NULL;
 	ForeignScan *foreignScan = NULL;
@@ -314,6 +323,27 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 						errhint("Mongo driver connection error: %d", errorCode)));
 	}
 
+	useAuth = mongoFdwOptions->useAuth;
+	if (useAuth)
+	{
+		username = mongoFdwOptions->username;
+		password = mongoFdwOptions->password;
+		databaseName = mongoFdwOptions->databaseName;
+
+		authStatus = mongo_cmd_authenticate(
+				mongoConnection, databaseName, username, password);
+
+		if (authStatus != MONGO_OK)
+		{
+			mongo_destroy(mongoConnection);
+			mongo_dispose(mongoConnection);
+
+			ereport(ERROR, (errmsg("could not authenticate with user %s on database %s", 
+								   username, databaseName),
+							errhint("Update user mapping for user.")));
+		}
+	}
+
 	/* deserialize query document; and create column info hash */
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = ((FdwPlan *) foreignScan->fdwplan)->fdw_private;
@@ -332,6 +362,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	/* create cursor for collection name and set query */
 	mongoCursor = mongo_cursor_create();
 	mongo_cursor_init(mongoCursor, mongoConnection, namespaceName->data);
+	mongo_cursor_set_options(mongoCursor, MONGO_SLAVE_OK);
 	mongo_cursor_set_query(mongoCursor, queryDocument);
 
 	/* create and set foreign execution state */
@@ -400,6 +431,10 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 			ereport(ERROR, (errmsg("could not iterate over mongo collection"),
 							errhint("Mongo driver cursor error code: %d", errorCode)));
 		}
+		else
+		{
+			ereport(INFO, (errmsg_internal("Mongo cursor exhausted")));
+		}
 	}
 
 	return tupleSlot;
@@ -413,7 +448,15 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 static void
 MongoEndForeignScan(ForeignScanState *scanState)
 {
+	ForeignScan *foreignScan = NULL;
+	mongo_cursor *mongoCursor = NULL;
+
 	MongoFdwExecState *executionState = (MongoFdwExecState *) scanState->fdw_state;
+	mongoCursor = executionState->mongoCursor;
+
+	ereport(INFO, (errmsg_internal("Query returned %d documents.", 
+								   mongoCursor->seen)));
+
 
 	/* if we executed a query, reclaim mongo related resources */
 	if (executionState != NULL)
@@ -520,7 +563,8 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	MongoFdwOptions *options = NULL;
 	mongo *mongoConnection = NULL;
 	const bson *emptyQuery = NULL;
-	int32 status = MONGO_ERROR;
+	int32 connectStatus = MONGO_ERROR;
+	int32 authStatus = MONGO_OK;
 	double documentCount = 0.0;
 
 	/* resolve foreign table options; and connect to mongo server */
@@ -529,9 +573,18 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	mongoConnection = mongo_create();
 	mongo_init(mongoConnection);
 
-	status = mongo_connect(mongoConnection, options->addressName, options->portNumber);
-	if (status == MONGO_OK)
+	connectStatus = mongo_connect(mongoConnection, options->addressName, options->portNumber);
+
+	if (connectStatus == MONGO_OK && options->useAuth)
 	{
+		authStatus = mongo_cmd_authenticate(
+				mongoConnection, options->databaseName, options->username,
+				options->password);
+	}
+
+	if (connectStatus == MONGO_OK && authStatus == MONGO_OK)
+	{
+
 		documentCount = mongo_count(mongoConnection, options->databaseName,
 									options->collectionName, emptyQuery);
 	}
@@ -629,14 +682,29 @@ MongoGetOptions(Oid foreignTableId)
 	int32 portNumber = 0;
 	char *databaseName = NULL;
 	char *collectionName = NULL;
+	char *username = NULL;
+	char *password = NULL;
+	char *useAuthStr = NULL;
+	bool useAuth = false;
 
-	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
+	ForeignTable *foreignTable = NULL;
+	ForeignServer *foreignServer = NULL;
+	UserMapping *userMapping = NULL;
+	List *optionList = NIL;
+
+	foreignTable = GetForeignTable(foreignTableId);
+	foreignServer = GetForeignServer(foreignTable->serverid);
+
+	optionList = list_concat(optionList, foreignTable->options);
+	optionList = list_concat(optionList, foreignServer->options);
+
+	addressName = MongoGetOptionValue(optionList, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
 	{
 		addressName = pstrdup(DEFAULT_IP_ADDRESS);
 	}
 
-	portName = MongoGetOptionValue(foreignTableId, OPTION_NAME_PORT);
+	portName = MongoGetOptionValue(optionList, OPTION_NAME_PORT);
 	if (portName == NULL)
 	{
 		portNumber = DEFAULT_PORT_NUMBER;
@@ -646,16 +714,32 @@ MongoGetOptions(Oid foreignTableId)
 		portNumber = pg_atoi(portName, sizeof(int32), 0);
 	}
 
-	databaseName = MongoGetOptionValue(foreignTableId, OPTION_NAME_DATABASE);
+	databaseName = MongoGetOptionValue(optionList, OPTION_NAME_DATABASE);
 	if (databaseName == NULL)
 	{
 		databaseName = pstrdup(DEFAULT_DATABASE_NAME);
 	}
 
-	collectionName = MongoGetOptionValue(foreignTableId, OPTION_NAME_COLLECTION);
+	collectionName = MongoGetOptionValue(optionList, OPTION_NAME_COLLECTION);
 	if (collectionName == NULL)
 	{
-		collectionName = get_rel_name(foreignTableId);
+		collectionName = get_rel_name(optionList);
+	}
+
+	useAuthStr = MongoGetOptionValue(optionList, OPTION_NAME_USE_AUTH);
+	if (useAuthStr != NULL)
+	{
+		if (!parse_bool(useAuthStr, &useAuth))
+		{
+			useAuth = false;
+		}
+	}
+	if (useAuth)
+	{
+		userMapping = GetUserMapping(GetUserId(), foreignTable->serverid);
+		optionList = list_concat(optionList, userMapping->options);
+		username = MongoGetOptionValue(optionList, OPTION_NAME_USERNAME);
+		password = MongoGetOptionValue(optionList, OPTION_NAME_PASSWORD);
 	}
 
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
@@ -663,6 +747,9 @@ MongoGetOptions(Oid foreignTableId)
 	mongoFdwOptions->portNumber = portNumber;
 	mongoFdwOptions->databaseName = databaseName;
 	mongoFdwOptions->collectionName = collectionName;
+	mongoFdwOptions->username = username;
+	mongoFdwOptions->password = password;
+	mongoFdwOptions->useAuth = useAuth;
 
 	return mongoFdwOptions;
 }
@@ -674,19 +761,10 @@ MongoGetOptions(Oid foreignTableId)
  * option's value.
  */
 static char *
-MongoGetOptionValue(Oid foreignTableId, const char *optionName)
+MongoGetOptionValue(List *optionList, const char *optionName)
 {
-	ForeignTable *foreignTable = NULL;
-	ForeignServer *foreignServer = NULL;
-	List *optionList = NIL;
 	ListCell *optionCell = NULL;
 	char *optionValue = NULL;
-
-	foreignTable = GetForeignTable(foreignTableId);
-	foreignServer = GetForeignServer(foreignTable->serverid);
-
-	optionList = list_concat(optionList, foreignTable->options);
-	optionList = list_concat(optionList, foreignServer->options);
 
 	foreach(optionCell, optionList)
 	{
@@ -765,6 +843,14 @@ static void
 FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 			  Datum *columnValues, bool *columnNulls)
 {
+	FillTupleSlotHelper(bsonDocument, columnMappingHash, columnValues,
+			columnNulls, NULL);
+}
+
+static void
+FillTupleSlotHelper(const bson *bsonDocument, HTAB *columnMappingHash,
+			  Datum *columnValues, bool *columnNulls, const char *prefix)
+{
 	bson_iterator bsonIterator = { NULL, 0 };
 	bson_iterator_init(&bsonIterator, bsonDocument);
 
@@ -778,12 +864,37 @@ FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 		Oid columnArrayTypeId = InvalidOid;
 		bool compatibleTypes = false;
 		bool handleFound = false;
+		const char *qualifiedKey = NULL;
+
+		if (prefix)
+		{
+			/* for fields in nested BSON objects, use fully qualified field
+			 * name to check the column mapping */
+			StringInfo qualifiedKeyInfo = makeStringInfo();
+			appendStringInfo(qualifiedKeyInfo, "%s$%s", prefix, bsonKey);
+			qualifiedKey = qualifiedKeyInfo->data;
+		}
+		else
+		{
+			qualifiedKey = bsonKey;
+		}
 
 		/* look up the corresponding column for this bson key */
-		void *hashKey = (void *) bsonKey;
+		void *hashKey = (void *) qualifiedKey;
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
-													  HASH_FIND, &handleFound);
+														HASH_FIND, &handleFound);
 
+		/* recurse into nested objects */
+		if (bsonType == BSON_OBJECT)
+		{
+			bson *sub = bson_create();
+			bson_iterator_subobject(&bsonIterator, sub);
+			FillTupleSlotHelper(sub, columnMappingHash, columnValues,
+					columnNulls, qualifiedKey);
+			bson_dispose(sub);
+			continue;
+		}
+		
 		/* if no corresponding column or null bson value, continue */
 		if (columnMapping == NULL || bsonType == BSON_NULL)
 		{
