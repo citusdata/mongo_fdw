@@ -36,6 +36,25 @@ static List * UniqueColumnList(List *operatorList);
 static List * ColumnOperatorList(Var *column, List *operatorList);
 static void AppendConstantValue(bson *queryDocument, const char *keyName,
 								Const *constant);
+static void TranslateQualifiedNames(char *columnName);
+
+
+/*
+ * TranslateQualifiedNames replaces '$' with '.' to translate from foreign table
+ * column names to references into nested BSON objects.
+ */
+void
+TranslateQualifiedNames(char *columnName)
+{
+	int i, len = strlen(columnName);
+	for (i = 0; i < len; i++)
+	{
+		if (columnName[i] == '$')
+		{
+			columnName[i] = '.';
+		}
+	}
+}
 
 
 /*
@@ -190,6 +209,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 
 		columnId = column->varattno;
 		columnName = get_relid_attribute_name(relationId, columnId);
+		TranslateQualifiedNames(columnName);
 
 		AppendConstantValue(queryDocument, columnName, constant);
 	}
@@ -214,6 +234,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 
 		columnId = column->varattno;
 		columnName = get_relid_attribute_name(relationId, columnId);
+		TranslateQualifiedNames(columnName);
 
 		/* find all expressions that correspond to the column */
 		columnOperatorList = ColumnOperatorList(column, comparisonOperatorList);
