@@ -24,17 +24,42 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
+#if PG_VERSION_NUM >= 90200
+#include "optimizer/pathnode.h"
+#include "optimizer/restrictinfo.h"
+#include "optimizer/planmain.h"
+#include "utils/rel.h"
+#endif
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 
+/*
+ * MongoFdwPlanState keeps some information specific of mongo_fdw
+ * used as fdw_private
+ */
+typedef struct MongoFdwPlanState {
+	Const *queryBuffer;
+	List *columnList;
+	double outputRowCount;
+	Cost startupCost;
+	Cost totalCost;
+} MongoFdwPlanState;
 
 /* Local functions forward declarations */
 static StringInfo OptionNamesString(Oid currentContextId);
+
+#if PG_VERSION_NUM >= 90200
+static void MongoGetForeignRelSize (PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
+static void MongoGetForeignPaths (PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
+static ForeignScan * MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid,
+				   ForeignPath *best_path, List *tlist, List *scan_clauses);
+#else
 static FdwPlan * MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root,
 									  RelOptInfo *baserel);
+#endif
 static void MongoExplainForeignScan(ForeignScanState *scanState,
 									ExplainState *explainState);
 static void MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags);
@@ -75,7 +100,13 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwRoutine = makeNode(FdwRoutine);
 
+#if PG_VERSION_NUM >= 90200
+	fdwRoutine->GetForeignRelSize = MongoGetForeignRelSize;
+	fdwRoutine->GetForeignPaths = MongoGetForeignPaths;
+	fdwRoutine->GetForeignPlan = MongoGetForeignPlan;
+#else
 	fdwRoutine->PlanForeignScan = MongoPlanForeignScan;
+#endif
 	fdwRoutine->ExplainForeignScan = MongoExplainForeignScan;
 	fdwRoutine->BeginForeignScan = MongoBeginForeignScan;
 	fdwRoutine->IterateForeignScan = MongoIterateForeignScan;
@@ -173,22 +204,15 @@ OptionNamesString(Oid currentContextId)
 	return optionNamesString;
 }
 
-
-/*
- * MongoPlanForeignScan creates a foreign plan to scan the table, and provides a
- * cost estimate for the plan. The foreign plan has two components; the first
- * uses restriction qualifiers (WHERE clauses) to create the query to send to
- * MongoDB. The second includes the columns used in executing the query.
- */
-static FdwPlan *
-MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
+static MongoFdwPlanState *
+MongoGeneratePlanState(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 {
-	FdwPlan *foreignPlan = NULL;
 	List *opExpressionList = NIL;
 	bson *queryDocument = NULL;
 	Const *queryBuffer = NULL;
 	List *columnList = NIL;
 	double documentCount = 0.0;
+	MongoFdwPlanState *fdw_private;
 
 	/*
 	 * We construct the query document to have MongoDB filter its rows. We could
@@ -207,8 +231,9 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 	columnList = ColumnList(baserel);
 
 	/* construct foreign plan with query document and column list */
-	foreignPlan = makeNode(FdwPlan);
-	foreignPlan->fdw_private = list_make2(queryBuffer, columnList);
+	fdw_private = (MongoFdwPlanState *)palloc(sizeof(MongoFdwPlanState));
+	fdw_private->queryBuffer = queryBuffer;
+	fdw_private->columnList = columnList;
 
 	/*
 	 * We now try to retrieve the number of documents in the mongo collection;
@@ -225,17 +250,99 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 								  &outputRowCount, &startupCost, &totalCost);
 
 		baserel->rows = outputRowCount;
-		foreignPlan->startup_cost = startupCost;
-		foreignPlan->total_cost = totalCost;
+		fdw_private->outputRowCount = outputRowCount;
+		fdw_private->startupCost = startupCost;
+		fdw_private->totalCost = totalCost;
 	}
 	else
 	{
 		ereport(DEBUG1, (errmsg("could not retrieve document count for collection"),
 						 errhint("Falling back to default estimates in planning")));
 	}
+	return fdw_private;
+}
 
+#if PG_VERSION_NUM >= 90200
+/*
+ * MongoGetForeignRelSize creates a foreign plan to scan the table, and provides a
+ * cost estimate for the plan. The foreign plan has two components; the first
+ * uses restriction qualifiers (WHERE clauses) to create the query to send to
+ * MongoDB. The second includes the columns used in executing the query.
+ */
+static void
+MongoGetForeignRelSize (PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
+{
+	baserel->fdw_private = (void *)MongoGeneratePlanState(foreignTableId, root, baserel);
+}
+
+/*
+ * MongoGetForeignPaths creates only one path used to execute the query.
+ */
+static void
+MongoGetForeignPaths (PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
+{
+	MongoFdwPlanState *fdw_private = (MongoFdwPlanState *) baserel->fdw_private;
+
+	/* Create a ForeignPath node and add it as only possible path */
+	add_path(baserel, (Path *)
+			 create_foreignscan_path(root, baserel,
+									 baserel->rows,
+									 fdw_private->startupCost,
+									 fdw_private->totalCost,
+									 NIL,		/* no pathkeys */
+									 NULL,		/* no outer rel either */
+									 NIL));		/* no fdw_private data */
+}
+
+/*
+ * MongoGetForeignPlan creates the plan.
+ */
+static ForeignScan *
+MongoGetForeignPlan(PlannerInfo *root,
+				   RelOptInfo *baserel,
+				   Oid foreigntableid,
+				   ForeignPath *best_path,
+				   List *tlist,
+				   List *scan_clauses)
+{
+	Index		scan_relid = baserel->relid;
+
+	/*
+	 * We have no native ability to evaluate restriction clauses, so we just
+	 * put all the scan_clauses into the plan node's qual list for the
+	 * executor to check.  So all we have to do here is strip RestrictInfo
+	 * nodes from the clauses and ignore pseudoconstants (which will be
+	 * handled elsewhere).
+	 */
+	scan_clauses = extract_actual_clauses(scan_clauses, false);
+
+	/* Create the ForeignScan node */
+	return make_foreignscan(tlist,
+							scan_clauses,
+							scan_relid,
+							NIL,	/* no expressions to evaluate */
+							baserel->fdw_private);
+}
+#else
+/*
+ * MongoPlanForeignScan creates a foreign plan to scan the table, and provides a
+ * cost estimate for the plan. The foreign plan has two components; the first
+ * uses restriction qualifiers (WHERE clauses) to create the query to send to
+ * MongoDB. The second includes the columns used in executing the query.
+ */
+static FdwPlan *
+MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
+{
+	FdwPlan *foreignPlan = NULL;
+	MongoFdwPlanState *fdw_private;
+	fdw_private = MongoGeneratePlanState(foreignTableId, root, baserel);
+	foreignPlan = makeNode(FdwPlan);
+	foreignPlan->fdw_private = (void *)fdw_private;
+	foreignPlan->startup_cost = fdw_private->startupCost;
+	foreignPlan->total_cost = fdw_private->totalCost;
 	return foreignPlan;
 }
+#endif
 
 
 /*
@@ -280,7 +387,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	int32 errorCode = 0;
 	StringInfo namespaceName = NULL;
 	ForeignScan *foreignScan = NULL;
-	List *foreignPrivateList = NIL;
+	MongoFdwPlanState *fdw_private = NULL;
 	Const *queryBuffer = NULL;
 	bson *queryDocument = NULL;
 	MongoFdwOptions *mongoFdwOptions = NULL;
@@ -316,13 +423,16 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 
 	/* deserialize query document; and create column info hash */
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
-	foreignPrivateList = ((FdwPlan *) foreignScan->fdwplan)->fdw_private;
-	Assert(list_length(foreignPrivateList) == 2);
+#if PG_VERSION_NUM >= 90200
+	fdw_private = (MongoFdwPlanState *)foreignScan->fdw_private;
+#else
+	fdw_private = (MongoFdwPlanState *)((FdwPlan *) foreignScan->fdwplan)->fdw_private;
+#endif
 
-	queryBuffer = (Const *) linitial(foreignPrivateList);
+	queryBuffer = fdw_private->queryBuffer;
 	queryDocument = DeserializeDocument(queryBuffer);
 
-	columnList = (List *) lsecond(foreignPrivateList);
+	columnList = fdw_private->columnList;
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
 	namespaceName = makeStringInfo();

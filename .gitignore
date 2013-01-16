@@ -1,0 +1,3 @@
+*.o
+mongo_fdw.so
+
