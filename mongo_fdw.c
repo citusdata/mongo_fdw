@@ -50,7 +50,8 @@ static void ForeignTableEstimateCosts(PlannerInfo *root, RelOptInfo *baserel,
 static MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
 static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
-static void FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
+static void FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
+						  HTAB *columnMappingHash,
 						  Datum *columnValues, bool *columnNulls);
 static bool ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId);
@@ -380,8 +381,10 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 	if (cursorStatus == MONGO_OK)
 	{
 		const bson *bsonDocument = mongo_cursor_bson(mongoCursor);
+		const char *bsonDocumentKey = NULL; /* top level document */
 
-		FillTupleSlot(bsonDocument, columnMappingHash, columnValues, columnNulls);
+		FillTupleSlot(bsonDocument, bsonDocumentKey,
+					  columnMappingHash, columnValues, columnNulls);
 
 		ExecStoreVirtualTuple(tupleSlot);
 	}
@@ -760,10 +763,12 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
  * pair, the function checks if the key appears in the column mapping hash, and
  * if the value type is compatible with the one specified for the column. If so,
  * the function converts the value and fills the corresponding tuple position.
+ * The bsonDocumentKey parameter is used for recursion, and should always be 
+ * passed as NULL.
  */
 static void
-FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
-			  Datum *columnValues, bool *columnNulls)
+FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
+			  HTAB *columnMappingHash, Datum *columnValues, bool *columnNulls)
 {
 	bson_iterator bsonIterator = { NULL, 0 };
 	bson_iterator_init(&bsonIterator, bsonDocument);
@@ -778,9 +783,36 @@ FillTupleSlot(const bson *bsonDocument, HTAB *columnMappingHash,
 		Oid columnArrayTypeId = InvalidOid;
 		bool compatibleTypes = false;
 		bool handleFound = false;
+		const char *bsonFullKey = NULL;
+		void *hashKey = NULL;
+
+		if (bsonDocumentKey != NULL)
+		{
+			/*
+			 * For fields in nested BSON objects, we use fully qualified field
+			 * name to check the column mapping.
+			 */
+			StringInfo bsonFullKeyString = makeStringInfo();
+			appendStringInfo(bsonFullKeyString, "%s.%s", bsonDocumentKey, bsonKey);
+			bsonFullKey = bsonFullKeyString->data;
+		}
+		else
+		{
+			bsonFullKey = bsonKey;
+		}
+
+		/* recurse into nested objects */
+		if (bsonType == BSON_OBJECT)
+		{
+			bson subObject;
+			bson_iterator_subobject(&bsonIterator, &subObject);
+			FillTupleSlot(&subObject, bsonFullKey,
+						  columnMappingHash, columnValues, columnNulls);
+			continue;
+		}
 
 		/* look up the corresponding column for this bson key */
-		void *hashKey = (void *) bsonKey;
+		hashKey = (void *) bsonFullKey;
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
 													  HASH_FIND, &handleFound);
 
