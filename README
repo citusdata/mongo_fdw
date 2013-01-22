@@ -75,14 +75,14 @@ OPTIONS (database 'test', collection 'customer_reviews');
 Limitations
 -----------
 
-* mongo_fdw currently can't reach into nested BSON documents. We can overcome
-  this limitation by interpreting the period character in column names as a
-  separator, and recursing into the BSON document for each separated key name.
+* If the BSON document key contains upper-case letters or occurs within a nested
+  document, mongo_fdw requires the corresponding column names to be declared in
+  double quotes. For example, a nested field such as "review": { "Votes": 19 }
+  should be declared as "review.Votes" INTEGER in the create table statement.
 
-* mongo_fdw currently can't access BSON document keys that have upper-case
-  letters in them. This is because column names in SQL are case insensitive. We
-  can overcome this limitation by having an option for each column name, where
-  the option value is case sensitive.
+* Please note that PostgreSQL limits column names to 63 characters by default.
+  If you need column names that are longer, you can increase the NAMEDATALEN
+  constant in src/include/pg_config_manual.h, compile, and reinstall.
 
 * mongo_fdw only incorporates the document count and average document size when
   estimating costs for the query execution plan. A better estimate also includes
