@@ -1,10 +1,10 @@
-MongoDB FDW for PostgreSQL 9.1
+MongoDB FDW for PostgreSQL 9.2
 ==============================
 
 This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for MongoDB.
 For an example setup that demonstrates this wrapper's use, please see
 http://www.citusdata.com/blog/51-run-sql-on-mongodb. Please also note that this
-version of mongo_fdw only works with PostgreSQL 9.1.
+version of mongo_fdw only works with PostgreSQL 9.2.
 
 
 Building
@@ -45,6 +45,10 @@ collection. The commands also show specifying option values in the OPTIONS
 clause. If an option value isn't provided, the wrapper uses the default value
 mentioned above.
 
+mongo_fdw can collect data distribution statistics and incorporates them when
+estimating costs for the query execution plan. In the mean time, you run EXPLAIN
+on your queries to see the selected execution plans.
+
 We also currently use the internal PostgreSQL NAME type to represent the BSON
 object identifier type (_id field).
 
@@ -71,6 +75,9 @@ CREATE FOREIGN TABLE customer_reviews
 SERVER mongo_server
 OPTIONS (database 'test', collection 'customer_reviews');
 
+-- collect data distribution statistics
+ANALYZE customer_reviews;
+
 
 Limitations
 -----------
@@ -83,11 +90,6 @@ Limitations
 * Please note that PostgreSQL limits column names to 63 characters by default.
   If you need column names that are longer, you can increase the NAMEDATALEN
   constant in src/include/pg_config_manual.h, compile, and reinstall.
-
-* mongo_fdw only incorporates the document count and average document size when
-  estimating costs for the query execution plan. A better estimate also includes
-  data distribution statistics; and PostgreSQL 9.2 allows for this. In the mean
-  time, you run EXPLAIN on your queries to see the selected execution plans.
 
 
 Copyright

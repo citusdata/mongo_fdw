@@ -19,22 +19,33 @@
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#include "commands/vacuum.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
+#include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/memutils.h"
 
 
 /* Local functions forward declarations */
 static StringInfo OptionNamesString(Oid currentContextId);
-static FdwPlan * MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root,
-									  RelOptInfo *baserel);
+static void MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
+								   Oid foreignTableId);
+static void MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
+								 Oid foreignTableId);
+static ForeignScan * MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
+										 Oid foreignTableId, ForeignPath *bestPath,
+										 List *targetList, List *restrictionClauses);
 static void MongoExplainForeignScan(ForeignScanState *scanState,
 									ExplainState *explainState);
 static void MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags);
@@ -44,20 +55,23 @@ static void MongoReScanForeignScan(ForeignScanState *scanState);
 static Const * SerializeDocument(bson *document);
 static bson * DeserializeDocument(Const *constant);
 static double ForeignTableDocumentCount(Oid foreignTableId);
-static void ForeignTableEstimateCosts(PlannerInfo *root, RelOptInfo *baserel,
-									  List *documentClauseList, double documentCount,
-									  double *rows, Cost *startupCost, Cost *totalCost);
 static MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
 static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
-						  HTAB *columnMappingHash,
-						  Datum *columnValues, bool *columnNulls);
+						  HTAB *columnMappingHash, Datum *columnValues,
+						  bool *columnNulls);
 static bool ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId);
 static Datum ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId,
 						 int32 columnTypeMod);
 static void MongoFreeScanState(MongoFdwExecState *executionState);
+static bool MongoAnalyzeForeignTable(Relation relation,
+									 AcquireSampleRowsFunc *acquireSampleRowsFunc,
+									 BlockNumber *totalPageCount);
+static int MongoAcquireSampleRows(Relation relation, int errorLevel,
+								  HeapTuple *sampleRows, int targetRowCount,
+								  double *totalRowCount, double *totalDeadRowCount);
 
 
 /* declarations for dynamic loading */
@@ -76,12 +90,15 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwRoutine = makeNode(FdwRoutine);
 
-	fdwRoutine->PlanForeignScan = MongoPlanForeignScan;
+	fdwRoutine->GetForeignRelSize = MongoGetForeignRelSize;
+	fdwRoutine->GetForeignPaths = MongoGetForeignPaths;
+	fdwRoutine->GetForeignPlan = MongoGetForeignPlan;
 	fdwRoutine->ExplainForeignScan = MongoExplainForeignScan;
 	fdwRoutine->BeginForeignScan = MongoBeginForeignScan;
 	fdwRoutine->IterateForeignScan = MongoIterateForeignScan;
 	fdwRoutine->ReScanForeignScan = MongoReScanForeignScan;
 	fdwRoutine->EndForeignScan = MongoEndForeignScan;
+	fdwRoutine->AnalyzeForeignTable = MongoAnalyzeForeignTable;
 
 	PG_RETURN_POINTER(fdwRoutine);
 }
@@ -176,20 +193,139 @@ OptionNamesString(Oid currentContextId)
 
 
 /*
- * MongoPlanForeignScan creates a foreign plan to scan the table, and provides a
- * cost estimate for the plan. The foreign plan has two components; the first
- * uses restriction qualifiers (WHERE clauses) to create the query to send to
- * MongoDB. The second includes the columns used in executing the query.
+ * MongoGetForeignRelSize obtains relation size estimates for mongo foreign table.
  */
-static FdwPlan *
-MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
+static void
+MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 {
-	FdwPlan *foreignPlan = NULL;
+	double documentCount = ForeignTableDocumentCount(foreignTableId);
+	if (documentCount > 0.0)
+	{
+		/*
+		 * We estimate the number of rows returned after restriction qualifiers
+		 * are applied. This will be more accurate if analyze is run on this
+		 * relation.
+		 */
+		List *rowClauseList = baserel->baserestrictinfo;
+		double rowSelectivity = clauselist_selectivity(root, rowClauseList,
+													   0, JOIN_INNER, NULL);
+
+		double outputRowCount = clamp_row_est(documentCount * rowSelectivity);
+		baserel->rows = outputRowCount;
+	}
+	else
+	{
+		ereport(DEBUG1, (errmsg("could not retrieve document count for collection"),
+						 errhint("Falling back to default estimates in planning")));
+	}
+}
+
+
+/*
+ * MongoGetForeignPaths creates the only scan path used to execute the query.
+ * Note that MongoDB may decide to use an underlying index for this scan, but
+ * that decision isn't deterministic or visible to us. We therefore create a
+ * single table scan path.
+ */
+static void
+MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
+{
+	double tupleFilterCost = baserel->baserestrictcost.per_tuple;
+	double inputRowCount = 0.0;
+	double documentSelectivity = 0.0;
+	double foreignTableSize = 0;
+	int32 documentWidth = 0;
+	BlockNumber pageCount = 0;
+	double totalDiskAccessCost = 0.0;
+	double cpuCostPerDoc = 0.0;
+	double cpuCostPerRow = 0.0;
+	double totalCpuCost = 0.0;
+	double connectionCost = 0.0;
+	double documentCount = 0.0;
+	List *opExpressionList = NIL;
+	Cost startupCost = 0.0;
+	Cost totalCost = 0.0;
+	Path *foreignPath = NULL;
+
+	documentCount = ForeignTableDocumentCount(foreignTableId);
+	if (documentCount > 0.0)
+	{
+		/*
+		 * We estimate the number of rows returned after restriction qualifiers
+		 * are applied by MongoDB.
+		 */
+		opExpressionList = ApplicableOpExpressionList(baserel);
+		documentSelectivity = clauselist_selectivity(root, opExpressionList,
+													 0, JOIN_INNER, NULL);
+		inputRowCount = clamp_row_est(documentCount * documentSelectivity);
+		
+		/*
+		 * We estimate disk costs assuming a sequential scan over the data. This is
+		 * an inaccurate assumption as Mongo scatters the data over disk pages, and
+		 * may rely on an index to retrieve the data. Still, this should at least
+		 * give us a relative cost.
+		 */
+		documentWidth = get_relation_data_width(foreignTableId, baserel->attr_widths);
+		foreignTableSize = documentCount * documentWidth;
+
+		pageCount = (BlockNumber) rint(foreignTableSize / BLCKSZ);
+		totalDiskAccessCost = seq_page_cost * pageCount;
+
+		/*
+		 * The cost of processing a document returned by Mongo (input row) is 5x the
+		 * cost of processing a regular row.
+		 */
+		cpuCostPerDoc = cpu_tuple_cost;
+		cpuCostPerRow = (cpu_tuple_cost * MONGO_TUPLE_COST_MULTIPLIER) + tupleFilterCost;
+		totalCpuCost = (cpuCostPerDoc * documentCount) + (cpuCostPerRow * inputRowCount);
+
+		connectionCost = MONGO_CONNECTION_COST_MULTIPLIER * seq_page_cost;
+		startupCost = baserel->baserestrictcost.startup + connectionCost;
+		totalCost = startupCost + totalDiskAccessCost + totalCpuCost;
+	}
+	else
+	{
+		ereport(DEBUG1, (errmsg("could not retrieve document count for collection"),
+						 errhint("Falling back to default estimates in planning")));
+	}
+
+	/* create a foreign path node */
+	foreignPath = (Path *) create_foreignscan_path(root, baserel, baserel->rows,
+												   startupCost, totalCost,
+												   NIL,	 /* no pathkeys */
+												   NULL, /* no outer rel either */
+												   NIL); /* no fdw_private data */
+
+    /* add foreign path as the only possible path */
+	add_path(baserel, foreignPath);	
+}
+
+
+/*
+ * MongoGetForeignPlan creates a foreign scan plan node for scanning the MongoDB
+ * collection. Note that MongoDB may decide to use an underlying index for this
+ * scan, but that decision isn't deterministic or visible to us.
+ */
+static ForeignScan *
+MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
+					ForeignPath *bestPath, List *targetList, List *restrictionClauses)
+{
+	Index scanRangeTableIndex = baserel->relid;
+	ForeignScan *foreignScan = NULL;
+	List *foreignPrivateList = NIL;
 	List *opExpressionList = NIL;
 	bson *queryDocument = NULL;
 	Const *queryBuffer = NULL;
 	List *columnList = NIL;
-	double documentCount = 0.0;
+
+	/*
+	 * We push down applicable restriction clauses to MongoDB, but for simplicity
+	 * we currently put all the restrictionClauses into the plan node's qual
+	 * list for the executor to re-check. So all we have to do here is strip
+	 * RestrictInfo nodes from the clauses and ignore pseudoconstants (which
+	 * will be handled elsewhere).
+	 */
+	restrictionClauses = extract_actual_clauses(restrictionClauses, false);
 
 	/*
 	 * We construct the query document to have MongoDB filter its rows. We could
@@ -208,34 +344,14 @@ MongoPlanForeignScan(Oid foreignTableId, PlannerInfo *root, RelOptInfo *baserel)
 	columnList = ColumnList(baserel);
 
 	/* construct foreign plan with query document and column list */
-	foreignPlan = makeNode(FdwPlan);
-	foreignPlan->fdw_private = list_make2(queryBuffer, columnList);
+	foreignPrivateList = list_make2(queryBuffer, columnList);
 
-	/*
-	 * We now try to retrieve the number of documents in the mongo collection;
-	 * and if we can, we provide cost estimates to the query planner.
-	 */
-	documentCount = ForeignTableDocumentCount(foreignTableId);
-	if (documentCount > 0.0)
-	{
-		double outputRowCount = 0.0;
-		Cost startupCost = 0.0;
-		Cost totalCost = 0.0;
-
-		ForeignTableEstimateCosts(root, baserel, opExpressionList, documentCount,
-								  &outputRowCount, &startupCost, &totalCost);
-
-		baserel->rows = outputRowCount;
-		foreignPlan->startup_cost = startupCost;
-		foreignPlan->total_cost = totalCost;
-	}
-	else
-	{
-		ereport(DEBUG1, (errmsg("could not retrieve document count for collection"),
-						 errhint("Falling back to default estimates in planning")));
-	}
-
-	return foreignPlan;
+	/* create the foreign scan node */
+	foreignScan =  make_foreignscan(targetList, restrictionClauses,
+									scanRangeTableIndex,
+									NIL, /* no expressions to evaluate */
+									foreignPrivateList);
+	return foreignScan;
 }
 
 
@@ -317,7 +433,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 
 	/* deserialize query document; and create column info hash */
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
-	foreignPrivateList = ((FdwPlan *) foreignScan->fdwplan)->fdw_private;
+	foreignPrivateList = foreignScan->fdw_private;
 	Assert(list_length(foreignPrivateList) == 2);
 
 	queryBuffer = (Const *) linitial(foreignPrivateList);
@@ -547,74 +663,6 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	mongo_dispose(mongoConnection);
 
 	return documentCount;
-}
-
-
-/*
- * ForeignTableEstimateCosts estimates the cost of scanning a foreign table. The
- * estimates should become much more accurate once we upgrade to PostgreSQL 9.2;
- * this new version includes APIs to acquire random samples from the data and
- * allows us to keep accurate statistics.
- */
-static void
-ForeignTableEstimateCosts(PlannerInfo *root, RelOptInfo *baserel,
-						  List *documentClauseList, double documentCount,
-						  double *outputRowCount, Cost *startupCost, Cost *totalCost)
-{
-	List *rowClauseList = baserel->baserestrictinfo;
-	double tupleFilterCost = baserel->baserestrictcost.per_tuple;
-	double inputRowCount = 0.0;
-	double documentSelectivity = 0.0;
-	double rowSelectivity = 0.0;
-	double foreignTableSize = 0;
-	int32 documentWidth = 0;
-	BlockNumber pageCount = 0;
-	double totalDiskAccessCost = 0.0;
-	double cpuCostPerDoc = 0.0;
-	double cpuCostPerRow = 0.0;
-	double totalCpuCost = 0.0;
-	double connectionCost = 0.0;
-
-	/* resolve foreign table id first */
-	RangeTblEntry *rangeTableEntry = root->simple_rte_array[baserel->relid];
-	Oid foreignTableId = rangeTableEntry->relid;
-
-	/*
-	 * We estimate disk costs assuming a sequential scan over the data. This is
-	 * an inaccurate assumption as Mongo scatters the data over disk pages, and
-	 * may rely on an index to retrieve the data. Still, this should at least
-	 * give us a relative cost.
-	 */
-	documentWidth = get_relation_data_width(foreignTableId, baserel->attr_widths);
-	foreignTableSize = documentCount * documentWidth;
-
-	pageCount = (BlockNumber) rint(foreignTableSize / BLCKSZ);
-	totalDiskAccessCost = seq_page_cost * pageCount;
-
-	/*
-	 * We estimate the number of documents returned by MongoDB and the number of
-	 * rows returned after restriction qualifiers are applied. Both are rough
-	 * estimates since the planner doesn't have any stats about the relation.
-	 */
-	documentSelectivity = clauselist_selectivity(root, documentClauseList,
-												 0, JOIN_INNER, NULL);
-	inputRowCount = clamp_row_est(documentCount * documentSelectivity);
-
-	rowSelectivity = clauselist_selectivity(root, rowClauseList,
-											0, JOIN_INNER, NULL);
-	(*outputRowCount) = clamp_row_est(documentCount * rowSelectivity);
-
-	/*
-	 * The cost of processing a document returned by Mongo (input row) is 5x the
-	 * cost of processing a regular row.
-	 */
-	cpuCostPerDoc = cpu_tuple_cost;
-	cpuCostPerRow = (cpu_tuple_cost * MONGO_TUPLE_COST_MULTIPLIER) + tupleFilterCost;
-	totalCpuCost = (cpuCostPerDoc * documentCount) + (cpuCostPerRow * inputRowCount);
-
-	connectionCost = MONGO_CONNECTION_COST_MULTIPLIER * seq_page_cost;
-	(*startupCost) = baserel->baserestrictcost.startup + connectionCost;
-	(*totalCost) = (*startupCost) + totalDiskAccessCost + totalCpuCost;
 }
 
 
@@ -1151,4 +1199,264 @@ MongoFreeScanState(MongoFdwExecState *executionState)
 	/* also close the connection to mongo server */
 	mongo_destroy(executionState->mongoConnection);
 	mongo_dispose(executionState->mongoConnection);
+}
+
+
+/*
+ * MongoAnalyzeForeignTable collects statistics for the given foreign table.
+ */
+static bool
+MongoAnalyzeForeignTable(Relation relation,
+						 AcquireSampleRowsFunc *acquireSampleRowsFunc,
+						 BlockNumber *totalPageCount)
+{
+	BlockNumber pageCount = 0;
+	int attributeCount = 0;
+	int32 *attributeWidths = NULL;
+	Oid foreignTableId = InvalidOid;
+	int32 documentWidth = 0;
+	double documentCount = 0.0;
+	double foreignTableSize = 0;
+
+	foreignTableId = RelationGetRelid(relation);
+	documentCount = ForeignTableDocumentCount(foreignTableId);
+
+	if (documentCount > 0.0)
+	{
+		attributeCount = RelationGetNumberOfAttributes(relation);
+		attributeWidths = (int32 *)	palloc0((attributeCount + 1) * sizeof(int32));
+
+		/*
+		 * We estimate disk costs assuming a sequential scan over the data. This is
+		 * an inaccurate assumption as Mongo scatters the data over disk pages, and
+		 * may rely on an index to retrieve the data. Still, this should at least
+		 * give us a relative cost.
+		 */
+		documentWidth = get_relation_data_width(foreignTableId, attributeWidths);
+		foreignTableSize = documentCount * documentWidth;
+
+		pageCount = (BlockNumber) rint(foreignTableSize / BLCKSZ);
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("could not retrieve document count for collection"),
+						 errhint("could not	collect statistics about foreign table")));
+	}
+
+	(*totalPageCount) = pageCount;
+	(*acquireSampleRowsFunc) = MongoAcquireSampleRows;
+
+	return true;
+}
+
+
+/*
+ * MongoAcquireSampleRows acquires a random sample of rows from the foreign
+ * table. Selected rows are returned in the caller allocated sampleRows array,
+ * which must have at least target row count entries. The actual number of rows
+ * selected is returned as the function result. We also count the number of rows
+ * in the collection and return it in total row count. We also always set dead
+ * row count to zero.
+ *
+ * Note that the returned list of rows is not always in order by physical
+ * position in the MongoDB collection. Therefore, correlation estimates
+ * derived later may be meaningless, but it's OK because we don't use the
+ * estimates currently (the planner only pays attention to correlation for
+ * index scans).
+ */
+static int
+MongoAcquireSampleRows(Relation relation, int errorLevel,
+					   HeapTuple *sampleRows, int targetRowCount,
+					   double *totalRowCount, double *totalDeadRowCount)
+{
+	int sampleRowCount = 0;
+	double rowCount = 0;
+	double rowCountToSkip = -1; /* -1 means not set yet */
+	double randomState = 0;
+	Datum *columnValues = NULL;
+	bool *columnNulls = NULL;
+	Oid foreignTableId = InvalidOid;
+	TupleDesc tupleDescriptor = NULL;
+	Form_pg_attribute *attributesPtr = NULL;
+	AttrNumber columnCount = 0;
+	AttrNumber columnId = 0;
+	HTAB *columnMappingHash = NULL;
+	mongo_cursor *mongoCursor = NULL;
+	bson *queryDocument = NULL;
+	Const *queryBuffer = NULL;
+	List *columnList = NIL;
+	ForeignScanState *scanState = NULL;
+	List *foreignPrivateList = NIL;
+	ForeignScan *foreignScan = NULL;
+	MongoFdwExecState *executionState = NULL;
+	char *relationName = NULL;
+	int executorFlags = 0;
+	MemoryContext oldContext = CurrentMemoryContext;
+	MemoryContext tupleContext = NULL;
+
+	/* create list of columns in the relation */
+	tupleDescriptor = RelationGetDescr(relation);
+	columnCount = tupleDescriptor->natts;
+	attributesPtr = tupleDescriptor->attrs;
+
+	for (columnId = 1; columnId <= columnCount; columnId++)
+	{
+		Var *column = (Var *) palloc0(sizeof(Var));
+
+		/* only assign required fields for column mapping hash */
+		column->varattno = columnId;
+		column->vartype = attributesPtr[columnId-1]->atttypid;
+		column->vartypmod = attributesPtr[columnId-1]->atttypmod;
+
+		columnList = lappend(columnList, column);
+	}
+
+	/* create state structure */
+	scanState = makeNode(ForeignScanState);
+	scanState->ss.ss_currentRelation = relation;
+
+	foreignTableId = RelationGetRelid(relation);
+	queryDocument = QueryDocument(foreignTableId, NIL);
+	queryBuffer = SerializeDocument(queryDocument);
+
+	/* only clean up the query struct, but not its data */
+	bson_dispose(queryDocument);
+
+	/* construct foreign plan with query document and column list */
+	foreignPrivateList = list_make2(queryBuffer, columnList);
+
+	foreignScan = makeNode(ForeignScan);
+	foreignScan->fdw_private = foreignPrivateList;
+
+	scanState->ss.ps.plan = (Plan *) foreignScan;
+
+	MongoBeginForeignScan(scanState, executorFlags);
+
+	executionState = (MongoFdwExecState *) scanState->fdw_state;
+	mongoCursor = executionState->mongoCursor;
+	columnMappingHash = executionState->columnMappingHash;
+
+	/*
+	 * Use per-tuple memory context to prevent leak of memory used to read
+	 * rows from the file with copy routines.
+	 */
+	tupleContext = AllocSetContextCreate(CurrentMemoryContext,
+										 "mongo_fdw temporary context",
+										 ALLOCSET_DEFAULT_MINSIZE,
+										 ALLOCSET_DEFAULT_INITSIZE,
+										 ALLOCSET_DEFAULT_MAXSIZE);
+
+	/* prepare for sampling rows */
+	randomState = anl_init_selection_state(targetRowCount);
+
+	columnValues = (Datum *) palloc0(columnCount * sizeof(Datum));
+	columnNulls = (bool *) palloc0(columnCount * sizeof(bool));	
+
+	for (;;)
+	{
+		int32 cursorStatus = MONGO_ERROR;
+
+		/* check for user-requested abort or sleep */
+		vacuum_delay_point();
+
+		/* initialize all values for this row to null */
+		memset(columnValues, 0, columnCount * sizeof(Datum));
+		memset(columnNulls, true, columnCount * sizeof(bool));
+
+		cursorStatus = mongo_cursor_next(mongoCursor);
+		if (cursorStatus == MONGO_OK)
+		{
+			const bson *bsonDocument = mongo_cursor_bson(mongoCursor);
+			const char *bsonDocumentKey = NULL; /* top level document */
+
+			/* fetch next tuple */
+			MemoryContextReset(tupleContext);
+			MemoryContextSwitchTo(tupleContext);
+
+			FillTupleSlot(bsonDocument, bsonDocumentKey,
+						  columnMappingHash, columnValues, columnNulls);
+
+			MemoryContextSwitchTo(oldContext);
+		}
+		else
+		{
+			/*
+			 * The following is a courtesy check. In practice when Mongo shuts down,
+			 * mongo_cursor_next() could possibly crash.
+			 */
+			mongo_cursor_error_t errorCode = mongoCursor->err;
+			if (errorCode != MONGO_CURSOR_EXHAUSTED)
+			{
+				MongoFreeScanState(executionState);
+				ereport(ERROR, (errmsg("could not iterate over mongo collection"),
+								errhint("Mongo driver cursor error code: %d",
+										errorCode)));
+			}
+
+			break;
+   		}
+
+		/*
+		 * The first targetRowCount sample rows are simply copied into the
+		 * reservoir. Then we start replacing tuples in the sample until we
+		 * reach the end of the relation. This algorithm is from Jeff Vitter's
+		 * paper (see more info in commands/analyze.c).
+		 */
+		if (sampleRowCount < targetRowCount)
+		{
+			sampleRows[sampleRowCount++] = heap_form_tuple(tupleDescriptor,
+														   columnValues,
+														   columnNulls);
+		}
+		else
+		{
+			/*
+			 * t in Vitter's paper is the number of records already processed.
+			 * If we need to compute a new S value, we must use the "not yet
+			 * incremented" value of rowCount as t.
+			 */
+			if (rowCountToSkip < 0)
+			{
+				rowCountToSkip = anl_get_next_S(rowCount, targetRowCount,
+												&randomState);
+			}
+
+			if (rowCountToSkip <= 0)
+			{
+				/*
+				 * Found a suitable tuple, so save it, replacing one old tuple
+				 * at random.
+				 */
+				int rowIndex = (int) (targetRowCount * anl_random_fract());
+				Assert(rowIndex >= 0);
+				Assert(rowIndex < targetRowCount);
+
+				heap_freetuple(sampleRows[rowIndex]);
+				sampleRows[rowIndex] = heap_form_tuple(tupleDescriptor,
+													   columnValues,
+													   columnNulls);
+			}
+
+			rowCountToSkip -= 1;
+		}
+
+		rowCount += 1;
+	}
+
+	/* clean up */
+	MemoryContextDelete(tupleContext);
+	MongoFreeScanState(executionState);
+	
+	pfree(columnValues);
+	pfree(columnNulls);
+
+	/* emit some interesting relation info */
+	relationName = RelationGetRelationName(relation);
+	ereport(errorLevel, (errmsg("\"%s\": collection contains %.0f rows; %d rows	in sample",
+								relationName, rowCount, sampleRowCount)));
+
+	(*totalRowCount) = rowCount;
+	(*totalDeadRowCount) = 0;
+
+	return sampleRowCount;
 }
