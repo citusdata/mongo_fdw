@@ -70,15 +70,15 @@ static const MongoValidOption ValidOptionArray[] =
 	/* foreign server options */
 	{ OPTION_NAME_ADDRESS, ForeignServerRelationId },
 	{ OPTION_NAME_PORT,  ForeignServerRelationId },
-    { OPTION_NAME_USE_AUTH, ForeignServerRelationId },
+	{ OPTION_NAME_USE_AUTH, ForeignServerRelationId },
 
 	/* foreign table options */
 	{ OPTION_NAME_DATABASE, ForeignTableRelationId },
 	{ OPTION_NAME_COLLECTION, ForeignTableRelationId },
 
-    /* user mapping options */
-    { OPTION_NAME_USERNAME, UserMappingRelationId },
-    { OPTION_NAME_PASSWORD, UserMappingRelationId },
+	/* user mapping options */
+	{ OPTION_NAME_USERNAME, UserMappingRelationId },
+	{ OPTION_NAME_PASSWORD, UserMappingRelationId },
 };
 
 
@@ -91,11 +91,11 @@ typedef struct MongoFdwOptions
 {
 	char *addressName;
 	int32 portNumber;
-    bool useAuth;
+	bool useAuth;
 	char *databaseName;
 	char *collectionName;
-    char *username;
-    char *password;
+	char *username;
+	char *password;
 
 } MongoFdwOptions;
 
