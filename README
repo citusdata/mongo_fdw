@@ -78,6 +78,16 @@ OPTIONS (database 'test', collection 'customer_reviews');
 -- collect data distribution statistics
 ANALYZE customer_reviews;
 
+If you are using MongoDB authentication, you will need to indicate that when creating the server:
+
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
+OPTIONS (address '127.0.0.1', port '27017', use_auth 'true')
+
+Then you must add a user mapping for any PostgreSQL user:
+
+CREATE USER MAPPING FOR (username | CURRENT_USER | PUBLIC)
+SERVER mongo_server OPTIONS (username 'mongo_username', password 'mongo_password');
+
 
 Limitations
 -----------
@@ -95,7 +105,7 @@ Limitations
 Copyright
 ---------
 
-Copyright (c) 2012 Citus Data, Inc.
+Copyright (c) 2013 Citus Data, Inc.
 
 This module is free software; you can redistribute it and/or modify it under the
 GNU GPL v3.0 License.
