@@ -78,7 +78,7 @@ static const MongoValidOption ValidOptionArray[] =
 
 	/* user mapping options */
 	{ OPTION_NAME_USERNAME, UserMappingRelationId },
-	{ OPTION_NAME_PASSWORD, UserMappingRelationId },
+	{ OPTION_NAME_PASSWORD, UserMappingRelationId }
 };
 
 
