@@ -19,18 +19,8 @@ OBJS = mongo_fdw.o mongo_query.o $(MONGO_OBJS)
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
 
-#
-# We first build our dependency, the Mongo C driver library here. For this, we
-# explicitly invoke the subdirectory's make system.
-#
-
-all: all-mongo-driver
-all-mongo-driver:
-	$(MAKE) -C $(MONGO_DRIVER) all
-
-clean: clean-mongo-driver
-clean-mongo-driver:
-	$(MAKE) -C $(MONGO_DRIVER) clean
+$(MONGO_DRIVER)/%.os:
+	$(MAKE) -C $(MONGO_DRIVER) $*.os
 
 #
 # Users need to specify their Postgres installation path through pg_config. For
