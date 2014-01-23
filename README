@@ -7,6 +7,18 @@ http://www.citusdata.com/blog/51-run-sql-on-mongodb. Please also note that this
 version of mongo_fdw only works with PostgreSQL 9.2.
 
 
+Checking Out
+------------
+
+mongo_fdw depends on mongo-c-driver and includes it as a git submodule. If you
+are cloning this repository for the first time, be sure to pass the --recursive
+option to git clone in order to initialize the driver submodule to a useable
+state.
+
+If have checked out this project before and for some reason your submodule is
+not up-to-date, run git submodule update --init.
+
+
 Building
 --------
 
