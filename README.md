@@ -1,57 +1,61 @@
-MongoDB FDW for PostgreSQL 9.2 and PostgreSQL 9.3
-==============================
+MongoDB FDW for PostgreSQL
+==========================
 
-This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for MongoDB.
-For an example setup that demonstrates this wrapper's use, please see
-http://www.citusdata.com/blog/51-run-sql-on-mongodb. Please also note that this
-version of mongo_fdw works with PostgreSQL 9.2 and PostgreSQL 9.3.
+This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
+[MongoDB][1]. For an example demonstrating this wrapper's use, see [our blog
+post][2]. Please also note that this version of `mongo_fdw` only works with
+PostgreSQL 9.2 or 9.3.
 
 
-Building
---------
+Installation
+------------
 
-The MongoDB FDW already includes the official MongoDB C Driver version 0.6. When
-you type make, the C driver's source code also gets automatically compiled and
+The MongoDB FDW includes the official MongoDB C Driver version 0.6. When you
+type `make`, the C driver's source code also gets automatically compiled and
 linked.
 
-To build on POSIX compliant systems (Linux and OS X), you simply need to include
-the pg_config directory path in your make command. This path is typically the
-same as your PostgreSQL installation's bin/ directory path. For example:
+To build on POSIX-compliant systems (like Linux and OS X), you need to ensure
+the `pg_config` executable is in your path when you run `make`. This executable
+is typically in your PostgreSQL installation's `bin` directory. For example:
 
-$ PATH=/usr/local/pgsql/bin/:$PATH make
-$ sudo PATH=/usr/local/pgsql/bin/:$PATH make install
+```sh
+PATH=/usr/local/pgsql/bin/:$PATH make
+sudo PATH=/usr/local/pgsql/bin/:$PATH make install
+```
 
-Note that we have tested the mongo_fdw extension only on Fedora and Ubuntu
-systems. Please let us know if you run into any issues on other systems.
+Note that we have tested the `mongo_fdw` extension only on Fedora and Ubuntu
+systems. If you run into issues on other systems, please [let us know][3].
 
 
 Usage
 -----
 
-The following parameters can be set on a MongoDB foreign server object.
+The following parameters can be set on a MongoDB foreign server object:
 
-* address: The address or hostname of the MongoDB server. Defaults to "127.0.0.1".
-* port: The port number of the MongoDB server. Defaults to 27017.
+  * `address`: the address or hostname of the MongoDB server.
+               Defaults to `127.0.0.1`
+  * `port`: the port number of the MongoDB server. Defaults to `27017`
 
-The following parameters can be set on a MongoDB foreign table object.
+The following parameters can be set on a MongoDB foreign table object:
 
-* database: The name of the MongoDB database to query. Defaults to "test".
-* collection: The name of the MongoDB collection to query. Defaults to foreign
-  table name specified in the create command.
+  * `database`: the name of the MongoDB database to query. Defaults to `test`
+  * `collection`: the name of the MongoDB collection to query. Defaults to
+                  the foreign table name used in the relevant `CREATE` command
 
-As an example, the following commands demonstrate loading the mongo_fdw wrapper,
-creating a server, and then creating a foreign table associated with a MongoDB
-collection. The commands also show specifying option values in the OPTIONS
-clause. If an option value isn't provided, the wrapper uses the default value
-mentioned above.
+As an example, the following commands demonstrate loading the `mongo_fdw`
+wrapper, creating a server, and then creating a foreign table associated with
+a MongoDB collection. The commands also show specifying option values in the
+`OPTIONS` clause. If an option value isn't provided, the wrapper uses the
+default value mentioned above.
 
-mongo_fdw can collect data distribution statistics and incorporates them when
-estimating costs for the query execution plan. In the mean time, you run EXPLAIN
-on your queries to see the selected execution plans.
+`mongo_fdw` can collect data distribution statistics will incorporate them when
+estimating costs for the query execution plan. To see selected execution plans
+for a query, just run `EXPLAIN`.
 
-We also currently use the internal PostgreSQL NAME type to represent the BSON
-object identifier type (_id field).
+We also currently use the internal PostgreSQL `NAME` type to represent the BSON
+object identifier type (the `_id` field).
 
+```sql
 -- load extension first time after install
 CREATE EXTENSION mongo_fdw;
 
@@ -77,19 +81,21 @@ OPTIONS (database 'test', collection 'customer_reviews');
 
 -- collect data distribution statistics
 ANALYZE customer_reviews;
+```
 
 
 Limitations
 -----------
 
-* If the BSON document key contains upper-case letters or occurs within a nested
-  document, mongo_fdw requires the corresponding column names to be declared in
-  double quotes. For example, a nested field such as "review": { "Votes": 19 }
-  should be declared as "review.Votes" INTEGER in the create table statement.
+  * If the BSON document key contains uppercase letters or occurs within a
+    nested document, `mongo_fdw` requires the corresponding column names to be
+	declared in double quotes. For example, a nested field such as `"review": {
+	"Votes": 19 }` should be declared as `"review.Votes" INTEGER` in the create
+	table statement.
 
-* Please note that PostgreSQL limits column names to 63 characters by default.
-  If you need column names that are longer, you can increase the NAMEDATALEN
-  constant in src/include/pg_config_manual.h, compile, and reinstall.
+  * Note that PostgreSQL limits column names to 63 characters by default. If
+    you need column names that are longer, you can increase the `NAMEDATALEN`
+	constant in `src/include/pg_config_manual.h`, compile, and reinstall.
 
 
 Copyright
@@ -102,3 +108,7 @@ GNU GPL v3.0 License.
 
 For all types of questions and comments about the wrapper, please contact us at
 engage @ citusdata.com.
+
+[1]: http://www.mongodb.com
+[2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
+[3]: https://github.com/citusdata/mongo_fdw/issues/new
