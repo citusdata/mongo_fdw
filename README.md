@@ -102,7 +102,8 @@ Contributing
 ------------
 
 Have a fix for a bug or an idea for a great new feature? Great! Check out the
-contribution guidelines [here][4].
+contribution guidelines [here][4]. For all other types of questions or comments
+about the wrapper please contact us at `engage` `@` `citusdata.com`.
 
 
 Support
