@@ -90,8 +90,8 @@ Limitations
   * If the BSON document key contains uppercase letters or occurs within a
     nested document, `mongo_fdw` requires the corresponding column names to be
 	declared in double quotes. For example, a nested field such as `"review": {
-	"Votes": 19 }` should be declared as `"review.Votes" INTEGER` in the create
-	table statement.
+	"Votes": 19 }` should be declared as `"review.Votes" INTEGER` in the `CREATE
+	TABLE` statement.
 
   * Note that PostgreSQL limits column names to 63 characters by default. If
     you need column names that are longer, you can increase the `NAMEDATALEN`
@@ -101,8 +101,8 @@ Limitations
 Contributing
 ------------
 
-Have a fix for a bug or a great new feature? Great! Check out the contribution
-guidelines [here][4].
+Have a fix for a bug or an idea for a great new feature? Great! Check out the
+contribution guidelines [here][4].
 
 
 Support
