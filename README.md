@@ -105,6 +105,15 @@ Have a fix for a bug or a great new feature? Great! Check out the contribution
 guidelines [here][4].
 
 
+Support
+-------
+
+This project will be modified to maintain compatibility with new PostgreSQL
+releases. The project owners set aside a day every month to look over open
+issues and support emails, but are not engaged in active feature development.
+Reported bugs will be addressed by apparent severity.
+
+
 License
 -------
 
