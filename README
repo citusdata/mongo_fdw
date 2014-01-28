@@ -1,10 +1,10 @@
-MongoDB FDW for PostgreSQL 9.2
+MongoDB FDW for PostgreSQL 9.2 and PostgreSQL 9.3
 ==============================
 
 This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for MongoDB.
 For an example setup that demonstrates this wrapper's use, please see
 http://www.citusdata.com/blog/51-run-sql-on-mongodb. Please also note that this
-version of mongo_fdw only works with PostgreSQL 9.2.
+version of mongo_fdw works with PostgreSQL 9.2 and PostgreSQL 9.3.
 
 
 Building
