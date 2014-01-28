@@ -98,6 +98,13 @@ Limitations
 	constant in `src/include/pg_config_manual.h`, compile, and reinstall.
 
 
+Contributing
+------------
+
+Have a fix for a bug or a great new feature? Great! Check out the contribution
+guidelines [here][4].
+
+
 License
 -------
 
@@ -108,9 +115,10 @@ the terms of the GNU Lesser General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option) any
 later version.
 
-See the [LICENSE][4] file for full details.
+See the [`LICENSE`][5] file for full details.
 
 [1]: http://www.mongodb.com
 [2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
 [3]: https://github.com/citusdata/mongo_fdw/issues/new
-[4]: LICENSE
+[4]: CONTRIBUTING.md
+[5]: LICENSE
