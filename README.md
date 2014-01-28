@@ -108,9 +108,6 @@ the terms of the GNU Lesser General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option) any
 later version.
 
-For all types of questions and comments about the wrapper, please contact us at
-engage @ citusdata.com.
-
 See the [LICENSE][4] file for full details.
 
 [1]: http://www.mongodb.com
