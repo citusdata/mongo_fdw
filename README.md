@@ -98,17 +98,22 @@ Limitations
 	constant in `src/include/pg_config_manual.h`, compile, and reinstall.
 
 
-Copyright
----------
+License
+-------
 
-Copyright (c) 2012 Citus Data, Inc.
+Copyright © 2012–2014 Citus Data, Inc.
 
-This module is free software; you can redistribute it and/or modify it under the
-GNU GPL v3.0 License.
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
 
 For all types of questions and comments about the wrapper, please contact us at
 engage @ citusdata.com.
 
+See the [LICENSE][4] file for full details.
+
 [1]: http://www.mongodb.com
 [2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
 [3]: https://github.com/citusdata/mongo_fdw/issues/new
+[4]: LICENSE
