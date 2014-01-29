@@ -4,9 +4,7 @@
  *
  * Type and function declarations for MongoDB foreign data wrapper.
  *
- * Copyright (c) 2012, Citus Data, Inc.
- *
- * $Id$
+ * Copyright (c) 2012-2014 Citus Data, Inc.
  *
  *-------------------------------------------------------------------------
  */
