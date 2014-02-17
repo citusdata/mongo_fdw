@@ -5,9 +5,7 @@
  * Function definitions for MongoDB foreign data wrapper. These functions access
  * data stored in MongoDB through the official C driver.
  *
- * Copyright (c) 2012, Citus Data, Inc.
- *
- * $Id$
+ * Copyright (c) 2012-2014 Citus Data, Inc.
  *
  *-------------------------------------------------------------------------
  */
@@ -35,6 +33,10 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/memutils.h"
+
+#if PG_VERSION_NUM >= 90300
+	#include "access/htup_details.h"
+#endif
 
 
 /* Local functions forward declarations */
