@@ -1068,6 +1068,232 @@ ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId)
 	return columnValueDatum;
 }
 
+void debug_my_bson_print_raw( const char *data , int depth );
+
+void my_bson_print( const bson *b ) {
+    debug_my_bson_print_raw( b->data , 0 );
+}
+
+void debug_my_bson_print_raw( const char *data , int depth ) {
+    bson_iterator i;
+    const char *key;
+    int temp;
+    bson_timestamp_t ts;
+    char oidhex[25];
+    bson scope;
+    bson_iterator_from_buffer( &i, data );
+
+	//elog(NOTICE,  "i->first: %d", i.first );
+	//elog(NOTICE,  "i->cur: %d", *i.cur );
+	//bson_type bsonType = bson_iterator_type(&i);
+	//elog(NOTICE, "bson type: %d", bsonType);
+	//bson_iterator_next( &i );
+	//return;
+
+    while ( bson_iterator_next( &i ) ) {
+        bson_type t = bson_iterator_type( &i );
+        if ( t == 0 )
+            break;
+        key = bson_iterator_key( &i );
+
+        for ( temp=0; temp<=depth; temp++ )
+            elog(NOTICE,  "\t" );
+        elog(NOTICE,  "%s : %d \t " , key , t );
+
+        switch ( t ) {
+        case BSON_DOUBLE:
+            elog(NOTICE,  "%f" , bson_iterator_double( &i ) );
+            break;
+        case BSON_STRING:
+            elog(NOTICE,  "%s" , bson_iterator_string( &i ) );
+            break;
+        case BSON_SYMBOL:
+            elog(NOTICE,  "SYMBOL: %s" , bson_iterator_string( &i ) );
+            break;
+        case BSON_OID:
+            bson_oid_to_string( bson_iterator_oid( &i ), oidhex );
+            elog(NOTICE,  "%s" , oidhex );
+            break;
+        case BSON_BOOL:
+            elog(NOTICE,  "%s" , bson_iterator_bool( &i ) ? "true" : "false" );
+            break;
+        case BSON_DATE:
+            elog(NOTICE,  "%ld" , ( long int )bson_iterator_date( &i ) );
+            break;
+        case BSON_BINDATA:
+            elog(NOTICE,  "BSON_BINDATA" );
+            break;
+        case BSON_UNDEFINED:
+            elog(NOTICE,  "BSON_UNDEFINED" );
+            break;
+        case BSON_NULL:
+            elog(NOTICE,  "BSON_NULL" );
+            break;
+        case BSON_REGEX:
+            elog(NOTICE,  "BSON_REGEX: %s", bson_iterator_regex( &i ) );
+            break;
+        case BSON_CODE:
+            elog(NOTICE,  "BSON_CODE: %s", bson_iterator_code( &i ) );
+            break;
+        case BSON_CODEWSCOPE:
+            elog(NOTICE,  "BSON_CODE_W_SCOPE: %s", bson_iterator_code( &i ) );
+            bson_init( &scope );
+            bson_iterator_code_scope( &i, &scope );
+            elog(NOTICE,  "\n\t SCOPE: " );
+            my_bson_print( &scope );
+            break;
+        case BSON_INT:
+            elog(NOTICE,  "%d" , bson_iterator_int( &i ) );
+            break;
+        case BSON_LONG:
+            elog(NOTICE,  "%lld" , ( uint64_t )bson_iterator_long( &i ) );
+            break;
+        case BSON_TIMESTAMP:
+            ts = bson_iterator_timestamp( &i );
+            elog(NOTICE,  "i: %d, t: %d", ts.i, ts.t );
+            break;
+        case BSON_OBJECT:
+        case BSON_ARRAY:
+            elog(NOTICE,  "\n" );
+            debug_my_bson_print_raw( bson_iterator_value( &i ) , depth + 1 );
+            break;
+        default:
+            bson_errprintf( "can't print type : %d\n" , t );
+        }
+        elog(NOTICE,  "\n" );
+    }
+}
+
+int append(char **dest, char *src, int length) {
+	length += strlen(src);
+	strcpy(*dest, src);
+	*dest = *dest + strlen(src);
+	return length;
+}
+
+int print_json(char **buffer, int length, const char *data , int depth,
+			   bool is_array ) {
+	bson_iterator i;
+    const char *key;
+    int temp;
+    bson_timestamp_t ts;
+    char oidhex[25];
+    bson scope;
+    bson_iterator_from_buffer( &i, data );
+
+	char * buff = malloc(512);
+
+	bool first_elem = true;
+
+    while ( bson_iterator_next( &i ) ) {
+		if (!first_elem) {
+			length = append(buffer, ",", length);
+		}
+
+        bson_type t = bson_iterator_type( &i );
+        if ( t == 0 )
+            break;
+        key = bson_iterator_key( &i );
+
+		/*
+        for ( temp=0; temp<=depth; temp++ )
+            elog(NOTICE,  "\t" );
+        elog(NOTICE,  "%s : %d \t " , key , t );
+		*/
+		if (!is_array) {
+			sprintf(buff, "\"%s\":", key);
+			length = append(buffer, buff, length);
+			//elog(NOTICE, "%s", buff);
+		}
+
+        switch ( t ) {
+        case BSON_DOUBLE:
+            //elog(NOTICE,  "%f" , bson_iterator_double( &i ) );
+            sprintf(buff, "%f", bson_iterator_double( &i ) );
+			length = append(buffer, buff, length);
+            break;
+        case BSON_STRING:
+            //elog(NOTICE,  "\"%s\"" , bson_iterator_string( &i ) );
+			sprintf(buff, "\"%s\"" , bson_iterator_string( &i ) );
+			length = append(buffer, buff, length);
+            break;
+        case BSON_SYMBOL:
+            elog(NOTICE,  "SYMBOL: %s" , bson_iterator_string( &i ) );
+            break;
+        case BSON_OID:
+            bson_oid_to_string( bson_iterator_oid( &i ), oidhex );
+            //elog(NOTICE,  "\"%s\"" , oidhex );
+			sprintf(buff,   "\"%s\"" , oidhex );
+			length = append(buffer, buff, length);
+            break;
+        case BSON_BOOL:
+            elog(NOTICE,  "%s" , bson_iterator_bool( &i ) ? "true" : "false" );
+            break;
+        case BSON_DATE:
+            elog(NOTICE,  "%ld" , ( long int )bson_iterator_date( &i ) );
+            break;
+        case BSON_BINDATA:
+            elog(NOTICE,  "BSON_BINDATA" );
+            break;
+        case BSON_UNDEFINED:
+            elog(NOTICE,  "BSON_UNDEFINED" );
+            break;
+        case BSON_NULL:
+            elog(NOTICE,  "BSON_NULL" );
+            break;
+        case BSON_REGEX:
+            elog(NOTICE,  "BSON_REGEX: %s", bson_iterator_regex( &i ) );
+            break;
+        case BSON_CODE:
+            elog(NOTICE,  "BSON_CODE: %s", bson_iterator_code( &i ) );
+            break;
+        /*case BSON_CODEWSCOPE:
+            elog(NOTICE,  "BSON_CODE_W_SCOPE: %s", bson_iterator_code( &i ) );
+            bson_init( &scope );
+            bson_iterator_code_scope( &i, &scope );
+            elog(NOTICE,  "\n\t SCOPE: " );
+            my_bson_print( &scope );
+            break;*/
+        case BSON_INT:
+            //elog(NOTICE,  "%d" , bson_iterator_int( &i ) );
+            sprintf(buff,  "%d" , bson_iterator_int( &i ) );
+			length = append(buffer, buff, length);
+            break;
+        case BSON_LONG:
+            //elog(NOTICE,  "%lld" , ( uint64_t )bson_iterator_long( &i ) );
+            sprintf(buff,  "%lld" , ( uint64_t )bson_iterator_long( &i ) );
+			length = append(buffer, buff, length);
+            break;
+        case BSON_TIMESTAMP:
+            ts = bson_iterator_timestamp( &i );
+            elog(NOTICE,  "i: %d, t: %d", ts.i, ts.t );
+            break;
+        case BSON_OBJECT:
+            //elog(NOTICE,  "{");
+			length = append(buffer, "{", length);
+			length = print_json(buffer, length,  bson_iterator_value( &i ) ,
+					depth + 1, false );
+            //elog(NOTICE,  "}");
+			length = append(buffer, "}", length);
+            break;
+        case BSON_ARRAY:
+            //elog(NOTICE,  "[");
+			length = append(buffer, "[", length);
+			length = print_json(buffer, length, bson_iterator_value( &i ) ,
+					depth + 1, true );
+            //elog(NOTICE,  "]");
+			length = append(buffer, "]", length);
+            break;
+        default:
+            bson_errprintf( "can't print type : %d\n" , t );
+        }
+		//elog(NOTICE,  "," );
+		first_elem = false;
+    }
+	//free(buff);
+	return length;
+}
+
 
 /*
  * ColumnValue uses column type information to read the current value pointed to
@@ -1187,14 +1413,29 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		}
 		case JSONOID:
 		{
-			char	   *json = "{\"hello\": \"world!\"}"; // TODO
-			text	   *result = cstring_to_text(json);
+			//char	   *json = "{\"hello\": \"world!\"}"; // TODO
+			char *buffer = malloc(4096);
+			char *bptr = buffer + 1;
+
+			buffer[0] = '[';
+
+			int length = print_json(&bptr, 1,
+					bson_iterator_value(bsonIterator), 0, true);
+			//elog(NOTICE, "length: %d", length);
+			buffer[length] = ']';
+			buffer[length + 1] = '\0';
+			//elog(NOTICE, ">>%s<<", buffer);
+
+			//my_bson_print_raw(bsonIterator->cur - 4, 0);
+
+			text	   *result = cstring_to_text(buffer);
 			JsonLexContext *lex;
 
 			/* validate it */
 			lex = makeJsonLexContext(result, false);
 			pg_parse_json(lex, &nullSemAction);
 			columnValue = PointerGetDatum(result);
+			//free(buffer);
 			break;
 		}
 		default:
