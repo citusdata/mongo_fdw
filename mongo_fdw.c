@@ -1181,7 +1181,7 @@ int print_json(char **buffer, int length, const char *data , int depth,
     bson scope;
     bson_iterator_from_buffer( &i, data );
 
-	char * buff = malloc(512);
+	char * buff = malloc(4096);
 
 	bool first_elem = true;
 
@@ -1413,20 +1413,31 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		}
 		case JSONOID:
 		{
-			//char	   *json = "{\"hello\": \"world!\"}"; // TODO
-			char *buffer = malloc(4096);
+			char *buffer = malloc(8184);
 			char *bptr = buffer + 1;
+			char start_symbol, end_symbol;
+			bool is_array;
 
-			buffer[0] = '[';
+			bson_type type = bson_iterator_type(bsonIterator);
+
+			if (type == BSON_ARRAY) {
+				start_symbol = '[';
+				end_symbol = ']';
+				is_array = true;
+			} else if (type == BSON_OBJECT) {
+				start_symbol = '{';
+				end_symbol = '}';
+				is_array = false;
+			} else {
+				ereport(ERROR, (errmsg("cannot convert scolar to json")));
+			}
+
+			buffer[0] = start_symbol;
 
 			int length = print_json(&bptr, 1,
-					bson_iterator_value(bsonIterator), 0, true);
-			//elog(NOTICE, "length: %d", length);
-			buffer[length] = ']';
+					bson_iterator_value(bsonIterator), 0, is_array);
+			buffer[length] = end_symbol;
 			buffer[length + 1] = '\0';
-			//elog(NOTICE, ">>%s<<", buffer);
-
-			//my_bson_print_raw(bsonIterator->cur - 4, 0);
 
 			text	   *result = cstring_to_text(buffer);
 			JsonLexContext *lex;
