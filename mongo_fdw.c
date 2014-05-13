@@ -33,6 +33,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/memutils.h"
+//#include "utils/json.h"
+#include "utils/jsonapi.h"
 
 #if PG_VERSION_NUM >= 90300
 	#include "access/htup_details.h"
@@ -74,6 +76,13 @@ static bool MongoAnalyzeForeignTable(Relation relation,
 static int MongoAcquireSampleRows(Relation relation, int errorLevel,
 								  HeapTuple *sampleRows, int targetRowCount,
 								  double *totalRowCount, double *totalDeadRowCount);
+
+/* the null action object used for pure validation */
+static JsonSemAction nullSemAction =
+{
+	NULL, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL
+};
 
 
 /* declarations for dynamic loading */
@@ -851,8 +860,17 @@ FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
 			bsonFullKey = bsonKey;
 		}
 
+		/* look up the corresponding column for this bson key */
+		hashKey = (void *) bsonFullKey;
+		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
+													  HASH_FIND, &handleFound);
+		if (columnMapping != NULL) {
+			columnTypeId = columnMapping->columnTypeId;
+			columnArrayTypeId = columnMapping->columnArrayTypeId;
+		}
+
 		/* recurse into nested objects */
-		if (bsonType == BSON_OBJECT)
+		if (bsonType == BSON_OBJECT && columnTypeId != JSONOID)
 		{
 			bson subObject;
 			bson_iterator_subobject(&bsonIterator, &subObject);
@@ -861,11 +879,6 @@ FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
 			continue;
 		}
 
-		/* look up the corresponding column for this bson key */
-		hashKey = (void *) bsonFullKey;
-		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
-													  HASH_FIND, &handleFound);
-
 		/* if no corresponding column or null bson value, continue */
 		if (columnMapping == NULL || bsonType == BSON_NULL)
 		{
@@ -873,9 +886,6 @@ FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
 		}
 
 		/* check if columns have compatible types */
-		columnTypeId = columnMapping->columnTypeId;
-		columnArrayTypeId = columnMapping->columnArrayTypeId;
-
 		if (OidIsValid(columnArrayTypeId) && bsonType == BSON_ARRAY)
 		{
 			compatibleTypes = true;
@@ -956,7 +966,7 @@ ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId)
 			}
 			break;
 		}
-	    case NAMEOID:
+		case NAMEOID:
 		{
 			/*
 			 * We currently overload the NAMEOID type to represent the BSON
@@ -974,6 +984,14 @@ ColumnTypesCompatible(bson_type bsonType, Oid columnTypeId)
 		case TIMESTAMPTZOID:
 		{
 			if (bsonType == BSON_DATE)
+			{
+				compatibleTypes = true;
+			}
+			break;
+		}
+		case JSONOID:
+		{
+			if (bsonType == BSON_OBJECT || bsonType == BSON_ARRAY)
 			{
 				compatibleTypes = true;
 			}
@@ -1134,7 +1152,7 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			columnValue = CStringGetTextDatum(value);
 			break;
 		}
-    	case NAMEOID:
+		case NAMEOID:
 		{
 			char value[NAMEDATALEN];
 			Datum valueDatum = 0;
@@ -1165,6 +1183,18 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 
 			/* overlook type modifiers for timestamp */
 			columnValue = TimestampGetDatum(timestamp);
+			break;
+		}
+		case JSONOID:
+		{
+			char	   *json = "{\"hello\": \"world!\"}"; // TODO
+			text	   *result = cstring_to_text(json);
+			JsonLexContext *lex;
+
+			/* validate it */
+			lex = makeJsonLexContext(result, false);
+			pg_parse_json(lex, &nullSemAction);
+			columnValue = PointerGetDatum(result);
 			break;
 		}
 		default:
@@ -1396,7 +1426,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 			}
 
 			break;
-   		}
+		}
 
 		/*
 		 * The first targetRowCount sample rows are simply copied into the
