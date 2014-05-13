@@ -11,7 +11,7 @@ MODULE_big = mongo_fdw
 # environment object file.
 #
 
-MONGO_DRIVER = mongo-c-driver-v0.6
+MONGO_DRIVER = mongo-c-driver
 MONGO_PATH = $(MONGO_DRIVER)/src
 MONGO_OBJS = $(MONGO_PATH)/bson.os $(MONGO_PATH)/encoding.os $(MONGO_PATH)/md5.os \
              $(MONGO_PATH)/mongo.os $(MONGO_PATH)/numbers.os $(MONGO_PATH)/env_posix.os

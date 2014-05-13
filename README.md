@@ -10,9 +10,17 @@ PostgreSQL 9.2 or 9.3.
 Installation
 ------------
 
-The MongoDB FDW includes the official MongoDB C Driver version 0.6. When you
-type `make`, the C driver's source code also gets automatically compiled and
-linked.
+The MongoDB FDW depends on the official MongoDB C Driver version 0.6  and
+includes it as a git submodule. If you are cloning this repository for the
+first time, be sure to pass the --recursive option to git clone in order to
+initialize the driver submodule to a useable
+state.
+
+If have checked out this project before and for some reason your submodule is
+not up-to-date, run git submodule update --init.
+
+When you type `make`, the C driver's source code also gets automatically
+compiled and linked.
 
 To build on POSIX-compliant systems (like Linux and OS X), you need to ensure
 the `pg_config` executable is in your path when you run `make`. This executable
