@@ -10,7 +10,7 @@ PostgreSQL 9.2 or 9.3.
 Installation
 ------------
 
-The MongoDB FDW depends on the official MongoDB C Driver version 0.6  and
+The MongoDB FDW depends on the official MongoDB C Driver version 0.8  and
 includes it as a git submodule. If you are cloning this repository for the
 first time, be sure to pass the --recursive option to git clone in order to
 initialize the driver submodule to a useable

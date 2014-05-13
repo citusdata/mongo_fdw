@@ -164,7 +164,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 	bson *queryDocument = NULL;
 	int documentStatus = BSON_OK;
 
-	queryDocument = bson_create();
+	queryDocument = bson_alloc();
 	bson_init(queryDocument);
 
 	/*
@@ -241,7 +241,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 	if (documentStatus != BSON_OK)
 	{
 		ereport(ERROR, (errmsg("could not create document for query"),
-						errhint("BSON error: %s", queryDocument->errstr)));
+						errhint("BSON error: %d", queryDocument->err)));
 	}
 
 	return queryDocument;
