@@ -1069,6 +1069,53 @@ ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId)
 }
 
 
+const char *escape_string(const char *string) {
+	StringInfo buff;
+	char *ptr;
+	int i, segement_start_idx, len;
+	bool need_escaping = false;
+	for (ptr = string; *ptr; ++ptr) {
+		if (*ptr == '"' || *ptr == '\r' || *ptr == '\n' || *ptr == '\t'\
+				|| *ptr == '\\') {
+			need_escaping = true;
+		}
+	}
+
+	if (!need_escaping) return string;
+
+	//elog(NOTICE, "========================");
+	//elog(NOTICE, "json to escape: %s", string);
+	//elog(NOTICE, "========================");
+
+	buff = makeStringInfo();
+	len = strlen(string);
+	segement_start_idx = 0;
+	for (i = 0; i < len; ++i) {
+		if (string[i] == '"' || string[i] == '\r' || string[i] == '\n'
+				|| string[i] == '\t' || string[i] == '\\') {
+			if (segement_start_idx < i) {
+				appendBinaryStringInfo(buff, string + segement_start_idx,
+						i - segement_start_idx);
+			}
+
+			appendStringInfoChar(buff, '\\');
+			if (string[i] == '"') appendStringInfoChar(buff, '"');
+			else if (string[i] == '\r') appendStringInfoChar(buff, 'r');
+			else if (string[i] == '\n') appendStringInfoChar(buff, 'n');
+			else if (string[i] == '\t') appendStringInfoChar(buff, 't');
+			else if (string[i] == '\\') appendStringInfoChar(buff, '\\');
+
+			segement_start_idx = i + 1;
+		}
+	}
+	if (segement_start_idx < len) {
+		appendBinaryStringInfo(buff, string + segement_start_idx,
+				len - segement_start_idx);
+	}
+	return buff->data;
+}
+
+
 void print_json(StringInfo buffer, const char *data , int depth, bool is_array ) {
 	bson_iterator i;
     const char *key;
@@ -1100,7 +1147,8 @@ void print_json(StringInfo buffer, const char *data , int depth, bool is_array )
             appendStringInfo(buffer, "%f", bson_iterator_double(&i));
             break;
         case BSON_STRING:
-			appendStringInfo(buffer, "\"%s\"", bson_iterator_string(&i));
+			appendStringInfo(buffer, "\"%s\"",
+					escape_string(bson_iterator_string(&i)));
             break;
         case BSON_SYMBOL:
             elog(NOTICE,  "SYMBOL: %s" , bson_iterator_string( &i ) );
@@ -1110,7 +1158,8 @@ void print_json(StringInfo buffer, const char *data , int depth, bool is_array )
 			appendStringInfo(buffer, "\"%s\"", oidhex);
             break;
         case BSON_BOOL:
-            elog(NOTICE,  "%s" , bson_iterator_bool( &i ) ? "true" : "false" );
+			appendStringInfoString(
+					buffer, bson_iterator_bool(&i) ? "true" : "false");
             break;
         case BSON_DATE:
             elog(NOTICE,  "%ld" , ( long int )bson_iterator_date( &i ) );
@@ -1122,7 +1171,7 @@ void print_json(StringInfo buffer, const char *data , int depth, bool is_array )
             elog(NOTICE,  "BSON_UNDEFINED" );
             break;
         case BSON_NULL:
-            elog(NOTICE,  "BSON_NULL" );
+			appendStringInfoString(buffer, "null");
             break;
         case BSON_REGEX:
             elog(NOTICE,  "BSON_REGEX: %s", bson_iterator_regex( &i ) );
@@ -1305,6 +1354,8 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			appendStringInfoChar(buffer, start_symbol);
 			print_json(buffer, bson_iterator_value(bsonIterator), 0, is_array);
 			appendStringInfoChar(buffer, end_symbol);
+
+			//elog(NOTICE, "json to parse: %s", buffer->data);
 
 			result = cstring_to_text_with_len(buffer->data, buffer->len);
 
