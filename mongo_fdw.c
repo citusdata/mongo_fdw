@@ -1069,68 +1069,45 @@ ColumnValueArray(bson_iterator *bsonIterator, Oid valueTypeId)
 }
 
 
-int append(char **dest, char *src, int length) {
-	length += strlen(src);
-	strcpy(*dest, src);
-	*dest = *dest + strlen(src);
-	return length;
-}
-
-
-int print_json(char **buffer, int length, const char *data , int depth,
-			   bool is_array ) {
+void print_json(StringInfo buffer, const char *data , int depth, bool is_array ) {
 	bson_iterator i;
     const char *key;
     int temp;
     bson_timestamp_t ts;
     char oidhex[25];
+	bool first_elem;
+	bson_type t;
     bson scope;
     bson_iterator_from_buffer( &i, data );
 
-	char * buff = malloc(4096);
-
-	bool first_elem = true;
-
+	first_elem = true;
     while ( bson_iterator_next( &i ) ) {
 		if (!first_elem) {
-			length = append(buffer, ",", length);
+			appendStringInfoChar(buffer, ',');
 		}
 
-        bson_type t = bson_iterator_type( &i );
+        t = bson_iterator_type( &i );
         if ( t == 0 )
             break;
         key = bson_iterator_key( &i );
 
-		/*
-        for ( temp=0; temp<=depth; temp++ )
-            elog(NOTICE,  "\t" );
-        elog(NOTICE,  "%s : %d \t " , key , t );
-		*/
 		if (!is_array) {
-			sprintf(buff, "\"%s\":", key);
-			length = append(buffer, buff, length);
-			//elog(NOTICE, "%s", buff);
+			appendStringInfo(buffer, "\"%s\":", key);
 		}
 
         switch ( t ) {
         case BSON_DOUBLE:
-            //elog(NOTICE,  "%f" , bson_iterator_double( &i ) );
-            sprintf(buff, "%f", bson_iterator_double( &i ) );
-			length = append(buffer, buff, length);
+            appendStringInfo(buffer, "%f", bson_iterator_double(&i));
             break;
         case BSON_STRING:
-            //elog(NOTICE,  "\"%s\"" , bson_iterator_string( &i ) );
-			sprintf(buff, "\"%s\"" , bson_iterator_string( &i ) );
-			length = append(buffer, buff, length);
+			appendStringInfo(buffer, "\"%s\"", bson_iterator_string(&i));
             break;
         case BSON_SYMBOL:
             elog(NOTICE,  "SYMBOL: %s" , bson_iterator_string( &i ) );
             break;
         case BSON_OID:
-            bson_oid_to_string( bson_iterator_oid( &i ), oidhex );
-            //elog(NOTICE,  "\"%s\"" , oidhex );
-			sprintf(buff,   "\"%s\"" , oidhex );
-			length = append(buffer, buff, length);
+            bson_oid_to_string(bson_iterator_oid(&i), oidhex);
+			appendStringInfo(buffer, "\"%s\"", oidhex);
             break;
         case BSON_BOOL:
             elog(NOTICE,  "%s" , bson_iterator_bool( &i ) ? "true" : "false" );
@@ -1161,43 +1138,30 @@ int print_json(char **buffer, int length, const char *data , int depth,
             my_bson_print( &scope );
             break;*/
         case BSON_INT:
-            //elog(NOTICE,  "%d" , bson_iterator_int( &i ) );
-            sprintf(buff,  "%d" , bson_iterator_int( &i ) );
-			length = append(buffer, buff, length);
+            appendStringInfo(buffer, "%d", bson_iterator_int(&i));
             break;
         case BSON_LONG:
-            //elog(NOTICE,  "%lld" , ( uint64_t )bson_iterator_long( &i ) );
-            sprintf(buff,  "%lld" , ( uint64_t )bson_iterator_long( &i ) );
-			length = append(buffer, buff, length);
+            appendStringInfo(buffer, "%ld", (uint64_t)bson_iterator_long(&i));
             break;
         case BSON_TIMESTAMP:
             ts = bson_iterator_timestamp( &i );
             elog(NOTICE,  "i: %d, t: %d", ts.i, ts.t );
             break;
         case BSON_OBJECT:
-            //elog(NOTICE,  "{");
-			length = append(buffer, "{", length);
-			length = print_json(buffer, length,  bson_iterator_value( &i ) ,
-					depth + 1, false );
-            //elog(NOTICE,  "}");
-			length = append(buffer, "}", length);
+			appendStringInfoChar(buffer, '{');
+			print_json(buffer, bson_iterator_value(&i), depth + 1, false);
+			appendStringInfoChar(buffer, '}');
             break;
         case BSON_ARRAY:
-            //elog(NOTICE,  "[");
-			length = append(buffer, "[", length);
-			length = print_json(buffer, length, bson_iterator_value( &i ) ,
-					depth + 1, true );
-            //elog(NOTICE,  "]");
-			length = append(buffer, "]", length);
+			appendStringInfoChar(buffer, '[');
+			print_json(buffer, bson_iterator_value(&i), depth + 1, true);
+			appendStringInfoChar(buffer, ']');
             break;
         default:
             bson_errprintf( "can't print type : %d\n" , t );
         }
-		//elog(NOTICE,  "," );
 		first_elem = false;
     }
-	//free(buff);
-	return length;
 }
 
 
@@ -1319,13 +1283,13 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		}
 		case JSONOID:
 		{
-			char *buffer = malloc(8184);
-			char *bptr = buffer + 1;
+			JsonLexContext *lex;
+			text *result;
 			char start_symbol, end_symbol;
 			bool is_array;
+			StringInfo buffer = makeStringInfo();
 
 			bson_type type = bson_iterator_type(bsonIterator);
-
 			if (type == BSON_ARRAY) {
 				start_symbol = '[';
 				end_symbol = ']';
@@ -1338,21 +1302,16 @@ ColumnValue(bson_iterator *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 				ereport(ERROR, (errmsg("cannot convert scolar to json")));
 			}
 
-			buffer[0] = start_symbol;
+			appendStringInfoChar(buffer, start_symbol);
+			print_json(buffer, bson_iterator_value(bsonIterator), 0, is_array);
+			appendStringInfoChar(buffer, end_symbol);
 
-			int length = print_json(&bptr, 1,
-					bson_iterator_value(bsonIterator), 0, is_array);
-			buffer[length] = end_symbol;
-			buffer[length + 1] = '\0';
-
-			text	   *result = cstring_to_text(buffer);
-			JsonLexContext *lex;
+			result = cstring_to_text_with_len(buffer->data, buffer->len);
 
 			/* validate it */
 			lex = makeJsonLexContext(result, false);
 			pg_parse_json(lex, &nullSemAction);
 			columnValue = PointerGetDatum(result);
-			//free(buffer);
 			break;
 		}
 		default:
