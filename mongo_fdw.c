@@ -349,7 +349,7 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 	queryBuffer = SerializeDocument(queryDocument);
 
 	/* only clean up the query struct, but not its data */
-	bson_dispose(queryDocument);
+	bson_dealloc(queryDocument);
 
 	/* we don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(baserel);
@@ -427,7 +427,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	addressName = mongoFdwOptions->addressName;
 	portNumber = mongoFdwOptions->portNumber;
 
-	mongoConnection = mongo_create();
+	mongoConnection = mongo_alloc();
 	mongo_init(mongoConnection);
 
 	connectStatus = mongo_connect(mongoConnection, addressName, portNumber);
@@ -436,7 +436,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 		errorCode = (int32) mongoConnection->err;
 
 		mongo_destroy(mongoConnection);
-		mongo_dispose(mongoConnection);
+		mongo_dealloc(mongoConnection);
 
 		ereport(ERROR, (errmsg("could not connect to %s:%d", addressName, portNumber),
 						errhint("Mongo driver connection error: %d", errorCode)));
@@ -458,7 +458,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 					 mongoFdwOptions->collectionName);
 
 	/* create cursor for collection name and set query */
-	mongoCursor = mongo_cursor_create();
+	mongoCursor = mongo_cursor_alloc();
 	mongo_cursor_init(mongoCursor, mongoConnection, namespaceName->data);
 	mongo_cursor_set_query(mongoCursor, queryDocument);
 
@@ -570,7 +570,7 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 
 	/* close down the old cursor */
 	mongo_cursor_destroy(executionState->mongoCursor);
-	mongo_cursor_dispose(executionState->mongoCursor);
+	mongo_cursor_dealloc(executionState->mongoCursor);
 
 	/* reconstruct full collection name */
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
@@ -581,7 +581,7 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 					 mongoFdwOptions->collectionName);
 
 	/* reconstruct cursor for collection name and set query */
-	mongoCursor = mongo_cursor_create();
+	mongoCursor = mongo_cursor_alloc();
 	mongo_cursor_init(mongoCursor, mongoConnection, namespaceName->data);
 	mongo_cursor_set_query(mongoCursor, executionState->queryDocument);
 
@@ -631,9 +631,9 @@ DeserializeDocument(Const *constant)
 	Assert(constant->constlen > 0);
 	Assert(constant->constisnull == false);
 
-	document = bson_create();
+	document = bson_alloc();
 	bson_init_size(document, 0);
-	bson_init_finished_data(document, documentData);
+	bson_init_finished_data_with_copy(document, documentData);
 
 	return document;
 }
@@ -656,7 +656,7 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	/* resolve foreign table options; and connect to mongo server */
 	options = MongoGetOptions(foreignTableId);
 
-	mongoConnection = mongo_create();
+	mongoConnection = mongo_alloc();
 	mongo_init(mongoConnection);
 
 	status = mongo_connect(mongoConnection, options->addressName, options->portNumber);
@@ -671,7 +671,7 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	}
 
 	mongo_destroy(mongoConnection);
-	mongo_dispose(mongoConnection);
+	mongo_dealloc(mongoConnection);
 
 	return documentCount;
 }
@@ -873,7 +873,7 @@ FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
 		if (bsonType == BSON_OBJECT && columnTypeId != JSONOID)
 		{
 			bson subObject;
-			bson_iterator_subobject(&bsonIterator, &subObject);
+			bson_iterator_subobject_init(&bsonIterator, &subObject, false);
 			FillTupleSlot(&subObject, bsonFullKey,
 						  columnMappingHash, columnValues, columnNulls);
 			continue;
@@ -1475,14 +1475,14 @@ MongoFreeScanState(MongoFdwExecState *executionState)
 	}
 
 	bson_destroy(executionState->queryDocument);
-	bson_dispose(executionState->queryDocument);
+	bson_dealloc(executionState->queryDocument);
 
 	mongo_cursor_destroy(executionState->mongoCursor);
-	mongo_cursor_dispose(executionState->mongoCursor);
+	mongo_cursor_dealloc(executionState->mongoCursor);
 
 	/* also close the connection to mongo server */
 	mongo_destroy(executionState->mongoConnection);
-	mongo_dispose(executionState->mongoConnection);
+	mongo_dealloc(executionState->mongoConnection);
 }
 
 
@@ -1604,7 +1604,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	queryBuffer = SerializeDocument(queryDocument);
 
 	/* only clean up the query struct, but not its data */
-	bson_dispose(queryDocument);
+	bson_dealloc(queryDocument);
 
 	/* construct foreign plan with query document and column list */
 	foreignPrivateList = list_make2(queryBuffer, columnList);
