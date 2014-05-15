@@ -1118,99 +1118,102 @@ const char *escape_string(const char *string) {
 
 void print_json(StringInfo buffer, const char *data , int depth, bool is_array ) {
 	bson_iterator i;
-    const char *key;
-    int temp;
-    bson_timestamp_t ts;
-    char oidhex[25];
+	const char *key;
+	int temp;
+	bson_timestamp_t ts;
+	char oidhex[25];
 	bool first_elem;
 	bson_type t;
-    bson scope;
-    bson_iterator_from_buffer( &i, data );
+	bson scope;
+	bson_iterator_from_buffer( &i, data );
 
 	first_elem = true;
-    while ( bson_iterator_next( &i ) ) {
-		if (!first_elem) {
+	while (bson_iterator_next(&i))
+	{
+		if (!first_elem)
+		{
 			appendStringInfoChar(buffer, ',');
 		}
 
-        t = bson_iterator_type( &i );
-        if ( t == 0 )
-            break;
-        key = bson_iterator_key( &i );
+		t = bson_iterator_type(&i);
+		if (t == 0) break;
+		key = bson_iterator_key(&i);
 
-		if (!is_array) {
+		if (!is_array)
+		{
 			appendStringInfo(buffer, "\"%s\":", key);
 		}
 
-        switch ( t ) {
-        case BSON_DOUBLE:
-            appendStringInfo(buffer, "%f", bson_iterator_double(&i));
-            break;
-        case BSON_STRING:
-			appendStringInfo(buffer, "\"%s\"",
-					escape_string(bson_iterator_string(&i)));
-            break;
-        case BSON_SYMBOL:
-            elog(NOTICE,  "SYMBOL: %s" , bson_iterator_string( &i ) );
-            break;
-        case BSON_OID:
-            bson_oid_to_string(bson_iterator_oid(&i), oidhex);
-			appendStringInfo(buffer, "\"%s\"", oidhex);
-            break;
-        case BSON_BOOL:
-			appendStringInfoString(
-					buffer, bson_iterator_bool(&i) ? "true" : "false");
-            break;
-        case BSON_DATE:
-            elog(NOTICE,  "%ld" , ( long int )bson_iterator_date( &i ) );
-            break;
-        case BSON_BINDATA:
-            elog(NOTICE,  "BSON_BINDATA" );
-            break;
-        case BSON_UNDEFINED:
-            elog(NOTICE,  "BSON_UNDEFINED" );
-            break;
-        case BSON_NULL:
-			appendStringInfoString(buffer, "null");
-            break;
-        case BSON_REGEX:
-            elog(NOTICE,  "BSON_REGEX: %s", bson_iterator_regex( &i ) );
-            break;
-        case BSON_CODE:
-            elog(NOTICE,  "BSON_CODE: %s", bson_iterator_code( &i ) );
-            break;
-        /*case BSON_CODEWSCOPE:
-            elog(NOTICE,  "BSON_CODE_W_SCOPE: %s", bson_iterator_code( &i ) );
-            bson_init( &scope );
-            bson_iterator_code_scope( &i, &scope );
-            elog(NOTICE,  "\n\t SCOPE: " );
-            my_bson_print( &scope );
-            break;*/
-        case BSON_INT:
-            appendStringInfo(buffer, "%d", bson_iterator_int(&i));
-            break;
-        case BSON_LONG:
-            appendStringInfo(buffer, "%ld", (uint64_t)bson_iterator_long(&i));
-            break;
-        case BSON_TIMESTAMP:
-            ts = bson_iterator_timestamp( &i );
-            elog(NOTICE,  "i: %d, t: %d", ts.i, ts.t );
-            break;
-        case BSON_OBJECT:
-			appendStringInfoChar(buffer, '{');
-			print_json(buffer, bson_iterator_value(&i), depth + 1, false);
-			appendStringInfoChar(buffer, '}');
-            break;
-        case BSON_ARRAY:
-			appendStringInfoChar(buffer, '[');
-			print_json(buffer, bson_iterator_value(&i), depth + 1, true);
-			appendStringInfoChar(buffer, ']');
-            break;
-        default:
-            bson_errprintf( "can't print type : %d\n" , t );
-        }
+		switch (t)
+		{
+			case BSON_DOUBLE:
+				appendStringInfo(buffer, "%f", bson_iterator_double(&i));
+				break;
+			case BSON_STRING:
+				appendStringInfo(buffer, "\"%s\"",
+						escape_string(bson_iterator_string(&i)));
+				break;
+			case BSON_SYMBOL:
+				elog(NOTICE, "SYMBOL: %s", bson_iterator_string(&i));
+				break;
+			case BSON_OID:
+				bson_oid_to_string(bson_iterator_oid(&i), oidhex);
+				appendStringInfo(buffer, "\"%s\"", oidhex);
+				break;
+			case BSON_BOOL:
+				appendStringInfoString(
+						buffer, bson_iterator_bool(&i) ? "true" : "false");
+				break;
+			case BSON_DATE:
+				elog(NOTICE,  "%ld" , (long int)bson_iterator_date(&i));
+				break;
+			case BSON_BINDATA:
+				elog(NOTICE,  "BSON_BINDATA");
+				break;
+			case BSON_UNDEFINED:
+				elog(NOTICE,  "BSON_UNDEFINED");
+				break;
+			case BSON_NULL:
+				appendStringInfoString(buffer, "null");
+				break;
+			case BSON_REGEX:
+				elog(NOTICE,  "BSON_REGEX: %s", bson_iterator_regex(&i));
+				break;
+			case BSON_CODE:
+				elog(NOTICE,  "BSON_CODE: %s", bson_iterator_code(&i));
+				break;
+			/*case BSON_CODEWSCOPE:
+				elog(NOTICE,  "BSON_CODE_W_SCOPE: %s", bson_iterator_code( &i ) );
+				bson_init( &scope );
+				bson_iterator_code_scope( &i, &scope );
+				elog(NOTICE,  "\n\t SCOPE: " );
+				my_bson_print( &scope );
+				break;*/
+			case BSON_INT:
+				appendStringInfo(buffer, "%d", bson_iterator_int(&i));
+				break;
+			case BSON_LONG:
+				appendStringInfo(buffer, "%ld", (uint64_t)bson_iterator_long(&i));
+				break;
+			case BSON_TIMESTAMP:
+				ts = bson_iterator_timestamp(&i);
+				elog(NOTICE, "i: %d, t: %d", ts.i, ts.t);
+				break;
+			case BSON_OBJECT:
+				appendStringInfoChar(buffer, '{');
+				print_json(buffer, bson_iterator_value(&i), depth + 1, false);
+				appendStringInfoChar(buffer, '}');
+				break;
+			case BSON_ARRAY:
+				appendStringInfoChar(buffer, '[');
+				print_json(buffer, bson_iterator_value(&i), depth + 1, true);
+				appendStringInfoChar(buffer, ']');
+				break;
+			default:
+				bson_errprintf("can't print type : %d\n" , t);
+		}
 		first_elem = false;
-    }
+	}
 }
 
 
