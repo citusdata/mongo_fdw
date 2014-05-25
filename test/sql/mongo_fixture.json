@@ -1,0 +1,32 @@
+[{
+    "_id": {"$oid": "5381ccf9d6d81c8e8bf0434f"},
+    "name": "Ukraine",
+    "population": 45590000,
+    "capital": "Kyiv",
+    "hdi": 0.74,
+    "lastElections": {"type": "presedential", "date": {"$date": 1400976000000}},
+    "mainExports": ["Semi-finished products of iron or non-alloy steel",
+                    "Flat-rolled products of iron or non-alloy steel",
+                    "Sunflower-seed, safflower or cotton-seed oil"]
+}, {
+    "_id": {"$oid": "5381ccf9d6d81c8e8bf04350"},
+    "name": "Poland",
+    "population": 38540000,
+    "capital": "Warsaw",
+    "hdi": 0.821,
+    "lastElections": {"type": "presedential", "date": {"$date": 1400976000000}},
+    "lastElections": {"type": "parliamentary", "date": {"$date": 1318118400000}},
+    "mainExports": ["Parts and accessories of the motor vehicles of headings 87.01 to 87.0",
+                    "Motor cars and other motor vehicles principally designed for the transport",
+                    "Reception apparatus for television"]
+}, {
+    "_id": {"$oid": "5381ccf9d6d81c8e8bf04351"},
+    "name": "Moldova",
+    "population": 3560000,
+    "capital": "Chișinău",
+    "hdi": 0.66,
+    "lastElections": {"type": "parliamentary", "date": {"$date": 1290902400000}},
+    "mainExports": ["Wine of fresh grapes, including fortified wines",
+                    "Insulated (including enamelled or anodised) wire, cable",
+                    "Sunflower seeds, whether or not broken"]
+}]

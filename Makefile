@@ -22,6 +22,10 @@ OBJS = mongo_fdw.o mongo_query.o $(MONGO_OBJS)
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
 
+REGRESS = mongo_fdw
+REGRESS_OPTS = --inputdir=test --outputdir=test \
+	       --load-extension=$(EXTENSION)
+
 $(MONGO_DRIVER)/%.os:
 	$(MAKE) -C $(MONGO_DRIVER) $*.os
 
