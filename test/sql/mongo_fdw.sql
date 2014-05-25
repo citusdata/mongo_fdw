@@ -29,3 +29,11 @@ CREATE FOREIGN TABLE main_exports (
     "mainExports" TEXT[]
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
 SELECT * FROM main_exports;
+
+--
+-- JSON
+CREATE FOREIGN TABLE country_elections_json (
+    _id NAME,
+    "lastElections" JSON
+) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
+SELECT * FROM country_elections_json;

@@ -14,7 +14,6 @@
     "population": 38540000,
     "capital": "Warsaw",
     "hdi": 0.821,
-    "lastElections": {"type": "presedential", "date": {"$date": 1400976000000}},
     "lastElections": {"type": "parliamentary", "date": {"$date": 1318118400000}},
     "mainExports": ["Parts and accessories of the motor vehicles of headings 87.01 to 87.0",
                     "Motor cars and other motor vehicles principally designed for the transport",

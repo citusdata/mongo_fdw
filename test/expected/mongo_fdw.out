@@ -46,3 +46,17 @@ SELECT * FROM main_exports;
  5381ccf9d6d81c8e8bf04351 | {"Wine of fresh grapes, including fortified wines","Insulated (including enamelled or anodised) wire, cable","Sunflower seeds, whether or not broken"}
 (3 rows)
 
+--
+-- JSON
+CREATE FOREIGN TABLE country_elections_json (
+    _id NAME,
+    "lastElections" JSON
+) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
+SELECT * FROM country_elections_json;
+           _id            |                      lastElections                      
+--------------------------+---------------------------------------------------------
+ 5381ccf9d6d81c8e8bf0434f | {"type":"presedential","date":{"$date":1400976000000}}
+ 5381ccf9d6d81c8e8bf04350 | {"type":"parliamentary","date":{"$date":1318118400000}}
+ 5381ccf9d6d81c8e8bf04351 | {"type":"parliamentary","date":{"$date":1290902400000}}
+(3 rows)
+

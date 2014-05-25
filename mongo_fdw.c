@@ -1165,7 +1165,8 @@ void print_json(StringInfo buffer, const char *data , int depth, bool is_array )
 						buffer, bson_iterator_bool(&i) ? "true" : "false");
 				break;
 			case BSON_DATE:
-				elog(NOTICE,  "%ld" , (long int)bson_iterator_date(&i));
+				appendStringInfo(buffer, "{\"$date\":%ld}",
+						(long int)bson_iterator_date(&i));
 				break;
 			case BSON_BINDATA:
 				elog(NOTICE,  "BSON_BINDATA");
