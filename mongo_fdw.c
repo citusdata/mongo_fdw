@@ -136,19 +136,6 @@ static void mongo_fdw_exit(int code, Datum arg);
 extern PGDLLEXPORT void _PG_init(void);
 
 
-/*
- * Generate new 24 character's rowid (MongoDB's "_id")
- * from a string using pad character 'A'.
- */
-#define UNIQUE_OID(x, z) do \
-{	\
-	char y[25]; \
-	memset(y, 'A', sizeof(y));\
-	y[24] = 0; \
-	strcpy(y, x); \
-	BsonOidFromString(&z, y);\
-} while(0);
-
 /* declarations for dynamic loading */
 PG_MODULE_MAGIC;
 
@@ -767,33 +754,23 @@ MongoExecForeignInsert(EState *estate,
 		{
 			int attnum = lfirst_int(lc);
 			value = slot_getattr(slot, attnum, &isnull);
+
+			/* first column of MongoDB's foreign table must be _id */
+			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "_id") != 0)
+				elog(ERROR, "first colum of MongoDB's foreign table must be \"_id\"");
+
 			if (attnum == 1)
 			{
 				/*
-				 * We also disallow null values to the first column which
-				 * happens to be the row identifier in MongoDb (_id).
+				 * Ignore the value of first column which is row identifier in MongoDb (_id)
+				 * and let MongoDB to insert the unique value for that column.
 				 */
-
-				if (isnull)
-					elog(ERROR, "null value for first column (row identifier column) is not supported");
-
-				getTypeOutputInfo(typoid, &outputFunctionId, &typeVarLength);
-				outputString = OidOutputFunctionCall(outputFunctionId, value);
-
-				/* MongoDB support 24 character's _id (row identifier) */
-				if (strlen(outputString) > 24)
-					elog(ERROR, "first column (row identifier column) should be max 24 characters");
-
-				UNIQUE_OID(outputString, bsonObjectId);
-
-				/* Append rowid field which is "_id" in MongoDB */
-				if(!BsonAppendOid(b, "_id", &bsonObjectId))
-					ereport(ERROR,
-								(errcode(ERRCODE_FDW_ERROR),
-									errmsg("insert failed, invalid value")));
 			}
-			AppenMongoValue(b, slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data, value,
+			else
+			{
+				AppenMongoValue(b, slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data, value,
 						isnull, slot->tts_tupleDescriptor->attrs[attnum -1]->atttypid);
+			}
 		}
 	}
 	BsonFinish(b);
