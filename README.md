@@ -10,14 +10,14 @@ PostgreSQL Version 9.3 and greater.
 Installation
 ------------
 
-This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's legacy driver][6] and [MongoDB's Meta Driver][7]. This is compile time decision which driver you want to use with this FDW.
+This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's legacy driver][6] and [MongoDB's Meta Driver][7]. This is a compile time decision which MongoDB's driver this FDW will use.
 
 The [MongoDB][1] FDW includes the [legacy MongoDB C Driver][6] version 0.6. When you
-type `make -f Makefile.legacy`, the C driver's source code also gets automatically compiled and linked. The other option is to compile using [MongoDB's Meta Driver][7]. You need to download the Meta C driver from MongoDB site.
+Type `make -f Makefile. legacy`, the C driver's source code which gets automatically compiled and linked. The other option is to compile utilizing [MongoDB's Meta Driver][7]. You require to download the [Meta C driver][7] from MongoDB site.
 
-To build on POSIX-compliant systems (like Linux and OS X), you need to ensure
-the `pg_config` executable is in your path when you run `make`. This executable
-is typically in your PostgreSQL installation's `bin` directory. For example:
+To build on POSIX-compliant systems (like Linux and OS X), you require to ascertain
+The `pg_config` executable is in your path when you run make`. This executable
+Is typically in your PostgreSQL installation's bin directory. For example:
 
 Compile using MonoDB's legacy C driver.
 
@@ -65,7 +65,7 @@ estimating costs for the query execution plan. To see selected execution plans
 for a query, just run `EXPLAIN`.
 
 ```sql
-Examples with MongoDB equelent statments.
+Examples with MongoDB equivalent statments.
 
 -- load extension first time after install
 `CREATE EXTENSION mongo_fdw;`
@@ -153,9 +153,7 @@ Limitations
 
   * If the BSON document key contains uppercase letters or occurs within a
     nested document, `mongo_fdw` requires the corresponding column names to be
-	declared in double quotes. For example, a nested field such as `"review": {
-	"Votes": 19 }` should be declared as `"review.Votes" INTEGER` in the `CREATE
-	TABLE` statement.
+	declared in double quotes.
 
   * Note that PostgreSQL limits column names to 63 characters by default. If
     you need column names that are longer, you can increase the `NAMEDATALEN`
