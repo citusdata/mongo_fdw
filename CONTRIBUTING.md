@@ -11,7 +11,7 @@ Using Issues
 
 `mongo_fdw`'s maintainers prefer that bug reports, feature requests, and pull
 requests are submitted as [GitHub Issues][1]. If you think you require personal
-assistance, please **do not** open an issue: email `engage` `@` `citusdata.com`
+assistance, please **do not** open an issue: email `ibrar.ahmed` `@` `enterprisedb.com`
 instead.
 
 
@@ -81,5 +81,5 @@ permitted by law. Finally, you confirm that you own said copyright, have the
 legal authority to grant said license, and in doing so are not violating any
 grant of rights you have made to third parties, including your employer.
 
-[1]: https://github.com/citusdata/mongo_fdw/issues
+[1]: https://github.com/EnterpriseDB/mongo_fdw/issues
 [2]: LICENSE

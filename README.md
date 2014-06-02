@@ -1,29 +1,41 @@
-MongoDB FDW for PostgreSQL
-==========================
+MongoDB Foreign Date Wrapper for PostgreSQL
+===========================================
 
-This PostgreSQL extension implements a Foreign Data Wrapper (FDW) for
-[MongoDB][1]. For an example demonstrating this wrapper's use, see [our blog
-post][2]. Please also note that this version of `mongo_fdw` only works with
-PostgreSQL 9.2 or 9.3.
+This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper for. 
+
+Please also note that this version of `mongo_fdw` only works with
+PostgreSQL Version 9.3 and greater.
 
 
 Installation
 ------------
 
-The MongoDB FDW includes the official MongoDB C Driver version 0.6. When you
-type `make`, the C driver's source code also gets automatically compiled and
-linked.
+This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s ""C"" drivers, [legacy driver][6] and [MongoDB][1]'s [Meta Driver][7]. This is compile time decision which driver you want to use with this FDW.
+
+The [MongoDB][1] FDW includes the [legacy MongoDB C Driver][6] version 0.6. When you
+type `make -f Makefile.legacy`, the C driver's source code also gets automatically compiled and linked. The other option is to compile using [MongoDB's Meta Driver][7]. You need to download the Meta C driver from MongoDB site.
 
 To build on POSIX-compliant systems (like Linux and OS X), you need to ensure
 the `pg_config` executable is in your path when you run `make`. This executable
 is typically in your PostgreSQL installation's `bin` directory. For example:
 
+Compile using MonoDB's legacy C driver.
+
 ```sh
-PATH=/usr/local/pgsql/bin/:$PATH make
+PATH=/usr/local/pgsql/bin/:$PATH make -f Makefile.legacy
 sudo PATH=/usr/local/pgsql/bin/:$PATH make install
 ```
 
-Note that we have tested the `mongo_fdw` extension only on Fedora and Ubuntu
+Compile using MonoDB's Meta C driver.
+
+Add `#deine META_DRIVER` in `config.h` file, then
+
+```sh
+PATH=/usr/local/pgsql/bin/:$PATH make -f Makefile.meta
+sudo PATH=/usr/local/pgsql/bin/:$PATH make install
+```
+
+Note that we have tested the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu
 systems. If you run into issues on other systems, please [let us know][3].
 
 
@@ -52,37 +64,89 @@ default value mentioned above.
 estimating costs for the query execution plan. To see selected execution plans
 for a query, just run `EXPLAIN`.
 
-We also currently use the internal PostgreSQL `NAME` type to represent the BSON
-object identifier type (the `_id` field).
-
 ```sql
+Examples with MongoDB equelent statments.
+
 -- load extension first time after install
-CREATE EXTENSION mongo_fdw;
+`CREATE EXTENSION mongo_fdw;`
 
 -- create server object
-CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
-OPTIONS (address '127.0.0.1', port '27017');
+`CREATE SERVER mongo_server
+         FOREIGN DATA WRAPPER mongo_fdw
+         OPTIONS (address '127.0.0.1', port '27017');`
 
 -- create foreign table
-CREATE FOREIGN TABLE customer_reviews
-(
-    _id NAME,
-    customer_id TEXT,
-    review_date TIMESTAMP,
-    review_rating INTEGER,
-    product_id CHAR(10),
-    product_title TEXT,
-    product_group TEXT,
-    product_category TEXT,
-    similar_product_ids CHAR(10)[]
-)
+`CREATE FOREIGN TABLE warehouse(
+		 _id NAME,
+         warehouse_id int,
+         warehouse_name text,
+         warehouse_created timestamptz)
 SERVER mongo_server
-OPTIONS (database 'test', collection 'customer_reviews');
+         OPTIONS (database 'db', collection 'warehouse');`
 
--- collect data distribution statistics
-ANALYZE customer_reviews;
+
+-- select from table
+`SELECT * FROM warehouse WHERE warehouse_id = 1;`
+
+_id                     | warehouse_id | warehouse_name |     warehouse_created
+------------------------+----------------+---------------------------
+53720b1904864dc1f5a571a0|            1 | UPS            | 12-DEC-14 12:12:10 +05:00
+
+
+`db.warehouse.find({"warehouse_id" : 1}).pretty()`
+{
+	"_id" : ObjectId("53720b1904864dc1f5a571a0"),
+	"warehouse_id" : 1,
+	"warehouse_name" : "UPS",
+	"warehouse_created" : ISODate("2014-12-12T07:12:10Z")
+}
+
+
+-- insert row in table
+`INSERT INTO warehouse values (0, 1, 'UPS', to_date('2014-12-12T07:12:10Z'));`
+
+`db.warehouse.insert`
+(
+    {
+        "warehouse_id" : NumberInt(1),
+        "warehouse_name" : "UPS",
+        "warehouse_created" : ISODate("2014-12-12T07:12:10Z")
+    }
+);
+
+-- delete row from table
+`DELETE FROM warehouse where warehouse_id = 3;`
+
+>    db.warehouse.remove({"warehouse_id" : 2})
+
+
+-- update a row of table
+`UPDATE warehouse set warehouse_name = 'UPS_NEW' where warehouse_id = 1;`
+
+db.warehouse.update
+(
+   {
+        "warehouse_id" : 1
+   },
+   {
+        "warehouse_id" : 1,
+        "warehouse_name" : "UPS_NEW"
+   }
+)
+
+-- explain a table
+`EXPLAIN SELECT * FROM warehouse WHERE warehouse_id = 1;
+                           QUERY PLAN
+ -----------------------------------------------------------------
+ Foreign Scan on warehouse  (cost=0.00..0.00 rows=1000 width=44)
+   Filter: (warehouse_id = 1)
+   Foreign Namespace: db.warehouse
+ Planning time: 0.671 ms
+(4 rows)`
+
+-- collect data distribution statistics`
+ANALYZE warehouse;
 ```
-
 
 Limitations
 -----------
@@ -103,7 +167,7 @@ Contributing
 
 Have a fix for a bug or an idea for a great new feature? Great! Check out the
 contribution guidelines [here][4]. For all other types of questions or comments
-about the wrapper please contact us at `engage` `@` `citusdata.com`.
+about the wrapper please contact us at `ibrar.ahmed` `@` `enterprisedb.com`.
 
 
 Support
@@ -118,7 +182,8 @@ Reported bugs will be addressed by apparent severity.
 License
 -------
 
-Copyright © 2012–2014 Citus Data, Inc.
+Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+Portions Copyright © 2012–2014 Citus Data, Inc.
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Lesser General Public License as published by the Free
@@ -129,6 +194,8 @@ See the [`LICENSE`][5] file for full details.
 
 [1]: http://www.mongodb.com
 [2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
-[3]: https://github.com/citusdata/mongo_fdw/issues/new
+[3]: https://github.com/ibrarahmad/mongo_fdw/issues/new
 [4]: CONTRIBUTING.md
 [5]: LICENSE
+[6]: https://github.com/mongodb/mongo-c-driver-legacy
+[7]: https://github.com/mongodb/mongo-meta-driver
