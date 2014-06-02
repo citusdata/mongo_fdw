@@ -12,11 +12,16 @@
 #ifndef MONGO_FDW_H
 #define MONGO_FDW_H
 
+#include "config.h"
+#include "mongo_wrapper.h"
 #include "bson.h"
-#include "mongo.h"
 
-#include "postgres.h"
-#include "utils/hsearch.h"
+#ifdef META_DRIVER
+	#include "mongoc.h"
+#else
+	#include "mongo.h"
+#endif
+
 #include "fmgr.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -45,7 +50,29 @@
 #include "utils/rel.h"
 #include "utils/memutils.h"
 
-
+#ifdef META_DRIVER
+	#define BSON bson_t
+	#define BSON_TYPE bson_type_t
+	#define BSON_ITERATOR bson_iter_t
+	#define MONGO_CONN mongoc_client_t
+	#define MONGO_CURSOR mongoc_cursor_t
+#else
+	#define BSON bson
+	#define BSON_TYPE bson_type
+	#define BSON_ITERATOR bson_iterator
+	#define MONGO_CONN mongo
+	#define MONGO_CURSOR mongo_cursor
+	#define BSON_TYPE_DOCUMENT BSON_OBJECT
+	#define BSON_TYPE_NULL BSON_NULL
+	#define BSON_TYPE_ARRAY BSON_ARRAY
+	#define BSON_TYPE_INT32 BSON_INT
+	#define BSON_TYPE_INT64 BSON_LONG
+	#define BSON_TYPE_DOUBLE BSON_DOUBLE
+	#define BSON_TYPE_BOOL BSON_BOOL
+	#define BSON_TYPE_UTF8 BSON_STRING
+	#define BSON_TYPE_OID BSON_OID
+	#define BSON_TYPE_DATE_TIME BSON_DATE
+#endif
 
 /* Defines for valid option names */
 #define OPTION_NAME_ADDRESS "address"
@@ -105,37 +132,35 @@ typedef struct MongoFdwOptions
 	int32 portNumber;
 	char *databaseName;
 	char *collectionName;
-
 } MongoFdwOptions;
 
 
 /*
-* MongoFdwExecState keeps foreign data wrapper specific execution state that we
-* create and hold onto when executing the query.
-*/
+ * MongoFdwExecState keeps foreign data wrapper specific execution state that we
+ * create and hold onto when executing the query.
+ */
 /*
-* Execution state of a foreign insert/update/delete operation.
-*/
+ * Execution state of a foreign insert/update/delete operation.
+ */
 typedef struct MongoFdwModifyState
 {
-	Relation		rel;				/* relcache entry for the foreign table */
-
-	List			*target_attrs;		/* list of target attribute numbers */
+	Relation			rel;			/* relcache entry for the foreign table */
+	List				*target_attrs;	/* list of target attribute numbers */
 
 	/* info about parameters for prepared statement */
-	int				p_nums;				/* number of parameters to transmit */
-	FmgrInfo		*p_flinfo;			/* output conversion functions for them */
+	int					p_nums;			/* number of parameters to transmit */
+	FmgrInfo			*p_flinfo;		/* output conversion functions for them */
 
-	struct HTAB 	*columnMappingHash;
+	struct HTAB 		*columnMappingHash;
 
-	mongo			*mongoConnection;	/* MongoDB connection */
-	mongo_cursor	*mongoCursor;		/* MongoDB cursor */
-	bson			*queryDocument;		/* Bson Document */
+	MONGO_CONN			*mongoConnection;	/* MongoDB connection */
+	MONGO_CURSOR		*mongoCursor;		/* MongoDB cursor */
+	BSON				*queryDocument;		/* Bson Document */
 
-	MongoFdwOptions *mongoFdwOptions;
+	MongoFdwOptions 	*mongoFdwOptions;
 
 	/* working memory context */
-	MemoryContext temp_cxt;         /* context for per-tuple temporary data */
+	MemoryContext temp_cxt;				/* context for per-tuple temporary data */
 } MongoFdwModifyState;
 
 
@@ -155,19 +180,23 @@ typedef struct ColumnMapping
 } ColumnMapping;
 
 
+extern MONGO_CONN *GetConnection(char *host, int32 port);
+extern void cleanup_connection(void);
+extern void ReleaseConnection(MONGO_CONN* conn);
+
+extern StringInfo OptionNamesString(Oid currentContextId);
+
 /* Function declarations related to creating the mongo query */
 extern List * ApplicableOpExpressionList(RelOptInfo *baserel);
-extern bson * QueryDocument(Oid relationId, List *opExpressionList);
+extern BSON * QueryDocument(Oid relationId, List *opExpressionList);
 extern List * ColumnList(RelOptInfo *baserel);
+
+extern MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
+extern void MongoFreeOptions(MongoFdwOptions *mongoFdwOptions);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
-extern MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
-extern void MongoFreeOptions(MongoFdwOptions *mongoFdwOptions);
 
-mongo* GetConnection(char *host, int32 port);
-void cleanup_connection(void);
-void ReleaseConnection(mongo *conn);
 
 #endif   /* MONGO_FDW_H */

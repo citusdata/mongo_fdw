@@ -12,6 +12,13 @@
  */
 
 #include "postgres.h"
+#include "mongo_wrapper.h"
+
+#ifdef META_DRIVER
+	#include "mongoc.h"
+#else
+	#include "mongo.h"
+#endif
 #include "mongo_fdw.h"
 #include "mongo_query.h"
 
@@ -33,7 +40,7 @@ static char * MongoOperatorName(const char *operatorName);
 static List * EqualityOperatorList(List *operatorList);
 static List * UniqueColumnList(List *operatorList);
 static List * ColumnOperatorList(Var *column, List *operatorList);
-static void AppendConstantValue(bson *queryDocument, const char *keyName,
+static void AppendConstantValue(BSON *queryDocument, const char *keyName,
 								Const *constant);
 
 
@@ -154,7 +161,7 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
  * "l_shipdate >= date '1994-01-01' AND l_shipdate < date '1995-01-01'" become
  * "l_shipdate: { $gte: new Date(757382400000), $lt: new Date(788918400000) }".
  */
-bson *
+BSON *
 QueryDocument(Oid relationId, List *opExpressionList)
 {
 	List *equalityOperatorList = NIL;
@@ -162,12 +169,9 @@ QueryDocument(Oid relationId, List *opExpressionList)
 	List *columnList = NIL;
 	ListCell *equalityOperatorCell = NULL;
 	ListCell *columnCell = NULL;
-	bson *queryDocument = NULL;
-	int documentStatus = BSON_OK;
+	BSON *queryDocument = NULL;
 
-	queryDocument = bson_create();
-	bson_init(queryDocument);
-
+	queryDocument = BsonCreate();
 	/*
 	 * We distinguish between equality expressions and others since we need to
 	 * insert the latter (<, >, <=, >=, <>) as separate sub-documents into the
@@ -210,6 +214,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 		char *columnName = NULL;
 		List *columnOperatorList = NIL;
 		ListCell *columnOperatorCell = NULL;
+		BSON r;
 
 		columnId = column->varattno;
 		columnName = get_relid_attribute_name(relationId, columnId);
@@ -218,7 +223,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 		columnOperatorList = ColumnOperatorList(column, comparisonOperatorList);
 
 		/* for comparison expressions, start a sub-document */
-		bson_append_start_object(queryDocument, columnName);
+		BsonAppendStartObject(queryDocument, columnName, &r);
 
 		foreach(columnOperatorCell, columnOperatorList)
 		{
@@ -234,15 +239,12 @@ QueryDocument(Oid relationId, List *opExpressionList)
 
 			AppendConstantValue(queryDocument, mongoOperatorName, constant);
 		}
-
-		bson_append_finish_object(queryDocument);
+		BsonAppendFinishObject(queryDocument, &r);
 	}
-
-	documentStatus = bson_finish(queryDocument);
-	if (documentStatus != BSON_OK)
+	if (!BsonFinish(queryDocument))
 	{
 		ereport(ERROR, (errmsg("could not create document for query"),
-						errhint("BSON error: %s", queryDocument->errstr)));
+						errhint("BSON error")));
 	}
 
 	return queryDocument;
@@ -362,24 +364,23 @@ ColumnOperatorList(Var *column, List *operatorList)
  * its MongoDB equivalent.
  */
 static void
-AppendConstantValue(bson *queryDocument, const char *keyName, Const *constant)
+AppendConstantValue(BSON *queryDocument, const char *keyName, Const *constant)
 {
 	if (constant->constisnull)
 	{
-		bson_append_null(queryDocument, keyName);
+		BsonAppendNull(queryDocument, keyName);
 		return;
 	}
-	AppenMongoValue(queryDocument, keyName, constant->constvalue, constant->consttype, false);
+	AppenMongoValue(queryDocument, keyName, constant->constvalue, false, constant->consttype);
 }
 
-int32
-AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnull, Oid id)
+bool
+AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnull, Oid id)
 {
-    int32 status = MONGO_ERROR;
-
+	bool status;
 	if (isnull)
 	{
-		status = bson_append_null(queryDocument, keyName);
+		status = BsonAppendNull(queryDocument, keyName);
 		return status;
 	}
 
@@ -388,44 +389,44 @@ AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnu
 		case INT2OID:
 		{
 			int16 valueInt = DatumGetInt16(value);
-			status = bson_append_int(queryDocument, keyName, (int) valueInt);
+			status = BsonAppendInt32(queryDocument, keyName, (int) valueInt);
 			break;
 		}
 		case INT4OID:
 		{
 			int32 valueInt = DatumGetInt32(value);
-			status = bson_append_int(queryDocument, keyName, valueInt);
+			status = BsonAppendInt32(queryDocument, keyName, valueInt);
 			break;
 		}
 		case INT8OID:
 		{
 			int64 valueLong = DatumGetInt64(value);
-			status = bson_append_long(queryDocument, keyName, valueLong);
+			status = BsonAppendInt64(queryDocument, keyName, valueLong);
 			break;
 		}
 		case FLOAT4OID:
 		{
 			float4 valueFloat = DatumGetFloat4(value);
-			status = bson_append_double(queryDocument, keyName, (double) valueFloat);
+			status = BsonAppendDouble(queryDocument, keyName, (double) valueFloat);
 			break;
 		}
 		case FLOAT8OID:
 		{
 			float8 valueFloat = DatumGetFloat8(value);
-			status = bson_append_double(queryDocument, keyName, valueFloat);
+			status = BsonAppendDouble(queryDocument, keyName, valueFloat);
 			break;
 		}
 		case NUMERICOID:
 		{
 			Datum valueDatum = DirectFunctionCall1(numeric_float8, value);
 			float8 valueFloat = DatumGetFloat8(valueDatum);
-			status = bson_append_double(queryDocument, keyName, valueFloat);
+			status = BsonAppendDouble(queryDocument, keyName, valueFloat);
 			break;
 		}
 		case BOOLOID:
 		{
 			bool valueBool = DatumGetBool(value);
-			status = bson_append_int(queryDocument, keyName, (int) valueBool);
+			status = BsonAppendBool(queryDocument, keyName, (int) valueBool);
 			break;
 		}
 		case BPCHAROID:
@@ -437,7 +438,7 @@ AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnu
 			bool typeVarLength = false;
 			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			status = bson_append_string(queryDocument, keyName, outputString);
+			status = BsonAppendUTF8(queryDocument, keyName, outputString);
 			break;
 		}
 		case NAMEOID:
@@ -449,8 +450,8 @@ AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnu
 			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
 			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			bson_oid_from_string(&bsonObjectId, outputString);
-			status = bson_append_oid(queryDocument, keyName, &bsonObjectId);
+			BsonOidFromString(&bsonObjectId, outputString);
+			status = BsonAppendOid(queryDocument, keyName, &bsonObjectId);
 			break;
 		}
 		case DATEOID:
@@ -460,7 +461,7 @@ AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnu
 			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 			int64 valueMilliSecs = valueMicroSecs / 1000;
 
-			status = bson_append_date(queryDocument, keyName, valueMilliSecs);
+			status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
 			break;
 		}
 		case TIMESTAMPOID:
@@ -470,7 +471,7 @@ AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnu
 			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 			int64 valueMilliSecs = valueMicroSecs / 1000;
 
-			status = bson_append_date(queryDocument, keyName, valueMilliSecs);
+			status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
 			break;
 		}
 		default:
