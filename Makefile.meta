@@ -1,0 +1,44 @@
+# mongo_fdw/Makefile
+#
+# Copyright (c) 2012-2014 Citus Data, Inc.
+#
+
+MODULE_big = mongo_fdw
+
+#
+# We assume we are running on a POSIX compliant system (Linux, OSX). If you are
+# on another platform, change env_posix.os in MONGO_OBJS with the appropriate
+# environment object file.
+#
+
+MONGO_DRIVER = mongo-c-meta-driver
+MONGO_PATH = $(MONGO_DRIVER)/src/mongoc
+MONGO_INCLUDE = -I$(MONGO_DRIVER)/src/libbson/src/bson/ -I$(MONGO_PATH)
+PG_CPPFLAGS = --std=c99 $(MONGO_INCLUDE)
+SHLIB_LINK = -L$(MONGO_DRIVER)/.libs -lmongoc-1.0
+SHLIB_LINK += -L$(MONGO_DRIVER)/src/libbson/.libs -lbson-1.0
+
+OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o
+
+EXTENSION = mongo_fdw
+DATA = mongo_fdw--1.0.sql
+
+$(MONGO_DRIVER)/%.os:
+	$(MAKE) -C $(MONGO_DRIVER) $*.os
+
+#
+# Users need to specify their Postgres installation path through pg_config. For
+# example: /usr/local/pgsql/bin/pg_config or /usr/lib/postgresql/9.1/bin/pg_config
+#
+
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
+
+ifndef MAJORVERSION
+    MAJORVERSION := $(basename $(VERSION))
+endif
+
+ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4))
+    $(error PostgreSQL 9.3 or 9.4 is required to compile this extension)
+endif
