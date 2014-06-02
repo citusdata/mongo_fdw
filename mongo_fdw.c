@@ -723,10 +723,6 @@ MongoExecForeignInsert(EState *estate,
 	MONGO_CONN *mongoConnection = NULL;
 	Oid foreignTableId = InvalidOid;
 	BSON *b = NULL;
-	bson_oid_t bsonObjectId;
-	char *outputString;
-	Oid outputFunctionId = InvalidOid;
-	bool typeVarLength = false;
 	Oid typoid = InvalidOid;
 	Datum value;
 	bool isnull = false;
