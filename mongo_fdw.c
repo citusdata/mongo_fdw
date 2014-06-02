@@ -5,7 +5,9 @@
  * Function definitions for MongoDB foreign data wrapper. These functions access
  * data stored in MongoDB through the official C driver.
  *
- * Copyright (c) 2012-2014 Citus Data, Inc.
+ * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ *
+ * Portions Copyright © 2012–2014 Citus Data, Inc.
  *
  *-------------------------------------------------------------------------
  */

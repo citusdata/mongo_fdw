@@ -1,6 +1,7 @@
 # mongo_fdw extension
 #
-# Copyright (c) 2012-2014 Citus Data, Inc.
+# Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+# Portions Copyright © 2012–2014 Citus Data, Inc.
 #
 comment = 'foreign data wrapper for MongoDB access'
 default_version = '1.0'

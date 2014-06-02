@@ -1,6 +1,7 @@
 /* mongo_fdw/mongo_fdw--1.0.sql */
 
--- Copyright (c) 2012-2014 Citus Data, Inc.
+-- Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+-- Portions Copyright © 2012–2014 Citus Data, Inc.
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION mongo_fdw" to load this file. \quit

@@ -1,10 +1,13 @@
 /*-------------------------------------------------------------------------
  *
- * mongo_wrapper.c
+ * mongo_wrapper_meta.c
  *
  * Wrapper functions for MongoDB's new Meta Driver.
  *
- * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
+ * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ *
+ * Portions Copyright © 2012–2014 Citus Data, Inc.
+ *
  *
  *-------------------------------------------------------------------------
  */
