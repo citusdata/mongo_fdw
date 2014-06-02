@@ -55,8 +55,6 @@ static void MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags
 static TupleTableSlot * MongoIterateForeignScan(ForeignScanState *scanState);
 static void MongoEndForeignScan(ForeignScanState *scanState);
 static void MongoReScanForeignScan(ForeignScanState *scanState);
-static Const * SerializeDocument(bson *document);
-static bson * DeserializeDocument(Const *constant);
 static double ForeignTableDocumentCount(Oid foreignTableId);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
@@ -247,7 +245,6 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 	List *foreignPrivateList = NIL;
 	List *opExpressionList = NIL;
 	bson *queryDocument = NULL;
-	Const *queryBuffer = NULL;
 	List *columnList = NIL;
 
 	/*
@@ -267,22 +264,22 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 	 */
 	opExpressionList = ApplicableOpExpressionList(baserel);
 	queryDocument = QueryDocument(foreignTableId, opExpressionList);
-	queryBuffer = SerializeDocument(queryDocument);
-
-	/* only clean up the query struct, but not its data */
-	bson_dispose(queryDocument);
 
 	/* we don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(baserel);
 
 	/* construct foreign plan with query document and column list */
-	foreignPrivateList = list_make2(queryBuffer, columnList);
+	foreignPrivateList = list_make2(columnList, restrictionClauses);
+
+	/* only clean up the query struct, but not its data */
+	bson_dispose(queryDocument);
 
 	/* create the foreign scan node */
 	foreignScan =  make_foreignscan(targetList, restrictionClauses,
 									scanRangeTableIndex,
 									NIL, /* no expressions to evaluate */
 									foreignPrivateList);
+
 	return foreignScan;
 }
 
@@ -328,7 +325,6 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	StringInfo namespaceName = NULL;
 	ForeignScan *foreignScan = NULL;
 	List *foreignPrivateList = NIL;
-	Const *queryBuffer = NULL;
 	bson *queryDocument = NULL;
 	MongoFdwOptions *mongoFdwOptions = NULL;
 	MongoFdwExecState *executionState = NULL;
@@ -353,12 +349,12 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	mongoConnection = GetConnection(addressName, portNumber);
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
-	Assert(list_length(foreignPrivateList) == 2);
+	Assert(list_length(foreignPrivateList) == 1);
 
-	queryBuffer = (Const *) linitial(foreignPrivateList);
-	queryDocument = DeserializeDocument(queryBuffer);
+	columnList = list_nth(foreignPrivateList, 0);
 
-	columnList = (List *) lsecond(foreignPrivateList);
+	queryDocument = QueryDocument(foreignTableId, NIL);
+
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
 	namespaceName = makeStringInfo();
@@ -495,57 +491,6 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 
 	executionState->mongoCursor = mongoCursor;
 }
-
-
-/*
- * SerializeDocument serializes the document's data to a constant, as advised in
- * foreign/fdwapi.h. Note that this function shallow-copies the document's data;
- * and the caller should therefore not free it.
- */
-static Const *
-SerializeDocument(bson *document)
-{
-	Const *serializedDocument = NULL;
-	Datum documentDatum = 0;
-
-	/*
-	 * We access document data and wrap a datum around it. Note that even when
-	 * we have an empty document, the document size can't be zero according to
-	 * bson apis.
-	 */
-	const char *documentData = bson_data(document);
-	int32 documentSize = bson_buffer_size(document);
-	Assert(documentSize != 0);
-
-	documentDatum = CStringGetDatum(documentData);
-	serializedDocument = makeConst(CSTRINGOID, -1, InvalidOid, documentSize,
-								   documentDatum, false, false);
-
-	return serializedDocument;
-}
-
-
-/*
- * DeserializeDocument deserializes the constant to a bson document. For this,
- * the function creates a document, and explicitly sets the document's data.
- */
-static bson *
-DeserializeDocument(Const *constant)
-{
-	bson *document = NULL;
-	Datum documentDatum = constant->constvalue;
-	char *documentData = DatumGetCString(documentDatum);
-
-	Assert(constant->constlen > 0);
-	Assert(constant->constisnull == false);
-
-	document = bson_create();
-	bson_init_size(document, 0);
-	bson_init_finished_data(document, documentData);
-
-	return document;
-}
-
 
 /*
  * ForeignTableDocumentCount connects to the MongoDB server, and queries it for
@@ -1096,7 +1041,6 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	HTAB *columnMappingHash = NULL;
 	mongo_cursor *mongoCursor = NULL;
 	bson *queryDocument = NULL;
-	Const *queryBuffer = NULL;
 	List *columnList = NIL;
 	ForeignScanState *scanState = NULL;
 	List *foreignPrivateList = NIL;
@@ -1130,13 +1074,10 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 
 	foreignTableId = RelationGetRelid(relation);
 	queryDocument = QueryDocument(foreignTableId, NIL);
-	queryBuffer = SerializeDocument(queryDocument);
+	foreignPrivateList = list_make1(columnList);
 
 	/* only clean up the query struct, but not its data */
 	bson_dispose(queryDocument);
-
-	/* construct foreign plan with query document and column list */
-	foreignPrivateList = list_make2(queryBuffer, columnList);
 
 	foreignScan = makeNode(ForeignScan);
 	foreignScan->fdw_private = foreignPrivateList;
