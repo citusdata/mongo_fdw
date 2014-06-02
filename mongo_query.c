@@ -13,6 +13,7 @@
 
 #include "postgres.h"
 #include "mongo_fdw.h"
+#include "mongo_query.h"
 
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -363,59 +364,68 @@ ColumnOperatorList(Var *column, List *operatorList)
 static void
 AppendConstantValue(bson *queryDocument, const char *keyName, Const *constant)
 {
-	Datum constantValue = constant->constvalue;
-	Oid constantTypeId = constant->consttype;
-
-	bool constantNull = constant->constisnull;
-	if (constantNull)
+	if (constant->constisnull)
 	{
 		bson_append_null(queryDocument, keyName);
 		return;
 	}
+	AppenMongoValue(queryDocument, keyName, constant->constvalue, constant->consttype, false);
+}
 
-	switch(constantTypeId)
+int32
+AppenMongoValue(bson *queryDocument, const char *keyName, Datum	value, bool isnull, Oid id)
+{
+    int32 status = MONGO_ERROR;
+
+	if (isnull)
+	{
+		status = bson_append_null(queryDocument, keyName);
+		return status;
+	}
+
+	switch(id)
 	{
 		case INT2OID:
 		{
-			int16 value = DatumGetInt16(constantValue);
-			bson_append_int(queryDocument, keyName, (int) value);
+			int16 valueInt = DatumGetInt16(value);
+			status = bson_append_int(queryDocument, keyName, (int) valueInt);
 			break;
 		}
 		case INT4OID:
 		{
-			int32 value = DatumGetInt32(constantValue);
-			bson_append_int(queryDocument, keyName, value);
+			int32 valueInt = DatumGetInt32(value);
+			status = bson_append_int(queryDocument, keyName, valueInt);
 			break;
 		}
 		case INT8OID:
 		{
-			int64 value = DatumGetInt64(constantValue);
-			bson_append_long(queryDocument, keyName, value);
+			int64 valueLong = DatumGetInt64(value);
+			status = bson_append_long(queryDocument, keyName, valueLong);
 			break;
 		}
 		case FLOAT4OID:
 		{
-			float4 value = DatumGetFloat4(constantValue);
-			bson_append_double(queryDocument, keyName, (double) value);
+			float4 valueFloat = DatumGetFloat4(value);
+			status = bson_append_double(queryDocument, keyName, (double) valueFloat);
 			break;
 		}
 		case FLOAT8OID:
 		{
-			float8 value = DatumGetFloat8(constantValue);
-			bson_append_double(queryDocument, keyName, value);
+			float8 valueFloat = DatumGetFloat8(value);
+			status = bson_append_double(queryDocument, keyName, valueFloat);
 			break;
 		}
 		case NUMERICOID:
 		{
-			Datum valueDatum = DirectFunctionCall1(numeric_float8, constantValue);
-			float8 value = DatumGetFloat8(valueDatum);
-			bson_append_double(queryDocument, keyName, value);
+			Datum valueDatum = DirectFunctionCall1(numeric_float8, value);
+			float8 valueFloat = DatumGetFloat8(valueDatum);
+			status = bson_append_double(queryDocument, keyName, valueFloat);
 			break;
 		}
 		case BOOLOID:
 		{
-			bool value = DatumGetBool(constantValue);
-			bson_append_int(queryDocument, keyName, (int) value);
+			bool valueBool = DatumGetBool(value);
+			status = bson_append_int(queryDocument, keyName, (int) valueBool);
 			break;
 		}
 		case BPCHAROID:
@@ -425,46 +435,42 @@ AppendConstantValue(bson *queryDocument, const char *keyName, Const *constant)
 			char *outputString = NULL;
 			Oid outputFunctionId = InvalidOid;
 			bool typeVarLength = false;
-
-			getTypeOutputInfo(constantTypeId, &outputFunctionId, &typeVarLength);
-			outputString = OidOutputFunctionCall(outputFunctionId, constantValue);
-
-			bson_append_string(queryDocument, keyName, outputString);
+			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+			outputString = OidOutputFunctionCall(outputFunctionId, value);
+			status = bson_append_string(queryDocument, keyName, outputString);
 			break;
 		}
-	    case NAMEOID:
+		case NAMEOID:
 		{
 			char *outputString = NULL;
 			Oid outputFunctionId = InvalidOid;
 			bool typeVarLength = false;
 			bson_oid_t bsonObjectId;
 			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
-
-			getTypeOutputInfo(constantTypeId, &outputFunctionId, &typeVarLength);
-			outputString = OidOutputFunctionCall(outputFunctionId, constantValue);
+			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+			outputString = OidOutputFunctionCall(outputFunctionId, value);
 			bson_oid_from_string(&bsonObjectId, outputString);
-
-			bson_append_oid(queryDocument, keyName, &bsonObjectId);
+			status = bson_append_oid(queryDocument, keyName, &bsonObjectId);
 			break;
 		}
 		case DATEOID:
 		{
-			Datum valueDatum = DirectFunctionCall1(date_timestamp, constantValue);
+			Datum valueDatum = DirectFunctionCall1(date_timestamp, value);
 			Timestamp valueTimestamp = DatumGetTimestamp(valueDatum);
 			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 			int64 valueMilliSecs = valueMicroSecs / 1000;
 
-			bson_append_date(queryDocument, keyName, valueMilliSecs);
+			status = bson_append_date(queryDocument, keyName, valueMilliSecs);
 			break;
 		}
 		case TIMESTAMPOID:
 		case TIMESTAMPTZOID:
 		{
-			Timestamp valueTimestamp = DatumGetTimestamp(constantValue);
+			Timestamp valueTimestamp = DatumGetTimestamp(value);
 			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 			int64 valueMilliSecs = valueMicroSecs / 1000;
 
-			bson_append_date(queryDocument, keyName, valueMilliSecs);
+			status = bson_append_date(queryDocument, keyName, valueMilliSecs);
 			break;
 		}
 		default:
@@ -474,12 +480,13 @@ AppendConstantValue(bson *queryDocument, const char *keyName, Const *constant)
 			 * byte arrays are easy to add, but they need testing. Other types
 			 * such as money or inet, do not have equivalents in MongoDB.
 			 */
-			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
-							errmsg("cannot convert constant value to BSON value"),
-							errhint("Constant value data type: %u", constantTypeId)));
+			 ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+					errmsg("cannot convert constant value to BSON value"),
+						errhint("Constant value data type: %u", id)));
 			break;
 		}
 	}
+	return status;
 }
 
 

@@ -110,17 +110,33 @@ typedef struct MongoFdwOptions
 
 
 /*
- * MongoFdwExecState keeps foreign data wrapper specific execution state that we
- * create and hold onto when executing the query.
- */
-typedef struct MongoFdwExecState
+* MongoFdwExecState keeps foreign data wrapper specific execution state that we
+* create and hold onto when executing the query.
+*/
+/*
+* Execution state of a foreign insert/update/delete operation.
+*/
+typedef struct MongoFdwModifyState
 {
-	struct HTAB *columnMappingHash;
-	mongo *mongoConnection;
-	mongo_cursor *mongoCursor;
-	bson *queryDocument;
+	Relation		rel;				/* relcache entry for the foreign table */
 
-} MongoFdwExecState;
+	List			*target_attrs;		/* list of target attribute numbers */
+
+	/* info about parameters for prepared statement */
+	int				p_nums;				/* number of parameters to transmit */
+	FmgrInfo		*p_flinfo;			/* output conversion functions for them */
+
+	struct HTAB 	*columnMappingHash;
+
+	mongo			*mongoConnection;	/* MongoDB connection */
+	mongo_cursor	*mongoCursor;		/* MongoDB cursor */
+	bson			*queryDocument;		/* Bson Document */
+
+	MongoFdwOptions *mongoFdwOptions;
+
+	/* working memory context */
+	MemoryContext temp_cxt;         /* context for per-tuple temporary data */
+} MongoFdwModifyState;
 
 
 /*
@@ -148,6 +164,7 @@ extern List * ColumnList(RelOptInfo *baserel);
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
 extern MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
+extern void MongoFreeOptions(MongoFdwOptions *mongoFdwOptions);
 
 mongo* GetConnection(char *host, int32 port);
 void cleanup_connection(void);
