@@ -15,6 +15,8 @@
 #include "bson.h"
 #include "mongo.h"
 
+#include "postgres.h"
+#include "utils/hsearch.h"
 #include "fmgr.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -22,6 +24,27 @@
 #include "nodes/pg_list.h"
 #include "nodes/relation.h"
 #include "utils/timestamp.h"
+#include "access/reloptions.h"
+#include "catalog/pg_type.h"
+#include "commands/defrem.h"
+#include "commands/explain.h"
+#include "commands/vacuum.h"
+#include "foreign/fdwapi.h"
+#include "foreign/foreign.h"
+#include "nodes/makefuncs.h"
+#include "optimizer/cost.h"
+#include "optimizer/pathnode.h"
+#include "optimizer/plancat.h"
+#include "optimizer/planmain.h"
+#include "optimizer/restrictinfo.h"
+#include "utils/array.h"
+#include "utils/builtins.h"
+#include "utils/date.h"
+#include "utils/hsearch.h"
+#include "utils/lsyscache.h"
+#include "utils/rel.h"
+#include "utils/memutils.h"
+
 
 
 /* Defines for valid option names */
@@ -113,7 +136,6 @@ typedef struct ColumnMapping
 	Oid columnTypeId;
 	int32 columnTypeMod;
 	Oid columnArrayTypeId;
-
 } ColumnMapping;
 
 
@@ -125,6 +147,10 @@ extern List * ColumnList(RelOptInfo *baserel);
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
+extern MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
 
+mongo* GetConnection(char *host, int32 port);
+void cleanup_connection(void);
+void ReleaseConnection(mongo *conn);
 
 #endif   /* MONGO_FDW_H */

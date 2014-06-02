@@ -26,6 +26,7 @@
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
+#include "storage/ipc.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -33,6 +34,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/memutils.h"
+#include "storage/ipc.h"
 
 #if PG_VERSION_NUM >= 90300
 	#include "access/htup_details.h"
@@ -40,7 +42,6 @@
 
 
 /* Local functions forward declarations */
-static StringInfo OptionNamesString(Oid currentContextId);
 static void MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 								   Oid foreignTableId);
 static void MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
@@ -57,8 +58,6 @@ static void MongoReScanForeignScan(ForeignScanState *scanState);
 static Const * SerializeDocument(bson *document);
 static bson * DeserializeDocument(Const *constant);
 static double ForeignTableDocumentCount(Oid foreignTableId);
-static MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
-static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const bson *bsonDocument, const char *bsonDocumentKey,
 						  HTAB *columnMappingHash, Datum *columnValues,
@@ -74,14 +73,25 @@ static bool MongoAnalyzeForeignTable(Relation relation,
 static int MongoAcquireSampleRows(Relation relation, int errorLevel,
 								  HeapTuple *sampleRows, int targetRowCount,
 								  double *totalRowCount, double *totalDeadRowCount);
+static void mongo_fdw_exit(int code, Datum arg);
+
+extern PGDLLEXPORT void _PG_init(void);
 
 
 /* declarations for dynamic loading */
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(mongo_fdw_handler);
-PG_FUNCTION_INFO_V1(mongo_fdw_validator);
 
+/*
+ * Library load-time initalization, sets on_proc_exit() callback for
+ * backend shutdown.
+ */
+void
+_PG_init(void)
+{
+	on_proc_exit(&mongo_fdw_exit, PointerGetDatum(NULL));
+}
 
 /*
  * mongo_fdw_handler creates and returns a struct with pointers to foreign table
@@ -91,7 +101,6 @@ Datum
 mongo_fdw_handler(PG_FUNCTION_ARGS)
 {
 	FdwRoutine *fdwRoutine = makeNode(FdwRoutine);
-
 	fdwRoutine->GetForeignRelSize = MongoGetForeignRelSize;
 	fdwRoutine->GetForeignPaths = MongoGetForeignPaths;
 	fdwRoutine->GetForeignPlan = MongoGetForeignPlan;
@@ -105,92 +114,13 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 	PG_RETURN_POINTER(fdwRoutine);
 }
 
-
 /*
- * mongo_fdw_validator validates options given to one of the following commands:
- * foreign data wrapper, server, user mapping, or foreign table. This function
- * errors out if the given option name or its value is considered invalid.
+ * Exit callback function.
  */
-Datum
-mongo_fdw_validator(PG_FUNCTION_ARGS)
+static void
+mongo_fdw_exit(int code, Datum arg)
 {
-	Datum optionArray = PG_GETARG_DATUM(0);
-	Oid optionContextId = PG_GETARG_OID(1);
-	List *optionList = untransformRelOptions(optionArray);
-	ListCell *optionCell = NULL;
-
-	foreach(optionCell, optionList)
-	{
-		DefElem *optionDef = (DefElem *) lfirst(optionCell);
-		char *optionName = optionDef->defname;
-		bool optionValid = false;
-
-		int32 optionIndex = 0;
-		for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
-		{
-			const MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
-
-			if ((optionContextId == validOption->optionContextId) &&
-				(strncmp(optionName, validOption->optionName, NAMEDATALEN) == 0))
-			{
-				optionValid = true;
-				break;
-			}
-		}
-
-		/* if invalid option, display an informative error message */
-		if (!optionValid)
-		{
-			StringInfo optionNamesString = OptionNamesString(optionContextId);
-
-			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
-							errmsg("invalid option \"%s\"", optionName),
-							errhint("Valid options in this context are: %s",
-									optionNamesString->data)));
-		}
-
-		/* if port option is given, error out if its value isn't an integer */
-		if (strncmp(optionName, OPTION_NAME_PORT, NAMEDATALEN) == 0)
-		{
-			char *optionValue = defGetString(optionDef);
-			int32 portNumber = pg_atoi(optionValue, sizeof(int32), 0);
-			(void) portNumber;
-		}
-	}
-
-	PG_RETURN_VOID();
-}
-
-
-/*
- * OptionNamesString finds all options that are valid for the current context,
- * and concatenates these option names in a comma separated string.
- */
-static StringInfo
-OptionNamesString(Oid currentContextId)
-{
-	StringInfo optionNamesString = makeStringInfo();
-	bool firstOptionPrinted = false;
-
-	int32 optionIndex = 0;
-	for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
-	{
-		const MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
-
-		/* if option belongs to current context, append option name */
-		if (currentContextId == validOption->optionContextId)
-		{
-			if (firstOptionPrinted)
-			{
-				appendStringInfoString(optionNamesString, ", ");
-			}
-
-			appendStringInfoString(optionNamesString, validOption->optionName);
-			firstOptionPrinted = true;
-		}
-	}
-
-	return optionNamesString;
+	cleanup_connection();
 }
 
 
@@ -390,13 +320,11 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 {
 	mongo *mongoConnection = NULL;
 	mongo_cursor *mongoCursor = NULL;
-	int32 connectStatus = MONGO_ERROR;
 	Oid foreignTableId = InvalidOid;
 	List *columnList = NIL;
 	HTAB *columnMappingHash = NULL;
 	char *addressName = NULL;
 	int32 portNumber = 0;
-	int32 errorCode = 0;
 	StringInfo namespaceName = NULL;
 	ForeignScan *foreignScan = NULL;
 	List *foreignPrivateList = NIL;
@@ -418,22 +346,11 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	addressName = mongoFdwOptions->addressName;
 	portNumber = mongoFdwOptions->portNumber;
 
-	mongoConnection = mongo_create();
-	mongo_init(mongoConnection);
-
-	connectStatus = mongo_connect(mongoConnection, addressName, portNumber);
-	if (connectStatus != MONGO_OK)
-	{
-		errorCode = (int32) mongoConnection->err;
-
-		mongo_destroy(mongoConnection);
-		mongo_dispose(mongoConnection);
-
-		ereport(ERROR, (errmsg("could not connect to %s:%d", addressName, portNumber),
-						errhint("Mongo driver connection error: %d", errorCode)));
-	}
-
-	/* deserialize query document; and create column info hash */
+	/*
+	 * Get connection to the foreign server. Connection manager will
+	 * establish new connection if necessary.
+	 */
+	mongoConnection = GetConnection(addressName, portNumber);
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
 	Assert(list_length(foreignPrivateList) == 2);
@@ -641,119 +558,15 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	MongoFdwOptions *options = NULL;
 	mongo *mongoConnection = NULL;
 	const bson *emptyQuery = NULL;
-	int32 status = MONGO_ERROR;
 	double documentCount = 0.0;
 
 	/* resolve foreign table options; and connect to mongo server */
 	options = MongoGetOptions(foreignTableId);
 
-	mongoConnection = mongo_create();
-	mongo_init(mongoConnection);
-
-	status = mongo_connect(mongoConnection, options->addressName, options->portNumber);
-	if (status == MONGO_OK)
-	{
-		documentCount = mongo_count(mongoConnection, options->databaseName,
-									options->collectionName, emptyQuery);
-	}
-	else
-	{
-		documentCount = -1.0;
-	}
-
-	mongo_destroy(mongoConnection);
-	mongo_dispose(mongoConnection);
-
+	mongoConnection = GetConnection(options->addressName, options->portNumber);
+	documentCount = mongo_count(mongoConnection, options->databaseName,
+						options->collectionName, emptyQuery);
 	return documentCount;
-}
-
-
-/*
- * MongoGetOptions returns the option values to be used when connecting to and
- * querying MongoDB. To resolve these values, the function checks the foreign
- * table's options, and if not present, falls back to default values.
- */
-static MongoFdwOptions *
-MongoGetOptions(Oid foreignTableId)
-{
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	char *addressName = NULL;
-	char *portName = NULL;
-	int32 portNumber = 0;
-	char *databaseName = NULL;
-	char *collectionName = NULL;
-
-	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
-	if (addressName == NULL)
-	{
-		addressName = pstrdup(DEFAULT_IP_ADDRESS);
-	}
-
-	portName = MongoGetOptionValue(foreignTableId, OPTION_NAME_PORT);
-	if (portName == NULL)
-	{
-		portNumber = DEFAULT_PORT_NUMBER;
-	}
-	else
-	{
-		portNumber = pg_atoi(portName, sizeof(int32), 0);
-	}
-
-	databaseName = MongoGetOptionValue(foreignTableId, OPTION_NAME_DATABASE);
-	if (databaseName == NULL)
-	{
-		databaseName = pstrdup(DEFAULT_DATABASE_NAME);
-	}
-
-	collectionName = MongoGetOptionValue(foreignTableId, OPTION_NAME_COLLECTION);
-	if (collectionName == NULL)
-	{
-		collectionName = get_rel_name(foreignTableId);
-	}
-
-	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
-	mongoFdwOptions->addressName = addressName;
-	mongoFdwOptions->portNumber = portNumber;
-	mongoFdwOptions->databaseName = databaseName;
-	mongoFdwOptions->collectionName = collectionName;
-
-	return mongoFdwOptions;
-}
-
-
-/*
- * MongoGetOptionValue walks over foreign table and foreign server options, and
- * looks for the option with the given name. If found, the function returns the
- * option's value.
- */
-static char *
-MongoGetOptionValue(Oid foreignTableId, const char *optionName)
-{
-	ForeignTable *foreignTable = NULL;
-	ForeignServer *foreignServer = NULL;
-	List *optionList = NIL;
-	ListCell *optionCell = NULL;
-	char *optionValue = NULL;
-
-	foreignTable = GetForeignTable(foreignTableId);
-	foreignServer = GetForeignServer(foreignTable->serverid);
-
-	optionList = list_concat(optionList, foreignTable->options);
-	optionList = list_concat(optionList, foreignServer->options);
-
-	foreach(optionCell, optionList)
-	{
-		DefElem *optionDef = (DefElem *) lfirst(optionCell);
-		char *optionDefName = optionDef->defname;
-
-		if (strncmp(optionDefName, optionName, NAMEDATALEN) == 0)
-		{
-			optionValue = defGetString(optionDef);
-			break;
-		}
-	}
-
-	return optionValue;
 }
 
 
@@ -1197,10 +1010,8 @@ MongoFreeScanState(MongoFdwExecState *executionState)
 
 	mongo_cursor_destroy(executionState->mongoCursor);
 	mongo_cursor_dispose(executionState->mongoCursor);
-
-	/* also close the connection to mongo server */
-	mongo_destroy(executionState->mongoConnection);
-	mongo_dispose(executionState->mongoConnection);
+	/* Release remote connection */
+	ReleaseConnection(executionState->mongoConnection);
 }
 
 

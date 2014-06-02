@@ -17,7 +17,7 @@ MONGO_OBJS = $(MONGO_PATH)/bson.os $(MONGO_PATH)/encoding.os $(MONGO_PATH)/md5.o
              $(MONGO_PATH)/mongo.os $(MONGO_PATH)/numbers.os $(MONGO_PATH)/env_posix.os
 
 PG_CPPFLAGS = --std=c99 -I$(MONGO_PATH)
-OBJS = mongo_fdw.o mongo_query.o $(MONGO_OBJS)
+OBJS = connection.o option.o mongo_fdw.o mongo_query.o $(MONGO_OBJS)
 
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
