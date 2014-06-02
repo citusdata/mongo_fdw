@@ -1,4 +1,4 @@
-MongoDB Foreign Date Wrapper for PostgreSQL
+MongoDB Foreign Data Wrapper for PostgreSQL
 ===========================================
 
 This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper for. 
@@ -10,7 +10,7 @@ PostgreSQL Version 9.3 and greater.
 Installation
 ------------
 
-This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s ""C"" drivers, [legacy driver][6] and [MongoDB][1]'s [Meta Driver][7]. This is compile time decision which driver you want to use with this FDW.
+This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's legacy driver][6] and [MongoDB's Meta Driver][7]. This is compile time decision which driver you want to use with this FDW.
 
 The [MongoDB][1] FDW includes the [legacy MongoDB C Driver][6] version 0.6. When you
 type `make -f Makefile.legacy`, the C driver's source code also gets automatically compiled and linked. The other option is to compile using [MongoDB's Meta Driver][7]. You need to download the Meta C driver from MongoDB site.
@@ -183,6 +183,7 @@ License
 -------
 
 Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+
 Portions Copyright © 2012–2014 Citus Data, Inc.
 
 This program is free software: you can redistribute it and/or modify it under
