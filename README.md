@@ -197,4 +197,4 @@ See the [`LICENSE`][5] file for full details.
 [4]: CONTRIBUTING.md
 [5]: LICENSE
 [6]: https://github.com/mongodb/mongo-c-driver-legacy
-[7]: https://github.com/mongodb/mongo-meta-driver
+[7]: https://github.com/mongodb/mongo-c-driver

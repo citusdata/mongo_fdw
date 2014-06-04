@@ -55,6 +55,8 @@ bool BsonAppendInt64(BSON *b, const char* key, int64_t v);
 bool BsonAppendDouble(BSON *b, const char* key, double v);
 bool BsonAppendUTF8(BSON *b, const char* key, char *v);
 bool BsonAppendDate(BSON *b, const char* key, time_t v);
+bool BsonAppendStartArray(BSON *b, const char* key, BSON* c);
+bool BsonAppendFinishArray(BSON *b, BSON *c);
 bool BsonAppendStartObject(BSON* b, char *key, BSON *r);
 bool BsonAppendFinishObject(BSON* b, BSON* r);
 bool BsonAppendBson(BSON* b, char *key, BSON* c);

@@ -477,6 +477,44 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
 			break;
 		}
+		case NUMERICARRAY_OID:
+		{
+			ArrayType *array;
+			Oid elmtype;
+			int16 elmlen;
+			bool elmbyval;
+			char elmalign;
+			int num_elems;
+			Datum *elem_values;
+			bool *elem_nulls;
+			int i;
+			BSON t;
+
+			array = DatumGetArrayTypeP(value);
+			elmtype = ARR_ELEMTYPE(array);
+			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
+
+			deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
+
+			BsonAppendStartArray(queryDocument, keyName, &t);
+			for (i = 0; i < num_elems; i++)
+			{
+				if (elem_nulls[i])
+					continue;
+
+				Datum valueDatum = DirectFunctionCall1(numeric_float8, elem_values[i]);
+				float8 valueFloat = DatumGetFloat8(valueDatum);
+#ifdef META_DRIVER
+				status = BsonAppendDouble(&t, keyName, valueFloat);
+#else
+				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+#endif
+			}
+			BsonAppendFinishArray(queryDocument, &t);
+			pfree(elem_values);
+			pfree(elem_nulls);
+			break;
+		}
 		default:
 		{
 			/*

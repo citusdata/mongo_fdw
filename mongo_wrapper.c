@@ -287,6 +287,17 @@ BsonAppendDate(BSON *b, const char* key, time_t v)
 }
 
 
+bool BsonAppendStartArray(BSON *b, const char* key, BSON* c)
+{
+    return (bson_append_start_array(b, key) == MONGO_OK);
+}
+
+
+bool BsonAppendFinishArray(BSON *b, BSON *c)
+{
+    return (bson_append_finish_array(b) == MONGO_OK);
+}
+
 bool
 BsonAppendStartObject(BSON* b, char *key, BSON* r)
 {

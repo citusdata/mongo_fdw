@@ -361,6 +361,17 @@ BsonAppendBson(BSON* b, char *key, BSON* c)
 	return bson_append_document(b, key, strlen(key), c);
 }
 
+bool BsonAppendStartArray(BSON *b, const char* key, BSON* c)
+{
+    return bson_append_array_begin(b, key, -1, c);
+}
+
+
+bool BsonAppendFinishArray(BSON *b, BSON* c)
+{
+    return bson_append_array_end(b, c);
+}
+
 
 bool
 BsonFinish(BSON* b)

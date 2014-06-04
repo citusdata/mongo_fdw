@@ -303,7 +303,7 @@ MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 												   NULL, /* no outer rel either */
 												   NIL); /* no fdw_private data */
 
-    /* add foreign path as the only possible path */
+	/* add foreign path as the only possible path */
 	add_path(baserel, foreignPath);	
 }
 
@@ -869,6 +869,9 @@ MongoExecForeignUpdate(EState *estate,
 			int attnum = lfirst_int(lc);
 			Datum value;
 			bool isnull;
+ 
+		if (strcmp("_id", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
+			continue;
 
 			value = slot_getattr(slot, attnum, &isnull);
 #ifdef META_DRIVER
@@ -1219,6 +1222,12 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 			{
 				compatibleTypes = true;
 			}
+			break;
+		}
+		case NUMERICARRAY_OID:
+		{
+			if (bsonType == BSON_TYPE_ARRAY)
+				compatibleTypes = true;
 			break;
 		}
 		default:
