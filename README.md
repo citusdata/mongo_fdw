@@ -1,32 +1,32 @@
 MongoDB Foreign Data Wrapper for PostgreSQL
 ===========================================
 
-This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper for. 
+This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper.
 
-Please also note that this version of `mongo_fdw` only works with
+Please note that this version of `mongo_fdw` only works with
 PostgreSQL Version 9.3 and greater.
 
 
 Installation
 ------------
 
-This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's legacy driver][6] and [MongoDB's Meta Driver][7]. This is a compile time decision which MongoDB's driver this FDW will use.
+This [MongoDB][1] FDW is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's Legacy driver][6] and [MongoDB's C Driver][7]. This is a compile time decision which MongoDB's driver this FDW will use.
 
-The [MongoDB][1] FDW includes the [legacy MongoDB C Driver][6] version 0.6. When you
-Type `make -f Makefile. legacy`, the C driver's source code which gets automatically compiled and linked. The other option is to compile utilizing [MongoDB's Meta Driver][7]. You require to download the [Meta C driver][7] from MongoDB site.
+The [MongoDB][1] FDW includes the [MongoDB's Legacy C Driver][6] version 0.6. When you
+Type `make -f Makefile. legacy` or `make`, the [MongoDB's Legacy C Driver][6]'s source code which gets automatically compiled and linked. The other option is to compile utilizing [MongoDB's C Driver][7]. You require to download the [MongoDB's C driver][7] from [MongoDB][1] site.
 
 To build on POSIX-compliant systems (like Linux and OS X), you require to ascertain
 The `pg_config` executable is in your path when you run make`. This executable
 Is typically in your PostgreSQL installation's bin directory. For example:
 
-Compile using MonoDB's legacy C driver.
+Compile using [MongoDB][1] legacy C driver.
 
 ```sh
 PATH=/usr/local/pgsql/bin/:$PATH make -f Makefile.legacy
 sudo PATH=/usr/local/pgsql/bin/:$PATH make install
 ```
 
-Compile using MonoDB's Meta C driver.
+Compile using [MongoDB][1]'s C driver.
 
 Add `#deine META_DRIVER` in `config.h` file, then
 
@@ -193,7 +193,7 @@ See the [`LICENSE`][5] file for full details.
 
 [1]: http://www.mongodb.com
 [2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
-[3]: https://github.com/ibrarahmad/mongo_fdw/issues/new
+[3]: https://github.com/enterprisedb/mongo_fdw/issues/new
 [4]: CONTRIBUTING.md
 [5]: LICENSE
 [6]: https://github.com/mongodb/mongo-c-driver-legacy
