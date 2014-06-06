@@ -499,11 +499,13 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			BsonAppendStartArray(queryDocument, keyName, &t);
 			for (i = 0; i < num_elems; i++)
 			{
+				Datum valueDatum;
+				float8 valueFloat;
 				if (elem_nulls[i])
 					continue;
 
-				Datum valueDatum = DirectFunctionCall1(numeric_float8, elem_values[i]);
-				float8 valueFloat = DatumGetFloat8(valueDatum);
+				valueDatum = DirectFunctionCall1(numeric_float8, elem_values[i]);
+				valueFloat = DatumGetFloat8(valueDatum);
 #ifdef META_DRIVER
 				status = BsonAppendDouble(&t, keyName, valueFloat);
 #else

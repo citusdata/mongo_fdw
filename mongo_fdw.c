@@ -725,7 +725,7 @@ MongoExecForeignInsert(EState *estate,
 	MONGO_CONN *mongoConnection = NULL;
 	Oid foreignTableId = InvalidOid;
 	BSON *b = NULL;
-	Oid typoid = InvalidOid;
+	Oid typoid;
 	Datum value;
 	bool isnull = false;
 
@@ -756,6 +756,9 @@ MongoExecForeignInsert(EState *estate,
 			/* first column of MongoDB's foreign table must be _id */
 			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "_id") != 0)
 				elog(ERROR, "first colum of MongoDB's foreign table must be \"_id\"");
+
+			if (typoid != NAMEOID)
+				elog(ERROR, "type of first colum of MongoDB's foreign table must be \"name\"");
 
 			if (attnum == 1)
 			{
