@@ -239,8 +239,11 @@ QueryDocument(Oid relationId, List *opExpressionList)
 
 			operatorName = get_opname(columnOperator->opno);
 			mongoOperatorName = MongoOperatorName(operatorName);
-
+#ifdef META_DRIVER
+			AppendConstantValue(&r, mongoOperatorName, constant);
+#else
 			AppendConstantValue(queryDocument, mongoOperatorName, constant);
+#endif
 		}
 		BsonAppendFinishObject(queryDocument, &r);
 	}
