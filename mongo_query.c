@@ -247,6 +247,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 		}
 		BsonAppendFinishObject(queryDocument, &r);
 	}
+
 	if (!BsonFinish(queryDocument))
 	{
 		ereport(ERROR, (errmsg("could not create document for query"),

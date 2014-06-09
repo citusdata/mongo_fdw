@@ -26,7 +26,7 @@ MONGO_CURSOR* MongoCursorCreate(MONGO_CONN* conn, char* database, char *collecti
 const BSON* MongoCursorBson(MONGO_CURSOR* c);
 bool MongoCursorNext(MONGO_CURSOR* c, BSON* b);
 void MongoCursorDestroy(MONGO_CURSOR* c);
-int MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b);
+double MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b);
 
 BSON* BsonCreate(void);
 void BsonDestroy(BSON *b);

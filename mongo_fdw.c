@@ -516,13 +516,15 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 	}
 	else
 	{
-		#ifndef META_DRIVER
-		/*
-		 * The following is a courtesy check. In practice when Mongo shuts down,
-		 * mongo_cursor_next() could possibly crash. This function first frees
-		 * cursor->reply, and then references reply in mongo_cursor__destroy().
-		 */
-
+		#ifdef META_DRIVER
+		bson_error_t error;
+		if (mongoc_cursor_error (mongoCursor, &error))
+		{
+			MongoFreeScanState(fmstate);
+			ereport(ERROR, (errmsg("could not iterate over mongo collection"),
+					errhint("Mongo driver error: %s", error.message)));
+		}
+		#else
 		mongo_cursor_error_t errorCode = mongoCursor->err;
 		if (errorCode != MONGO_CURSOR_EXHAUSTED)
 		{
@@ -997,7 +999,7 @@ ForeignTableDocumentCount(Oid foreignTableId)
 
 	mongoConnection = GetConnection(options->addressName, options->portNumber);
 
-	MongoAggregateCount(mongoConnection, options->databaseName, options->collectionName, emptyQuery);
+	documentCount = MongoAggregateCount(mongoConnection, options->databaseName, options->collectionName, emptyQuery);
 
 	MongoFreeOptions(options);
 
@@ -1575,7 +1577,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 
 	foreignTableId = RelationGetRelid(relation);
 	queryDocument = QueryDocument(foreignTableId, NIL);
-	foreignPrivateList = list_make1(columnList);
+	foreignPrivateList = list_make2(columnList, NULL);
 
 	/* only clean up the query struct, but not its data */
 	BsonDestroy(queryDocument);
@@ -1632,20 +1634,22 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 		}
 		else
 		{
-			#ifndef META_DRIVER
-			/*
-			 * The following is a courtesy check. In practice when Mongo shuts down,
-			 * mongo_cursor__next() could possibly crash.
-			 */
-			mongo_cursor_error_t errorCode = mongoCursor->err;
-
-			if (errorCode != MONGO_CURSOR_EXHAUSTED)
+			#ifdef META_DRIVER
+			bson_error_t error;
+			if (mongoc_cursor_error (mongoCursor, &error))
 			{
 				MongoFreeScanState(fmstate);
-				ereport(ERROR, (errmsg("could not iterate over mongo 11collection"),
-								errhint("Mongo driver cursor error code: %d",
-										errorCode)));
+				ereport(ERROR, (errmsg("could not iterate over mongo collection"),
+						errhint("Mongo driver error: %s", error.message)));
 			}
+			#else
+				mongo_cursor_error_t errorCode = mongoCursor->err;
+				if (errorCode != MONGO_CURSOR_EXHAUSTED)
+				{
+					MongoFreeScanState(fmstate);
+					ereport(ERROR, (errmsg("could not iterate over mongo collection"),
+							errhint("Mongo driver cursor error code: %d", errorCode)));
+				}
 			#endif
 			break;
 		}
@@ -1706,7 +1710,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 
 	/* emit some interesting relation info */
 	relationName = RelationGetRelationName(relation);
-	ereport(errorLevel, (errmsg("\"%s\": collection contains %.0f rows; %d rows	in sample",
+	ereport(errorLevel, (errmsg("\"%s\": collection contains %.0f rows; %d rows in sample",
 								relationName, rowCount, sampleRowCount)));
 
 	(*totalRowCount) = rowCount;

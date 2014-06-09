@@ -387,7 +387,7 @@ BsonFinish(BSON* b)
 /*
  * Count the number of documents.
  */
-int
+double
 MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const  BSON* b)
 {
 	BSON *cmd = NULL;
@@ -417,5 +417,5 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 
 	BsonDestroy(out);
 	BsonDestroy(cmd);
-	return (int)count;
+	return count;
 }

@@ -324,7 +324,7 @@ BsonFinish(BSON* b)
 	return (bson_finish(b) == MONGO_OK);
 }
 
-int
+double
 MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b)
 {
 	return mongo_count(conn, database, collection, b);
