@@ -11,7 +11,7 @@ Using Issues
 
 `mongo_fdw`'s maintainers prefer that bug reports, feature requests, and pull
 requests are submitted as [GitHub Issues][1]. If you think you require personal
-assistance, please **do not** open an issue: email `ibrar.ahmed` `@` `enterprisedb.com`
+assistance, please **do not** open an issue: email `mongo_fdw` `@` `enterprisedb.com`
 instead.
 
 
