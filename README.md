@@ -242,7 +242,7 @@ ANALYZE warehouse;
 
 Have a fix for a bug or an idea for a great new feature? Great! Check out the
 contribution guidelines [here][4]. For all other types of questions or comments
-about the wrapper please contact us at `ibrar.ahmed` `@` `enterprisedb.com`.
+about the wrapper please contact us at `mongo_fdw` `@` `enterprisedb.com`.
 
 
 ## 5 - Support
@@ -252,6 +252,7 @@ releases. The project owners set aside a day every month to look over open
 issues and support emails, but are not engaged in active feature development.
 Reported bugs will be addressed by apparent severity.
 
+As with many open source projects, you may be able to obtain support via the public mailing list (`mongo_fdw` `@` `enterprisedb.com`).  If you need commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mongo_fdw.
 
 ## 6 - License
 
