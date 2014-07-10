@@ -26,7 +26,7 @@
 #define QUAL_STRING_LEN 512
 
 MONGO_CONN*
-MongoConnect(const char* host, const unsigned short port)
+MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password)
 {
 	MONGO_CONN *conn;
 	conn = mongo_create();
@@ -39,6 +39,17 @@ MongoConnect(const char* host, const unsigned short port)
 		mongo_dispose(conn);
 		ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
 						errhint("Mongo driver connection error: %d", err)));
+	}
+	if (user && password)
+	{
+		if (mongo_cmd_authenticate(conn, databaseName, user, password) != MONGO_OK)
+		{
+			int err = conn->err;
+			mongo_destroy(conn);
+			mongo_dispose(conn);
+			ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
+							errhint("Mongo driver connection error: %d", err)));
+		}
 	}
 	return conn;
 }

@@ -60,7 +60,7 @@ static HTAB *ConnectionHash = NULL;
  * is established if we don't already have a suitable one.
  */
 MONGO_CONN*
-GetConnection(char *host, int32 port)
+GetConnection(char *host, int32 port, char *databaseName, char *user, char *password)
 {
 	bool found;
 	ConnCacheEntry *entry;
@@ -97,7 +97,7 @@ GetConnection(char *host, int32 port)
 	}
 	if (entry->conn == NULL)
 	{
-		entry->conn = MongoConnect(host, port);
+		entry->conn = MongoConnect(host, port, databaseName, user, password);
 		elog(DEBUG3, "new mongo_fdw connection %p for server \"%s:%d\"",
 			 entry->conn, host, port);
 	}

@@ -17,7 +17,7 @@
 	#include "mongo.h"
 #endif
 
-MONGO_CONN* MongoConnect(const char* host, const unsigned short port);
+MONGO_CONN* MongoConnect(const char* host, const unsigned short port, char *databaseName, char *user, char *password);
 void MongoDisconnect(MONGO_CONN* conn);
 bool MongoInsert(MONGO_CONN* conn, char* database, char *collection, BSON* b);
 bool MongoUpdate(MONGO_CONN* conn, char* database, char *collection, BSON* b, BSON* op);

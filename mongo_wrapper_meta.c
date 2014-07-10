@@ -21,12 +21,15 @@
  * Connect to MongoDB server using Host/ip and Port number.
  */
 MONGO_CONN*
-MongoConnect(const char* host, const unsigned short port)
+MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password)
 {
 	MONGO_CONN *client = NULL;
 	char* uri = NULL;
 
-	uri = bson_strdup_printf ("mongodb://%s:%hu/", host, port);
+	if (user && password)
+		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/", user, password, host, port);
+	else
+		uri = bson_strdup_printf ("mongodb://%s:%hu/", host, port);
 
 	client = mongoc_client_new(uri);
 

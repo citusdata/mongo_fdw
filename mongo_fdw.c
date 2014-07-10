@@ -424,6 +424,9 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	HTAB *columnMappingHash = NULL;
 	char *addressName = NULL;
 	int32 portNumber = 0;
+	char *databaseName= NULL;
+	char *username= NULL;
+	char *password= NULL;
 	ForeignScan *foreignScan = NULL;
 	List *foreignPrivateList = NIL;
 	BSON *queryDocument = NULL;
@@ -441,12 +444,15 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	/* resolve hostname and port number; and connect to mongo server */
 	addressName = mongoFdwOptions->addressName;
 	portNumber = mongoFdwOptions->portNumber;
+	databaseName = mongoFdwOptions->databaseName;
+	username = mongoFdwOptions->username;
+	password = mongoFdwOptions->password;
 
 	/*
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
 	 */
-	mongoConnection = GetConnection(addressName, portNumber);
+	mongoConnection = GetConnection(addressName, portNumber, databaseName, username, password);
 
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
@@ -739,7 +745,7 @@ MongoExecForeignInsert(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber);
+	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	b = BsonCreate();
 
@@ -852,7 +858,7 @@ MongoExecForeignUpdate(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber);
+	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -935,7 +941,7 @@ MongoExecForeignDelete(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber);
+	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -997,7 +1003,7 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	/* resolve foreign table options; and connect to mongo server */
 	options = MongoGetOptions(foreignTableId);
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber);
+	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	documentCount = MongoAggregateCount(mongoConnection, options->databaseName, options->collectionName, emptyQuery);
 

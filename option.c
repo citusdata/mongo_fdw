@@ -37,7 +37,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/memutils.h"
-
+#include "miscadmin.h"
 
 static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
 
@@ -148,6 +148,8 @@ MongoGetOptions(Oid foreignTableId)
 	int32 portNumber = 0;
 	char *databaseName = NULL;
 	char *collectionName = NULL;
+	char *username= NULL;
+	char *password= NULL;
 
 	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -176,12 +178,16 @@ MongoGetOptions(Oid foreignTableId)
 	{
 		collectionName = get_rel_name(foreignTableId);
 	}
+	username = MongoGetOptionValue(foreignTableId, OPTION_NAME_USERNAME);
+	password = MongoGetOptionValue(foreignTableId, OPTION_NAME_PASSWORD);
 
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 	mongoFdwOptions->addressName = addressName;
 	mongoFdwOptions->portNumber = portNumber;
 	mongoFdwOptions->databaseName = databaseName;
 	mongoFdwOptions->collectionName = collectionName;
+	mongoFdwOptions->username = username;
+	mongoFdwOptions->password = password;
 
 	return mongoFdwOptions;
 }
@@ -210,13 +216,16 @@ MongoGetOptionValue(Oid foreignTableId, const char *optionName)
 	ForeignServer *foreignServer = NULL;
 	List *optionList = NIL;
 	ListCell *optionCell = NULL;
+	UserMapping *mapping= NULL;
 	char *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
+	mapping = GetUserMapping(GetUserId(), foreignTable->serverid);
 
 	optionList = list_concat(optionList, foreignTable->options);
 	optionList = list_concat(optionList, foreignServer->options);
+	optionList = list_concat(optionList, mapping->options);
 
 	foreach(optionCell, optionList)
 	{
