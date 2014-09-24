@@ -29,14 +29,14 @@ MONGO_CONN*
 MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password)
 {
 	MONGO_CONN *conn;
-	conn = mongo_create();
+	conn = mongo_alloc();
 	mongo_init(conn);
 
 	if (mongo_connect(conn, host, port) != MONGO_OK)
 	{
 		int err = conn->err;
 		mongo_destroy(conn);
-		mongo_dispose(conn);
+		mongo_dealloc(conn);
 		ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
 						errhint("Mongo driver connection error: %d", err)));
 	}
@@ -46,7 +46,7 @@ MongoConnect(const char* host, const unsigned short port, char* databaseName, ch
 		{
 			int err = conn->err;
 			mongo_destroy(conn);
-			mongo_dispose(conn);
+			mongo_dealloc(conn);
 			ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
 							errhint("Mongo driver connection error: %d", err)));
 		}
@@ -58,7 +58,7 @@ void
 MongoDisconnect(MONGO_CONN* conn)
 {
 	mongo_destroy(conn);
-	mongo_dispose(conn);
+	mongo_dealloc(conn);
 }
 
 bool
@@ -108,7 +108,7 @@ MongoCursorCreate(MONGO_CONN* conn, char* database, char *collection, BSON* q)
 	char qual[QUAL_STRING_LEN];
 
 	snprintf (qual, QUAL_STRING_LEN, "%s.%s", database, collection);
-	c = mongo_cursor_create();
+	c = mongo_cursor_alloc();
 	mongo_cursor_init(c, conn , qual);
 	mongo_cursor_set_query(c, q);
 	return c;
@@ -132,14 +132,14 @@ void
 MongoCursorDestroy(MONGO_CURSOR* c)
 {
 	mongo_cursor_destroy(c);
-	mongo_cursor_dispose(c);
+	mongo_cursor_dealloc(c);
 }
 
 BSON*
 BsonCreate()
 {
 	BSON *b = NULL;
-	b = bson_create();
+	b = bson_alloc();
 	bson_init(b);
 	return b;
 }
@@ -148,7 +148,7 @@ void
 BsonDestroy(BSON *b)
 {
 	bson_destroy(b);
-	bson_dispose(b);
+	bson_dealloc(b);
 }
 
 bool
@@ -161,7 +161,7 @@ BsonIterInit(BSON_ITERATOR *it, BSON *b)
 bool
 BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 {
-	bson_iterator_subobject(it, b);
+	bson_iterator_subobject_init(it, b, 0);
 	return true;
 }
 
