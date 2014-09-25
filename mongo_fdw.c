@@ -60,6 +60,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/jsonapi.h"
 #if PG_VERSION_NUM >= 90300
 	#include "access/htup_details.h"
 #endif
@@ -137,6 +138,15 @@ static void mongo_fdw_exit(int code, Datum arg);
 
 extern PGDLLEXPORT void _PG_init(void);
 
+const char * EscapeJsonString(const char *string);
+void DumpJson(StringInfo buffer, const char *bsonData, bool isArray);
+
+/* the null action object used for pure validation */
+static JsonSemAction nullSemAction =
+{
+	NULL, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL
+};
 
 /* declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -1107,8 +1117,17 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 			bsonFullKey = bsonKey;
 		}
 
+		/* look up the corresponding column for this bson key */
+		hashKey = (void *) bsonFullKey;
+		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
+													  HASH_FIND, &handleFound);
+		if (columnMapping != NULL) {
+			columnTypeId = columnMapping->columnTypeId;
+			columnArrayTypeId = columnMapping->columnArrayTypeId;
+		}
+
 		/* recurse into nested objects */
-		if (bsonType == BSON_TYPE_DOCUMENT)
+		if (bsonType == BSON_TYPE_DOCUMENT && columnTypeId != JSONOID)
 		{
 			BSON subObject;
 			BsonIterSubObject(&bsonIterator, &subObject);
@@ -1117,11 +1136,6 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 			continue;
 		}
 
-		/* look up the corresponding column for this BSON key */
-		hashKey = (void *) bsonFullKey;
-		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
-													  HASH_FIND, &handleFound);
-
 		/* if no corresponding column or null BSON value, continue */
 		if (columnMapping == NULL || bsonType == BSON_TYPE_NULL)
 		{
@@ -1129,8 +1143,6 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		}
 
 		/* check if columns have compatible types */
-		columnTypeId = columnMapping->columnTypeId;
-		columnArrayTypeId = columnMapping->columnArrayTypeId;
 
 		if (OidIsValid(columnArrayTypeId) && bsonType == BSON_TYPE_ARRAY)
 		{
@@ -1239,6 +1251,14 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 		{
 			if (bsonType == BSON_TYPE_ARRAY)
 				compatibleTypes = true;
+			break;
+		}
+		case JSONOID:
+		{
+			if (bsonType == BSON_OBJECT || bsonType == BSON_ARRAY)
+			{
+				compatibleTypes = true;
+			}
 			break;
 		}
 		default:
@@ -1428,6 +1448,30 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			columnValue = TimestampGetDatum(timestamp);
 			break;
 		}
+		case JSONOID:
+		{
+			JsonLexContext *lex;
+			text *result;
+			bool is_array;
+			StringInfo buffer = makeStringInfo();
+
+			bson_type type = bson_iterator_type(bsonIterator);
+			if (type != BSON_ARRAY && type != BSON_OBJECT)
+			{
+				ereport(ERROR, (errmsg("cannot convert scolar to json")));
+			}
+			is_array = (BSON_ARRAY == type);
+
+			DumpJson(buffer, bson_iterator_value(bsonIterator), is_array);
+
+			result = cstring_to_text_with_len(buffer->data, buffer->len);
+
+			/* validate it */
+			lex = makeJsonLexContext(result, false);
+			pg_parse_json(lex, &nullSemAction);
+			columnValue = PointerGetDatum(result);
+			break;
+		}
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -1438,6 +1482,188 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 	}
 
 	return columnValue;
+}
+
+
+/*
+ * DumpJson converts BSON document to a JSON string.
+ * isArray signifies if bsonData is contents of array or object.
+ * [Some of] special BSON datatypes are converted to JSON using
+ * "Strict MongoDB Extended JSON" [1].
+ *
+ * [1] http://docs.mongodb.org/manual/reference/mongodb-extended-json/
+ */
+void
+DumpJson(StringInfo output, const char *bsonData, bool isArray) {
+	bson_iterator i;
+	const char *key;
+	bool isFirstElement;
+	char beginSymbol, endSymbol;
+	bson_type t;
+	bson_iterator_from_buffer(&i, bsonData);
+
+	if (isArray)
+	{
+		beginSymbol = '[';
+		endSymbol = ']';
+	}
+	else
+	{
+		beginSymbol = '{';
+		endSymbol = '}';
+	}
+
+	appendStringInfoChar(output, beginSymbol);
+
+	isFirstElement = true;
+	while (bson_iterator_next(&i))
+	{
+		if (!isFirstElement)
+		{
+			appendStringInfoChar(output, ',');
+		}
+
+		t = bson_iterator_type(&i);
+		if (t == 0) break;
+		key = bson_iterator_key(&i);
+
+		if (!isArray)
+		{
+			appendStringInfo(output, "\"%s\":", key);
+		}
+
+		switch (t)
+		{
+			case BSON_DOUBLE:
+				appendStringInfo(output, "%f", bson_iterator_double(&i));
+				break;
+			case BSON_STRING:
+				appendStringInfo(output, "\"%s\"",
+						EscapeJsonString(bson_iterator_string(&i)));
+				break;
+			case BSON_SYMBOL:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("`symbol` BSON type is deprecated and "
+									   "unsupported"),
+								errhint("Symbol: %s", bson_iterator_string(&i))));
+				break;
+			case BSON_OID:
+			{
+				char oidhex[25];
+				bson_oid_to_string(bson_iterator_oid(&i), oidhex);
+				appendStringInfo(output, "\"%s\"", oidhex);
+				break;
+			}
+			case BSON_BOOL:
+				appendStringInfoString(
+						output, bson_iterator_bool(&i) ? "true" : "false");
+				break;
+			case BSON_DATE:
+				appendStringInfo(output, "{\"$date\":%ld}",
+						(long int)bson_iterator_date(&i));
+				break;
+			case BSON_BINDATA:
+				/* It's possible to encode the data with base64 here. */
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("support for `binary data` BSON type "
+									   "is not implemented")));
+				break;
+			case BSON_UNDEFINED:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("`undefined` BSON type is deprecated "
+									   "and unsupported")));
+				break;
+			case BSON_NULL:
+				appendStringInfoString(output, "null");
+				break;
+			case BSON_REGEX:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("support for `regex` BSON type is "
+									   "not implemented"),
+								errhint("Regex: %s", bson_iterator_regex(&i))));
+				break;
+			case BSON_CODE:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("support for `code` BSON type is "
+									   "not implemented"),
+								errhint("Code: %s", bson_iterator_code(&i))));
+				break;
+			case BSON_CODEWSCOPE:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("support for `code with scope` BSON "
+									   "type is not implemented")));
+				break;
+			case BSON_INT:
+				appendStringInfo(output, "%d", bson_iterator_int(&i));
+				break;
+			case BSON_LONG:
+				appendStringInfo(output, "%ld", (uint64_t)bson_iterator_long(&i));
+				break;
+			case BSON_TIMESTAMP:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("internal `timestamp` BSON type is "
+									   "and unsupported")));
+				break;
+			case BSON_OBJECT:
+				DumpJson(output, bson_iterator_value(&i), false);
+				break;
+			case BSON_ARRAY:
+				DumpJson(output, bson_iterator_value(&i), true);
+				break;
+			default:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("unsupported BSON type: %d", t)));
+		}
+		isFirstElement = false;
+	}
+	appendStringInfoChar(output, endSymbol);
+}
+
+
+/*
+ * EscapeJsonString escapes a string for safe inclusion in JSON.
+ */
+const char *
+EscapeJsonString(const char *string) {
+	StringInfo buffer;
+	const char *ptr;
+	int i, segmentStartIdx, len;
+	bool needsEscaping = false;
+	for (ptr = string; *ptr; ++ptr) {
+		if (*ptr == '"' || *ptr == '\r' || *ptr == '\n' || *ptr == '\t'\
+				|| *ptr == '\\') {
+			needsEscaping = true;
+		}
+	}
+
+	if (!needsEscaping) return string;
+
+	buffer = makeStringInfo();
+	len = strlen(string);
+	segmentStartIdx = 0;
+	for (i = 0; i < len; ++i) {
+		if (string[i] == '"' || string[i] == '\r' || string[i] == '\n'
+				|| string[i] == '\t' || string[i] == '\\') {
+			if (segmentStartIdx < i) {
+				appendBinaryStringInfo(buffer, string + segmentStartIdx,
+						i - segmentStartIdx);
+			}
+
+			appendStringInfoChar(buffer, '\\');
+			if (string[i] == '"') appendStringInfoChar(buffer, '"');
+			else if (string[i] == '\r') appendStringInfoChar(buffer, 'r');
+			else if (string[i] == '\n') appendStringInfoChar(buffer, 'n');
+			else if (string[i] == '\t') appendStringInfoChar(buffer, 't');
+			else if (string[i] == '\\') appendStringInfoChar(buffer, '\\');
+
+			segmentStartIdx = i + 1;
+		}
+	}
+	if (segmentStartIdx < len) {
+		appendBinaryStringInfo(buffer, string + segmentStartIdx,
+				len - segmentStartIdx);
+	}
+	return buffer->data;
 }
 
 

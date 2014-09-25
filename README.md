@@ -7,112 +7,19 @@ PostgreSQL Version **9.3** and greater.
 
 ## 1 - Installation
 
-This [MongoDB][1] Foreign Data Wrapper is compatible with two [MongoDB][1]'s 'C' drivers, [MongoDB's Legacy C driver][6] and [MongoDB's C Driver][7]. [MongoDB][1]'s driver to use is decided at compile time using a different Makefile.
+The MongoDB FDW depends on the official MongoDB C Driver version 0.8  and
+includes it as a git submodule. If you are cloning this repository for the
+first time, be sure to pass the --recursive option to git clone in order to
+initialize the driver submodule to a useable
+state.
 
-### 1.1 - Compiling Using 'Legacy C' Driver###
+If have checked out this project before and for some reason your submodule is
+not up-to-date, run git submodule update --init.
 
-The [MongoDB][1]'s FDW includes the source code of [MongoDB's Legacy C Driver][6] version **0.6**.
-
-1 - Export `pg_config` Path
-
-To build on POSIX-compliant systems (like Linux and OS X), you require to ascertain
-that `pg_config` executable is in your path when you run make. This executable is typically in your PostgreSQL installation's bin directory.
-
-```sh
-# export PATH=/usr/local/pgsql/bin:$PATH
-```
-
-2 - Compile code
-
-```sh
-# make
-```
-
-OR
-
-```sh
-# make -f Makefile.legacy
-```
-
-*Note: [MongoDB's Legacy C driver][6] will be compiled automatically.*
-
-3 - Install
-
-```sh
-# make install
-```
-OR
-
-```sh
-# make -f Makefile.legacy install
-```
-
-### 1.2 - Compile Using [MongoDB][7]'s C Driver
-
-The source code of [MongoDB's C Driver][7] is not part of this repository. It can be downloaded from  
-
-https://github.com/mongodb/mongo-c-driver
-
-
-#### 1.2.1 - Install MongoDB's C Driver
-
-1 - Download [MongoDB's C Driver][7]
-
-```sh
-git clone https://github.com/mongodb/mongo-c-driver.git mongo-c-meta-driver
-```
-
-2 - Change directory
-
-```sh
-cd mongo-c-meta-driver
-```
-
-3 - Configure Driver
-
-```sh
-./autogen.sh
-```
-
-4 - Compile Driver
-
-```sh
-make
-```
-
-5 - Install Driver
-
-```sh
-make install
-```
+When you type `make`, the C driver's source code also gets automatically
+compiled and linked.
 
 *Note: Make sure you have permission to "/usr/local" (default installation location) folder.*
-
-#### 1.2.2 - Install Foreign Data Wrapper
-
-1 -  Change configuration
-
-Add `#deine META_DRIVER` in `config.h` file
-
-1 - Export `pg_config` Path
-
-To build on POSIX-compliant systems (like Linux and OS X), you require to ascertain
-that `pg_config` executable is in your path when you run make. This executable is typically in your PostgreSQL installation's bin directory.
-
-```sh
-# export PATH=/usr/local/pgsql/bin:$PATH
-```
-
-2 - Compile code
-
-```sh
-# make -f Makefile.meta
-```
-2 - Install
-
-```sh
-# make -f Makefile.meta install
-```
 
 *Note that we have verified the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu
 systems. If you run into issues on other systems, please [let us know][3]*

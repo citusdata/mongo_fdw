@@ -251,7 +251,7 @@ QueryDocument(Oid relationId, List *opExpressionList)
 	if (!BsonFinish(queryDocument))
 	{
 		ereport(ERROR, (errmsg("could not create document for query"),
-						errhint("BSON error")));
+						errhint("BSON error: %d", queryDocument->err)));
 	}
 
 	return queryDocument;
