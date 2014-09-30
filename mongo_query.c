@@ -1,15 +1,16 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_query.c
+ * 		Foreign-data wrapper for remote MongoDB servers
  *
- * Function definitions for sending queries to MongoDB. These functions assume
- * that queries are sent through the official MongoDB C driver, and apply query
- * optimizations to reduce the amount of data fetched from the driver.
+ * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
- * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
- * Portions Copyright © 2012–2014 Citus Data, Inc.
+ * Portions Copyright (c) 2012–2014 Citus Data, Inc.
  *
+ * IDENTIFICATION
+ * 		mongo_query.c
  *
  *-------------------------------------------------------------------------
  */

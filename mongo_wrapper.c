@@ -1,13 +1,16 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_wrapper.c
+ * 		Foreign-data wrapper for remote MongoDB servers
  *
- * Wrapper functions for MongoDB's old legacy Driver.
+ * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
- * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
- * Portions Copyright © 2012–2014 Citus Data, Inc.
+ * Portions Copyright (c) 2012–2014 Citus Data, Inc.
  *
+ * IDENTIFICATION
+ * 		mongo_wrapper.c
  *
  *-------------------------------------------------------------------------
  */

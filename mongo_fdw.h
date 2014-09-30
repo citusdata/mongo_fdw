@@ -1,13 +1,16 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_fdw.h
+ * 		Foreign-data wrapper for remote MongoDB servers
  *
- * Type and function declarations for MongoDB foreign data wrapper.
+ * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
- * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
- * Portions Copyright © 2012–2014 Citus Data, Inc.
+ * Portions Copyright (c) 2012–2014 Citus Data, Inc.
  *
+ * IDENTIFICATION
+ * 		mongo_fdw.h
  *
  *-------------------------------------------------------------------------
  */
