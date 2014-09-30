@@ -5,8 +5,8 @@ This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper.
 Please note that this version of `mongo_fdw` only works with
 PostgreSQL Version **9.3** and greater.
 
-## 1 - Installation
-
+Installation
+------------
 The MongoDB FDW depends on the official MongoDB C Driver version 0.8  and
 includes it as a git submodule. If you are cloning this repository for the
 first time, be sure to pass the --recursive option to git clone in order to
@@ -19,14 +19,37 @@ not up-to-date, run git submodule update --init.
 When you type `make`, the C driver's source code also gets automatically
 compiled and linked.
 
-*Note: Make sure you have permission to "/usr/local" (default installation location) folder.*
+`*Note: Make sure you have permission to "/usr/local" (default installation location) folder.*`
 
-*Note that we have verified the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu
-systems. If you run into issues on other systems, please [let us know][3]*
+`*Note that we have verified the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu systems. If you run into issues on other systems, please [let us know][3]*`
 
+Enhancments
+-----------
+The following enhancements are added to the latest version of mongo_fdw
 
-## 2 - Usage
+Write-able FDW
+--------------
+The previous version was only read-only, the latest version provides the write capability.
+The user can now issue insert/update and delete statements for the foreign tables using the mongo_fdw.
 
+Connection Pooling
+------------------
+The latest version comes with a connection pooler that utilises the same mongo
+database connection for all the queries in the same session. The previous version
+would open a new mongodb connection for every query.
+This is a performance enhancement.
+
+New MongoDB C Driver Support
+----------------------------
+The third enhancement is to add a new [MongoDB][1]' C driver. The current implementation is
+based on the legacy driver of MongoDB. But [MongoDB][1] is provided completely new library
+for driver called MongoDB's Meta Driver. So I have added support of  that driver.
+Now compile time option is available to use legacy and Meta driver.  I am sure there
+are many other benefits of the new Mongo-C-driver that we are not leveraging but we
+will adopt those as we learn more about the new C driver.
+
+Usage
+-----
 The following parameters can be set on a MongoDB foreign server object:
 
   * **`address`**: the address or hostname of the MongoDB server Defaults to `127.0.0.1`
@@ -139,7 +162,8 @@ ANALYZE warehouse;
 
 ```
 
-## 3 - Limitations
+Limitations
+-----------
 
   * If the BSON document key contains uppercase letters or occurs within a
     nested document, `mongo_fdw` requires the corresponding column names to be
@@ -150,15 +174,15 @@ ANALYZE warehouse;
 	constant in `src/include/pg_config_manual.h`, compile, and reinstall.
 
 
-## 4 - Contributing
-
+Contributing
+------------
 Have a fix for a bug or an idea for a great new feature? Great! Check out the
 contribution guidelines [here][4]. For all other types of questions or comments
 about the wrapper please contact us at `mongo_fdw` `@` `enterprisedb.com`.
 
 
-## 5 - Support
-
+Support
+-------
 This project will be modified to maintain compatibility with new PostgreSQL
 releases. The project owners set aside a day every month to look over open
 issues and support emails, but are not engaged in active feature development.
@@ -166,8 +190,8 @@ Reported bugs will be addressed by apparent severity.
 
 As with many open source projects, you may be able to obtain support via the public mailing list (`mongo_fdw` `@` `enterprisedb.com`).  If you need commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mongo_fdw.
 
-## 6 - License
-
+License
+-------
 Portions Copyright © 2004-2014, EnterpriseDB Corporation.
 
 Portions Copyright © 2012–2014 Citus Data, Inc.
