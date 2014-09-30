@@ -45,5 +45,5 @@ ifndef MAJORVERSION
 endif
 
 ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5))
-    $(error PostgreSQL 9.3 or 9.4 is required to compile this extension)
+    $(error PostgreSQL 9.3, 9.4 or 9.5 is required to compile this extension)
 endif
