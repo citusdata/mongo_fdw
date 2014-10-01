@@ -208,7 +208,7 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 static void
 mongo_fdw_exit(int code, Datum arg)
 {
-	cleanup_connection();
+	mongo_cleanup_connection();
 }
 
 
@@ -385,14 +385,14 @@ MongoExplainForeignScan(ForeignScanState *scanState, ExplainState *explainState)
 	Oid foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = MongoGetOptions(foreignTableId);
+	mongoFdwOptions = mongo_get_options(foreignTableId);
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
 	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->databaseName,
 					 mongoFdwOptions->collectionName);
 
-	MongoFreeOptions(mongoFdwOptions);
+	mongo_free_options(mongoFdwOptions);
 
 	ExplainPropertyText("Foreign Namespace", namespaceName->data, explainState);
 }
@@ -409,14 +409,14 @@ MongoExplainForeignModify(ModifyTableState *mtstate,
 	Oid foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(rinfo->ri_RelationDesc);
-	mongoFdwOptions = MongoGetOptions(foreignTableId);
+	mongoFdwOptions = mongo_get_options(foreignTableId);
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
 	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->databaseName,
 					 mongoFdwOptions->collectionName);
 
-	MongoFreeOptions(mongoFdwOptions);
+	mongo_free_options(mongoFdwOptions);
 	ExplainPropertyText("Foreign Namespace", namespaceName->data, es);
 }
 
@@ -452,7 +452,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 		return;
 
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = MongoGetOptions(foreignTableId);
+	mongoFdwOptions = mongo_get_options(foreignTableId);
 
 	/* resolve hostname and port number; and connect to mongo server */
 	addressName = mongoFdwOptions->addressName;
@@ -465,7 +465,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
 	 */
-	mongoConnection = GetConnection(addressName, portNumber, databaseName, username, password);
+	mongoConnection = mongo_get_connection(addressName, portNumber, databaseName, username, password);
 
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
@@ -572,7 +572,7 @@ MongoEndForeignScan(ForeignScanState *scanState)
 	{
 		if (fmstate->mongoFdwOptions)
 		{
-			MongoFreeOptions(fmstate->mongoFdwOptions);
+			mongo_free_options(fmstate->mongoFdwOptions);
 			fmstate->mongoFdwOptions = NULL;
 		}
 		MongoFreeScanState(fmstate);
@@ -598,14 +598,14 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 
 	/* reconstruct full collection name */
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = MongoGetOptions(foreignTableId);
+	mongoFdwOptions = mongo_get_options(foreignTableId);
 
 	/* reconstruct cursor for collection name and set query */
 	fmstate->mongoCursor = MongoCursorCreate(mongoConnection,
 													fmstate->mongoFdwOptions->databaseName,
 													fmstate->mongoFdwOptions->collectionName,
 													fmstate->queryDocument);
-	MongoFreeOptions(mongoFdwOptions);
+	mongo_free_options(mongoFdwOptions);
 }
 
 static List *
@@ -707,7 +707,7 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 
 	fmstate->rel = rel;
-	fmstate->mongoFdwOptions = MongoGetOptions(foreignTableId);
+	fmstate->mongoFdwOptions = mongo_get_options(foreignTableId);
 
 	fmstate->target_attrs = (List *) list_nth(fdw_private, 0);
 
@@ -758,7 +758,7 @@ MongoExecForeignInsert(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	b = BsonCreate();
 
@@ -871,7 +871,7 @@ MongoExecForeignUpdate(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -954,7 +954,7 @@ MongoExecForeignDelete(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -992,7 +992,7 @@ MongoEndForeignModify(EState *estate, ResultRelInfo *resultRelInfo)
 	{
 		if (fmstate->mongoFdwOptions)
 		{
-			MongoFreeOptions(fmstate->mongoFdwOptions);
+			mongo_free_options(fmstate->mongoFdwOptions);
 			fmstate->mongoFdwOptions = NULL;
 		}
 		MongoFreeScanState(fmstate);
@@ -1014,13 +1014,13 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	double documentCount = 0.0;
 
 	/* resolve foreign table options; and connect to mongo server */
-	options = MongoGetOptions(foreignTableId);
+	options = mongo_get_options(foreignTableId);
 
-	mongoConnection = GetConnection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
 
 	documentCount = MongoAggregateCount(mongoConnection, options->databaseName, options->collectionName, emptyQuery);
 
-	MongoFreeOptions(options);
+	mongo_free_options(options);
 
 	return documentCount;
 }
@@ -1693,7 +1693,7 @@ MongoFreeScanState(MongoFdwModifyState *fmstate)
 	}
 
 	/* Release remote connection */
-	ReleaseConnection(fmstate->mongoConnection);
+	mongo_release_connection(fmstate->mongoConnection);
 }
 
 

@@ -195,20 +195,20 @@ typedef struct ColumnMapping
 	Oid columnArrayTypeId;
 } ColumnMapping;
 
+/* options.c */
+extern MongoFdwOptions * mongo_get_options(Oid foreignTableId);
+extern void mongo_free_options(MongoFdwOptions *mongoFdwOptions);
+extern StringInfo mongo_option_names_string(Oid currentContextId);
 
-extern MONGO_CONN *GetConnection(char *host, int32 port, char *databaneName, char *user, char *password);
-extern void cleanup_connection(void);
-extern void ReleaseConnection(MONGO_CONN* conn);
-
-extern StringInfo OptionNamesString(Oid currentContextId);
+/* connection.c */
+extern MONGO_CONN *mongo_get_connection(char *host, int32 port, char *databaneName, char *user, char *password);
+extern void mongo_cleanup_connection(void);
+extern void mongo_release_connection(MONGO_CONN* conn);
 
 /* Function declarations related to creating the mongo query */
 extern List * ApplicableOpExpressionList(RelOptInfo *baserel);
 extern BSON * QueryDocument(Oid relationId, List *opExpressionList);
 extern List * ColumnList(RelOptInfo *baserel);
-
-extern MongoFdwOptions * MongoGetOptions(Oid foreignTableId);
-extern void MongoFreeOptions(MongoFdwOptions *mongoFdwOptions);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);

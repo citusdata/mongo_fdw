@@ -41,7 +41,7 @@
 #include "utils/memutils.h"
 #include "miscadmin.h"
 
-static char * MongoGetOptionValue(Oid foreignTableId, const char *optionName);
+static char * mongo_get_option_value(Oid foreignTableId, const char *optionName);
 
 /*
  * Validate the generic options given to a FOREIGN DATA WRAPPER, SERVER,
@@ -88,7 +88,7 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 		/* if invalid option, display an informative error message */
 		if (!optionValid)
 		{
-			StringInfo optionNamesString = OptionNamesString(optionContextId);
+			StringInfo optionNamesString = mongo_option_names_string(optionContextId);
 
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 							errmsg("invalid option \"%s\"", optionName),
@@ -108,11 +108,11 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 }
 
 /*
- * OptionNamesString finds all options that are valid for the current context,
+ * mongo_option_names_string finds all options that are valid for the current context,
  * and concatenates these option names in a comma separated string.
  */
 StringInfo
-OptionNamesString(Oid currentContextId)
+mongo_option_names_string(Oid currentContextId)
 {
 	StringInfo optionNamesString = makeStringInfo();
 	bool firstOptionPrinted = false;
@@ -137,12 +137,12 @@ OptionNamesString(Oid currentContextId)
 
 
 /*
- * MongoGetOptions returns the option values to be used when connecting to and
+ * mongo_get_options returns the option values to be used when connecting to and
  * querying MongoDB. To resolve these values, the function checks the foreign
  * table's options, and if not present, falls back to default values.
  */
 MongoFdwOptions *
-MongoGetOptions(Oid foreignTableId)
+mongo_get_options(Oid foreignTableId)
 {
 	MongoFdwOptions *mongoFdwOptions = NULL;
 	char *addressName = NULL;
@@ -153,35 +153,26 @@ MongoGetOptions(Oid foreignTableId)
 	char *username= NULL;
 	char *password= NULL;
 
-	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
+	addressName = mongo_get_option_value(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
-	{
 		addressName = pstrdup(DEFAULT_IP_ADDRESS);
-	}
 
-	portName = MongoGetOptionValue(foreignTableId, OPTION_NAME_PORT);
+	portName = mongo_get_option_value(foreignTableId, OPTION_NAME_PORT);
 	if (portName == NULL)
-	{
 		portNumber = DEFAULT_PORT_NUMBER;
-	}
 	else
-	{
 		portNumber = pg_atoi(portName, sizeof(int32), 0);
-	}
 
-	databaseName = MongoGetOptionValue(foreignTableId, OPTION_NAME_DATABASE);
+	databaseName = mongo_get_option_value(foreignTableId, OPTION_NAME_DATABASE);
 	if (databaseName == NULL)
-	{
 		databaseName = pstrdup(DEFAULT_DATABASE_NAME);
-	}
 
-	collectionName = MongoGetOptionValue(foreignTableId, OPTION_NAME_COLLECTION);
+	collectionName = mongo_get_option_value(foreignTableId, OPTION_NAME_COLLECTION);
 	if (collectionName == NULL)
-	{
 		collectionName = get_rel_name(foreignTableId);
-	}
-	username = MongoGetOptionValue(foreignTableId, OPTION_NAME_USERNAME);
-	password = MongoGetOptionValue(foreignTableId, OPTION_NAME_PASSWORD);
+
+	username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
+	password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
 
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 	mongoFdwOptions->addressName = addressName;
@@ -196,7 +187,7 @@ MongoGetOptions(Oid foreignTableId)
 
 
 void
-MongoFreeOptions(MongoFdwOptions *mongoFdwOptions)
+mongo_free_options(MongoFdwOptions *mongoFdwOptions)
 {
 	if (mongoFdwOptions)
 	{
@@ -207,12 +198,12 @@ MongoFreeOptions(MongoFdwOptions *mongoFdwOptions)
 }
 
 /*
- * MongoGetOptionValue walks over foreign table and foreign server options, and
+ * mongo_get_option_value walks over foreign table and foreign server options, and
  * looks for the option with the given name. If found, the function returns the
  * option's value.
  */
 static char *
-MongoGetOptionValue(Oid foreignTableId, const char *optionName)
+mongo_get_option_value(Oid foreignTableId, const char *optionName)
 {
 	ForeignTable *foreignTable = NULL;
 	ForeignServer *foreignServer = NULL;
@@ -240,7 +231,6 @@ MongoGetOptionValue(Oid foreignTableId, const char *optionName)
 			break;
 		}
 	}
-
 	return optionValue;
 }
 

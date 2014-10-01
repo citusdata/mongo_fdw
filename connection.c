@@ -1,12 +1,16 @@
 /*-------------------------------------------------------------------------
  *
  * connection.c
- * 		Connection management functions for mongo_fdw
+ * 		Foreign-data wrapper for remote MongoDB servers
  *
- * Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+ * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
- * Portions Copyright © 2012–2014 Citus Data, Inc.
+ * Portions Copyright (c) 2004-2014, EnterpriseDB Corporation.
  *
+ * Portions Copyright (c) 2012–2014 Citus Data, Inc.
+ *
+ * IDENTIFICATION
+ * 		connection.c
  *
  *-------------------------------------------------------------------------
  */
@@ -54,13 +58,13 @@ typedef struct ConnCacheEntry
 static HTAB *ConnectionHash = NULL;
 
 /*
- * GetConnection:
+ * mongo_get_connection:
  * 			Get a mong connection which can be used to execute queries on
  * the remote Mongo server with the user's authorization. A new connection
  * is established if we don't already have a suitable one.
  */
 MONGO_CONN*
-GetConnection(char *host, int32 port, char *databaseName, char *user, char *password)
+mongo_get_connection(char *host, int32 port, char *databaseName, char *user, char *password)
 {
 	bool found;
 	ConnCacheEntry *entry;
@@ -106,11 +110,11 @@ GetConnection(char *host, int32 port, char *databaseName, char *user, char *pass
 }
 
 /*
- * cleanup_connection:
+ * mongo_cleanup_connection:
  * Delete all the cache entries on backend exists.
  */
 void
-cleanup_connection()
+mongo_cleanup_connection()
 {
 	HASH_SEQ_STATUS	scan;
 	ConnCacheEntry *entry;
@@ -131,10 +135,10 @@ cleanup_connection()
 }
 
 /*
- * Release connection created by calling GetConnection.
+ * Release connection created by calling mongo_get_connection.
  */
 void
-ReleaseConnection(MONGO_CONN *conn)
+mongo_release_connection(MONGO_CONN *conn)
 {
 	/*
 	 * We don't close the connection indvisually  here, will do all connection
