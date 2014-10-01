@@ -776,10 +776,10 @@ MongoExecForeignInsert(EState *estate,
 
 			/* first column of MongoDB's foreign table must be _id */
 			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "_id") != 0)
-				elog(ERROR, "first colum of MongoDB's foreign table must be \"_id\"");
+				elog(ERROR, "first column of MongoDB's foreign table must be \"_id\"");
 
 			if (typoid != NAMEOID)
-				elog(ERROR, "type of first colum of MongoDB's foreign table must be \"name\"");
+				elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
 
 			if (attnum == 1)
 			{
