@@ -19,9 +19,10 @@ not up-to-date, run git submodule update --init.
 When you type `make`, the C driver's source code also gets automatically
 compiled and linked.
 
-`*Note: Make sure you have permission to "/usr/local" (default installation location) folder.*`
+Note: Make sure you have permission to "/usr/local" (default installation location) folder.
 
-`*Note that we have verified the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu systems. If you run into issues on other systems, please [let us know][3]*`
+Note that we have verified the `mongo_fdw` extension only on MacOS X,
+Fedora and Ubuntu systems. If you run into issues on other systems, please [let us know][3]
 
 Enhancements
 -----------
