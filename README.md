@@ -23,7 +23,7 @@ compiled and linked.
 
 `*Note that we have verified the `mongo_fdw` extension only on MacOS X, Fedora and Ubuntu systems. If you run into issues on other systems, please [let us know][3]*`
 
-Enhancments
+Enhancements
 -----------
 The following enhancements are added to the latest version of mongo_fdw
 
