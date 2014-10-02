@@ -449,6 +449,21 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			status = BsonAppendUTF8(queryDocument, keyName, outputString);
 			break;
 		}
+		case BYTEAOID:
+		{
+			int len;
+			char *data;
+			char *result = DatumGetPointer(value);
+			if (VARATT_IS_1B(result)) {
+				len = VARSIZE_1B(result) - VARHDRSZ_SHORT;
+				data = VARDATA_1B(result);
+			} else {
+				len = VARSIZE_4B(result) - VARHDRSZ;
+				data = VARDATA_4B(result);
+			}
+			status = BsonAppendBinary(queryDocument, keyName, data, len);
+			break;
+		}
 		case NAMEOID:
 		{
 			char *outputString = NULL;

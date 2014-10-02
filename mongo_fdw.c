@@ -1227,6 +1227,14 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 			}
 			break;
 		}
+		case BYTEAOID:
+		{
+			if (bsonType == BSON_TYPE_BINDATA)
+			{
+				compatibleTypes = true;
+			}
+			break;
+		}
 		case NAMEOID:
 		{
 			/*
@@ -1430,6 +1438,16 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			columnValue = DirectFunctionCall3(namein, valueDatum,
 											  ObjectIdGetDatum(InvalidOid),
 											  Int32GetDatum(columnTypeMod));
+			break;
+		}
+		case BYTEAOID:
+		{
+			int value_len = BsonIterBinLen(bsonIterator);
+			const char *value = BsonIterBinData(bsonIterator);
+			bytea *result = (bytea *)palloc(value_len + VARHDRSZ);
+			memcpy(VARDATA(result), value, value_len);
+			SET_VARSIZE(result, value_len + VARHDRSZ);
+			columnValue = PointerGetDatum(result);
 			break;
 		}
 		case DATEOID:
