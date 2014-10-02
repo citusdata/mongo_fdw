@@ -202,6 +202,15 @@ BsonIterString(BSON_ITERATOR *it)
 	return bson_iterator_string(it);
 }
 
+const char* BsonIterBinData(BSON_ITERATOR *it)
+{
+	return bson_iterator_bin_data(it);
+}
+
+int BsonIterBinLen(BSON_ITERATOR *it)
+{
+	return bson_iterator_bin_len(it);
+}
 const bson_oid_t *
 BsonIterOid(BSON_ITERATOR *it)
 {
@@ -294,6 +303,10 @@ BsonAppendUTF8(BSON *b, const char* key, char *v)
 	return (bson_append_string(b, key, v) == MONGO_OK);
 }
 
+bool BsonAppendBinary(BSON *b, const char* key, char *v, size_t len)
+{
+	return (bson_append_binary(b, key, BSON_BIN_BINARY, v, len) == MONGO_OK);
+}
 bool
 BsonAppendDate(BSON *b, const char* key, time_t v)
 {
