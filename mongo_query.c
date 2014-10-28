@@ -537,6 +537,42 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			pfree(elem_nulls);
 			break;
 		}
+		case TEXTARRAYOID:
+		{
+			ArrayType *array;
+			Oid elmtype;
+			int16 elmlen;
+			bool elmbyval;
+			char elmalign;
+			int num_elems;
+			Datum *elem_values;
+			bool *elem_nulls;
+			int i;
+			BSON t;
+
+			array = DatumGetArrayTypeP(value);
+			elmtype = ARR_ELEMTYPE(array);
+			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
+
+			deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
+
+			BsonAppendStartArray(queryDocument, keyName, &t);
+			for (i = 0; i < num_elems; i++)
+			{
+				if (elem_nulls[i])
+					continue;
+				char *valueString = NULL;
+				Oid outputFunctionId = InvalidOid;
+				bool typeVarLength = false;
+				getTypeOutputInfo(TEXTOID, &outputFunctionId, &typeVarLength);
+				valueString = OidOutputFunctionCall(outputFunctionId, elem_values[i]);
+				status = BsonAppendUTF8(queryDocument, keyName, valueString);
+			}
+			BsonAppendFinishArray(queryDocument, &t);
+			pfree(elem_values);
+			pfree(elem_nulls);
+			break;
+		}
 		default:
 		{
 			/*
