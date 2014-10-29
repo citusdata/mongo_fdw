@@ -55,6 +55,7 @@ In order to use MongoDB driver 1.0.0+, take the following steps:
   * clone `libmongoc` version 1.0.0+ (https://github.com/mongodb/mongo-c-driver).  Follow the install directions, except make sure to also run `./configure --with-libbson=system` after running automake but before running make.  This should be the default behavior, but to be certain include this step.
   * ensure pkg-config / pkgconf is installed on your system.
   * run `make -f Makefile.meta && make -f Makefile.meta install`
+  * if you get an error when trying to `CREATE EXTENSION mongo_fdw;`, then try running `ldconfig`
 
 Usage
 -----
