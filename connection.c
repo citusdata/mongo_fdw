@@ -64,9 +64,9 @@ static HTAB *ConnectionHash = NULL;
 MONGO_CONN*
 mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt)
 {
-	bool found;
-	ConnCacheEntry *entry;
-	ConnCacheKey key;
+	bool            found;
+	ConnCacheEntry  *entry;
+	ConnCacheKey    key;
 
 	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)

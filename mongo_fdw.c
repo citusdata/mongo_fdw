@@ -71,72 +71,72 @@
 
 /* Local functions forward declarations */
 static void MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
-								Oid foreignTableId);
+						Oid foreignTableId);
 static void MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
-								Oid foreignTableId);
+						Oid foreignTableId);
 static ForeignScan * MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
-										Oid foreignTableId, ForeignPath *bestPath,
-										List *targetList, List *restrictionClauses);
+						Oid foreignTableId, ForeignPath *bestPath,
+						List *targetList, List *restrictionClauses);
 static void MongoExplainForeignScan(ForeignScanState *scanState,
-										ExplainState *explainState);
+						ExplainState *explainState);
 static void MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags);
 static TupleTableSlot * MongoIterateForeignScan(ForeignScanState *scanState);
 static void MongoEndForeignScan(ForeignScanState *scanState);
 static void MongoReScanForeignScan(ForeignScanState *scanState);
 
 static TupleTableSlot *MongoExecForeignUpdate(EState *estate,
-											ResultRelInfo *resultRelInfo,
-											TupleTableSlot *slot,
-											TupleTableSlot *planSlot);
+						ResultRelInfo *resultRelInfo,
+						TupleTableSlot *slot,
+						TupleTableSlot *planSlot);
 static TupleTableSlot *MongoExecForeignDelete(EState *estate,
-											ResultRelInfo *resultRelInfo,
-											TupleTableSlot *slot,
-											TupleTableSlot *planSlot);
+						ResultRelInfo *resultRelInfo,
+						TupleTableSlot *slot,
+						TupleTableSlot *planSlot);
 static void MongoEndForeignModify(EState *estate,
-								ResultRelInfo *resultRelInfo);
+						ResultRelInfo *resultRelInfo);
 
 static void MongoAddForeignUpdateTargets(Query *parsetree,
-										RangeTblEntry *target_rte,
-										Relation target_relation);
+						RangeTblEntry *target_rte,
+						Relation target_relation);
 
 static void MongoBeginForeignModify(ModifyTableState *mtstate,
-									ResultRelInfo *resultRelInfo,
-									List *fdw_private,
-									int subplan_index,
-									int eflags);
+						ResultRelInfo *resultRelInfo,
+						List *fdw_private,
+						int subplan_index,
+						int eflags);
 
 static TupleTableSlot *MongoExecForeignInsert(EState *estate,
-											ResultRelInfo *resultRelInfo,
-											TupleTableSlot *slot,
-											TupleTableSlot *planSlot);
+						ResultRelInfo *resultRelInfo,
+						TupleTableSlot *slot,
+						TupleTableSlot *planSlot);
 
 static List *MongoPlanForeignModify(PlannerInfo *root,
-									ModifyTable *plan,
-									Index resultRelation,
-									int subplan_index);
+						ModifyTable *plan,
+						Index resultRelation,
+						int subplan_index);
 
 static void
 MongoExplainForeignModify(ModifyTableState *mtstate,
-						  ResultRelInfo *rinfo, List *fdw_private,
-						  int subplan_index, ExplainState *es);
+						ResultRelInfo *rinfo, List *fdw_private,
+						int subplan_index, ExplainState *es);
 
 /* local functions */
 static double ForeignTableDocumentCount(Oid foreignTableId);
 static HTAB * ColumnMappingHash(Oid foreignTableId, List *columnList);
 static void FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
-						  HTAB *columnMappingHash, Datum *columnValues,
-						  bool *columnNulls);
+						HTAB *columnMappingHash, Datum *columnValues,
+						bool *columnNulls);
 static bool ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(BSON_ITERATOR *bsonIterator, Oid valueTypeId);
 static Datum ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId,
 						 int32 columnTypeMod);
 static void MongoFreeScanState(MongoFdwModifyState *fmstate);
 static bool MongoAnalyzeForeignTable(Relation relation,
-									AcquireSampleRowsFunc *acquireSampleRowsFunc,
-									 BlockNumber *totalPageCount);
+						AcquireSampleRowsFunc *acquireSampleRowsFunc,
+						BlockNumber *totalPageCount);
 static int MongoAcquireSampleRows(Relation relation, int errorLevel,
-								  HeapTuple *sampleRows, int targetRowCount,
-								  double *totalRowCount, double *totalDeadRowCount);
+						HeapTuple *sampleRows, int targetRowCount,
+						double *totalRowCount, double *totalDeadRowCount);
 static void mongo_fdw_exit(int code, Datum arg);
 
 extern PGDLLEXPORT void _PG_init(void);
@@ -250,22 +250,22 @@ MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableI
 static void
 MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 {
-	double tupleFilterCost = baserel->baserestrictcost.per_tuple;
-	double inputRowCount = 0.0;
-	double documentSelectivity = 0.0;
-	double foreignTableSize = 0;
-	int32 documentWidth = 0;
-	BlockNumber pageCount = 0;
-	double totalDiskAccessCost = 0.0;
-	double cpuCostPerDoc = 0.0;
-	double cpuCostPerRow = 0.0;
-	double totalCpuCost = 0.0;
-	double connectionCost = 0.0;
-	double documentCount = 0.0;
-	List *opExpressionList = NIL;
-	Cost startupCost = 0.0;
-	Cost totalCost = 0.0;
-	Path *foreignPath = NULL;
+	double           tupleFilterCost = baserel->baserestrictcost.per_tuple;
+	double           inputRowCount = 0.0;
+	double           documentSelectivity = 0.0;
+	double           foreignTableSize = 0;
+	int32            documentWidth = 0;
+	BlockNumber      pageCount = 0;
+	double           totalDiskAccessCost = 0.0;
+	double           cpuCostPerDoc = 0.0;
+	double           cpuCostPerRow = 0.0;
+	double           totalCpuCost = 0.0;
+	double           connectionCost = 0.0;
+	double           documentCount = 0.0;
+	List             *opExpressionList = NIL;
+	Cost             startupCost = 0.0;
+	Cost             totalCost = 0.0;
+	Path             *foreignPath = NULL;
 
 	documentCount = ForeignTableDocumentCount(foreignTableId);
 	if (documentCount > 0.0)
@@ -330,12 +330,12 @@ static ForeignScan *
 MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 					ForeignPath *bestPath, List *targetList, List *restrictionClauses)
 {
-	Index scanRangeTableIndex = baserel->relid;
-	ForeignScan *foreignScan = NULL;
-	List *foreignPrivateList = NIL;
-	List *opExpressionList = NIL;
-	BSON *queryDocument = NULL;
-	List *columnList = NIL;
+	Index                scanRangeTableIndex = baserel->relid;
+	ForeignScan          *foreignScan = NULL;
+	List                 *foreignPrivateList = NIL;
+	List                 *opExpressionList = NIL;
+	BSON                 *queryDocument = NULL;
+	List                 *columnList = NIL;
 
 	/*
 	 * We push down applicable restriction clauses to MongoDB, but for simplicity
@@ -380,9 +380,9 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 static void
 MongoExplainForeignScan(ForeignScanState *scanState, ExplainState *explainState)
 {
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	StringInfo namespaceName = NULL;
-	Oid foreignTableId = InvalidOid;
+	MongoFdwOptions        *mongoFdwOptions = NULL;
+	StringInfo             namespaceName = NULL;
+	Oid                    foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
 	mongoFdwOptions = mongo_get_options(foreignTableId);
@@ -404,9 +404,9 @@ MongoExplainForeignModify(ModifyTableState *mtstate,
 							int subplan_index,
 							ExplainState *es)
 {
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	StringInfo namespaceName = NULL;
-	Oid foreignTableId = InvalidOid;
+	MongoFdwOptions       *mongoFdwOptions = NULL;
+	StringInfo            namespaceName = NULL;
+	Oid                   foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(rinfo->ri_RelationDesc);
 	mongoFdwOptions = mongo_get_options(foreignTableId);
@@ -430,25 +430,24 @@ MongoExplainForeignModify(ModifyTableState *mtstate,
 static void
 MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 {
-	MONGO_CONN *mongoConnection = NULL;
-	MONGO_CURSOR *mongoCursor = NULL;
-	Oid foreignTableId = InvalidOid;
-	List *columnList = NIL;
-	HTAB *columnMappingHash = NULL;
-	ForeignScan *foreignScan = NULL;
-	List *foreignPrivateList = NIL;
-	BSON *queryDocument = NULL;
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	MongoFdwModifyState *fmstate = NULL;
-	List *opExpressionList = NIL;
-	RangeTblEntry *rte;
-	EState            *estate = scanState->ss.ps.state;
-	ForeignScan       *fsplan = (ForeignScan *) scanState->ss.ps.plan;
-
-	Oid               userid;
-	ForeignServer     *server;
-	UserMapping       *user;
-	ForeignTable      *table;
+	MONGO_CONN               *mongoConnection = NULL;
+	MONGO_CURSOR             *mongoCursor = NULL;
+	Oid                      foreignTableId = InvalidOid;
+	List                     *columnList = NIL;
+	HTAB                     *columnMappingHash = NULL;
+	ForeignScan              *foreignScan = NULL;
+	List                     *foreignPrivateList = NIL;
+	BSON                     *queryDocument = NULL;
+	MongoFdwOptions          *mongoFdwOptions = NULL;
+	MongoFdwModifyState      *fmstate = NULL;
+	List                     *opExpressionList = NIL;
+	RangeTblEntry            *rte;
+	EState                   *estate = scanState->ss.ps.state;
+	ForeignScan              *fsplan = (ForeignScan *) scanState->ss.ps.plan;
+	Oid                      userid;
+	ForeignServer            *server;
+	UserMapping              *user;
+	ForeignTable             *table;
 
 
 	/* if Explain with no Analyze, do nothing */
@@ -512,14 +511,13 @@ static TupleTableSlot *
 MongoIterateForeignScan(ForeignScanState *scanState)
 {
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanState->fdw_state;
-	TupleTableSlot *tupleSlot = scanState->ss.ss_ScanTupleSlot;
-	MONGO_CURSOR *mongoCursor = fmstate->mongoCursor;
-	HTAB *columnMappingHash = fmstate->columnMappingHash;
-
-	TupleDesc tupleDescriptor = tupleSlot->tts_tupleDescriptor;
-	Datum *columnValues = tupleSlot->tts_values;
-	bool *columnNulls = tupleSlot->tts_isnull;
-	int32 columnCount = tupleDescriptor->natts;
+	TupleTableSlot      *tupleSlot = scanState->ss.ss_ScanTupleSlot;
+	MONGO_CURSOR        *mongoCursor = fmstate->mongoCursor;
+	HTAB                *columnMappingHash = fmstate->columnMappingHash;
+	TupleDesc           tupleDescriptor = tupleSlot->tts_tupleDescriptor;
+	Datum               *columnValues = tupleSlot->tts_values;
+	bool                *columnNulls = tupleSlot->tts_isnull;
+	int32               columnCount = tupleDescriptor->natts;
 
 	/*
 	 * We execute the protocol to load a virtual tuple into a slot. We first
@@ -598,10 +596,10 @@ MongoEndForeignScan(ForeignScanState *scanState)
 static void
 MongoReScanForeignScan(ForeignScanState *scanState)
 {
-	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanState->fdw_state;
-	MONGO_CONN *mongoConnection = fmstate->mongoConnection;
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	Oid foreignTableId = InvalidOid;
+	MongoFdwModifyState      *fmstate = (MongoFdwModifyState *) scanState->fdw_state;
+	MONGO_CONN               *mongoConnection = fmstate->mongoConnection;
+	MongoFdwOptions          *mongoFdwOptions = NULL;
+	Oid                      foreignTableId = InvalidOid;
 
 	/* close down the old cursor */
 	MongoCursorDestroy(fmstate->mongoCursor);
@@ -624,10 +622,10 @@ MongoPlanForeignModify(PlannerInfo *root,
 				Index resultRelation,
 				int subplan_index)
 {
-	CmdType operation = plan->operation;
-	RangeTblEntry *rte = planner_rt_fetch(resultRelation, root);
-	Relation rel;
-	List* targetAttrs = NIL;
+	CmdType         operation = plan->operation;
+	RangeTblEntry   *rte = planner_rt_fetch(resultRelation, root);
+	Relation        rel;
+	List            *targetAttrs = NIL;
 
 	/*
 	 * Core code already has some lock on each rel being planned, so we can
@@ -696,13 +694,13 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 					int subplan_index,
 					int eflags)
 {
-	MongoFdwModifyState *fmstate = NULL;
-	Relation rel = resultRelInfo->ri_RelationDesc;
-	AttrNumber n_params = 0;
-	Oid typefnoid = InvalidOid;
-	bool isvarlena = false;
-	ListCell *lc = NULL;
-	Oid foreignTableId = InvalidOid;
+	MongoFdwModifyState       *fmstate = NULL;
+	Relation                  rel = resultRelInfo->ri_RelationDesc;
+	AttrNumber                n_params = 0;
+	Oid                       typefnoid = InvalidOid;
+	bool                      isvarlena = false;
+	ListCell                  *lc = NULL;
+	Oid                       foreignTableId = InvalidOid;
 
 	/*
 	 * Do nothing in EXPLAIN (no ANALYZE) case. resultRelInfo->ri_FdwState
@@ -752,18 +750,17 @@ MongoExecForeignInsert(EState *estate,
 					TupleTableSlot *slot,
 					TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options = NULL;
-	MONGO_CONN *mongoConnection = NULL;
-	Oid foreignTableId = InvalidOid;
-	BSON *b = NULL;
-	Oid typoid;
-	Datum value;
-	bool isnull = false;
-
-	Oid               userid;
-	ForeignServer     *server;
-	UserMapping       *user;
-	ForeignTable      *table;
+	MongoFdwOptions           *options = NULL;
+	MONGO_CONN                *mongoConnection = NULL;
+	Oid                       foreignTableId = InvalidOid;
+	BSON                      *b = NULL;
+	Oid                       typoid;
+	Datum                     value;
+	bool                      isnull = false;
+	Oid                       userid;
+	ForeignServer             *server;
+	UserMapping               *user;
+	ForeignTable              *table;
 
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 
@@ -839,9 +836,9 @@ MongoAddForeignUpdateTargets(Query *parsetree,
 						RangeTblEntry *target_rte,
 						Relation target_relation)
 {
-	Var *var = NULL;
-	const char *attrname = NULL;
-	TargetEntry *tle = NULL;
+	Var                 *var = NULL;
+	const char          *attrname = NULL;
+	TargetEntry         *tle = NULL;
 
 	/*
 	 * What we need is the rowid which is the first column
@@ -876,20 +873,20 @@ MongoExecForeignUpdate(EState *estate,
 					TupleTableSlot *slot,
 					TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options = NULL;
-	MONGO_CONN *mongoConnection = NULL;
-	Datum datum = 0;
-	bool isNull = false;
-	Oid foreignTableId = InvalidOid;
-	char *columnName = NULL;
-	Oid typoid = InvalidOid;
-	BSON *b = NULL;
-	BSON *op = NULL;
-	BSON set;
-	Oid     userid = GetUserId();
-	ForeignServer     *server;
-	UserMapping       *user;
-	ForeignTable      *table;
+	MongoFdwOptions            *options = NULL;
+	MONGO_CONN                 *mongoConnection = NULL;
+	Datum                      datum = 0;
+	bool                       isNull = false;
+	Oid                        foreignTableId = InvalidOid;
+	char                       *columnName = NULL;
+	Oid                        typoid = InvalidOid;
+	BSON                       *b = NULL;
+	BSON                       *op = NULL;
+	BSON                       set;
+	Oid                        userid = GetUserId();
+	ForeignServer              *server;
+	UserMapping                *user;
+	ForeignTable               *table;
 
 
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
@@ -975,19 +972,18 @@ MongoExecForeignDelete(EState *estate,
 					TupleTableSlot *slot,
 					TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options = NULL;
-	MONGO_CONN *mongoConnection = NULL;
-	Datum datum = 0;
-	bool isNull = false;
-	Oid foreignTableId = InvalidOid;
-	char *columnName = NULL;
-	Oid typoid = InvalidOid;
-	BSON *b = NULL;
-
-	Oid userid = GetUserId();
-	ForeignServer     *server;
-	UserMapping       *user;
-	ForeignTable      *table;
+	MongoFdwOptions           *options = NULL;
+	MONGO_CONN                *mongoConnection = NULL;
+	Datum                     datum = 0;
+	bool                      isNull = false;
+	Oid                       foreignTableId = InvalidOid;
+	char                      *columnName = NULL;
+	Oid                       typoid = InvalidOid;
+	BSON                      *b = NULL;
+	Oid                       userid = GetUserId();
+	ForeignServer             *server;
+	UserMapping               *user;
+	ForeignTable              *table;
 
 
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
@@ -1060,14 +1056,14 @@ MongoEndForeignModify(EState *estate, ResultRelInfo *resultRelInfo)
 static double
 ForeignTableDocumentCount(Oid foreignTableId)
 {
-	MongoFdwOptions *options = NULL;
-	MONGO_CONN *mongoConnection = NULL;
-	const BSON *emptyQuery = NULL;
-	double documentCount = 0.0;
-	Oid		   userid = GetUserId();
-	ForeignServer     *server;
-	UserMapping       *user;
-	ForeignTable      *table;
+	MongoFdwOptions         *options = NULL;
+	MONGO_CONN              *mongoConnection = NULL;
+	const BSON              *emptyQuery = NULL;
+	double                  documentCount = 0.0;
+	Oid		        userid = GetUserId();
+	ForeignServer           *server;
+	UserMapping             *user;
+	ForeignTable            *table;
 
 
 	/* Get info about foreign table. */
@@ -1101,9 +1097,9 @@ ForeignTableDocumentCount(Oid foreignTableId)
 static HTAB *
 ColumnMappingHash(Oid foreignTableId, List *columnList)
 {
-	ListCell *columnCell = NULL;
-	const long hashTableSize = 2048;
-	HTAB *columnMappingHash = NULL;
+	ListCell              *columnCell = NULL;
+	const long            hashTableSize = 2048;
+	HTAB                  *columnMappingHash = NULL;
 
 	/* create hash table */
 	HASHCTL hashInfo;
@@ -1366,16 +1362,16 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 static Datum
 ColumnValueArray(BSON_ITERATOR *bsonIterator, Oid valueTypeId)
 {
-	Datum *columnValueArray = palloc0(INITIAL_ARRAY_CAPACITY * sizeof(Datum));
-	uint32 arrayCapacity = INITIAL_ARRAY_CAPACITY;
-	uint32 arrayGrowthFactor = 2;
-	uint32 arrayIndex = 0;
+	Datum          *columnValueArray = palloc0(INITIAL_ARRAY_CAPACITY * sizeof(Datum));
+	uint32         arrayCapacity = INITIAL_ARRAY_CAPACITY;
+	uint32         arrayGrowthFactor = 2;
+	uint32         arrayIndex = 0;
 
-	ArrayType *columnValueObject = NULL;
-	Datum columnValueDatum = 0;
-	bool typeByValue = false;
-	char typeAlignment = 0;
-	int16 typeLength = 0;
+	ArrayType      *columnValueObject = NULL;
+	Datum          columnValueDatum = 0;
+	bool           typeByValue = false;
+	char           typeAlignment = 0;
+	int16          typeLength = 0;
 
 	BSON_ITERATOR bsonSubIterator = { NULL, 0 };
 	BsonIterSubIter(bsonIterator, &bsonSubIterator);
@@ -1582,12 +1578,15 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
  * [1] http://docs.mongodb.org/manual/reference/mongodb-extended-json/
  */
 void
-DumpJson(StringInfo output, const char *bsonData, bool isArray) {
-	bson_iterator i;
-	const char *key;
-	bool isFirstElement;
-	char beginSymbol, endSymbol;
-	bson_type t;
+DumpJson(StringInfo output, const char *bsonData, bool isArray)
+{
+	bson_iterator    i;
+	const char       *key;
+	bool             isFirstElement;
+	char             beginSymbol, endSymbol;
+	bson_type        t;
+
+
 	bson_iterator_from_buffer(&i, bsonData);
 
 	if (isArray)
@@ -1712,10 +1711,12 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray) {
  * EscapeJsonString escapes a string for safe inclusion in JSON.
  */
 const char *
-EscapeJsonString(const char *string) {
-	StringInfo buffer;
-	const char *ptr;
-	int i, segmentStartIdx, len;
+EscapeJsonString(const char *string)
+{
+	StringInfo   buffer;
+	const char   *ptr;
+	int          i, segmentStartIdx, len;
+
 	bool needsEscaping = false;
 	for (ptr = string; *ptr; ++ptr) {
 		if (*ptr == '"' || *ptr == '\r' || *ptr == '\n' || *ptr == '\t'\
@@ -1790,13 +1791,13 @@ MongoAnalyzeForeignTable(Relation relation,
 						 AcquireSampleRowsFunc *acquireSampleRowsFunc,
 						 BlockNumber *totalPageCount)
 {
-	BlockNumber pageCount = 0;
-	int attributeCount = 0;
-	int32 *attributeWidths = NULL;
-	Oid foreignTableId = InvalidOid;
-	int32 documentWidth = 0;
-	double documentCount = 0.0;
-	double foreignTableSize = 0;
+	BlockNumber        pageCount = 0;
+	int                attributeCount = 0;
+	int32              *attributeWidths = NULL;
+	Oid                foreignTableId = InvalidOid;
+	int32              documentWidth = 0;
+	double             documentCount = 0.0;
+	double             foreignTableSize = 0;
 
 	foreignTableId = RelationGetRelid(relation);
 
@@ -1850,29 +1851,29 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 					   HeapTuple *sampleRows, int targetRowCount,
 					   double *totalRowCount, double *totalDeadRowCount)
 {
-	int sampleRowCount = 0;
-	double rowCount = 0;
-	double rowCountToSkip = -1; /* -1 means not set yet */
-	double randomState = 0;
-	Datum *columnValues = NULL;
-	bool *columnNulls = NULL;
-	Oid foreignTableId = InvalidOid;
-	TupleDesc tupleDescriptor = NULL;
-	Form_pg_attribute *attributesPtr = NULL;
-	AttrNumber columnCount = 0;
-	AttrNumber columnId = 0;
-	HTAB *columnMappingHash = NULL;
-	MONGO_CURSOR *mongoCursor = NULL;
-	BSON *queryDocument = NULL;
-	List *columnList = NIL;
-	ForeignScanState *scanState = NULL;
-	List *foreignPrivateList = NIL;
-	ForeignScan *foreignScan = NULL;
-	MongoFdwModifyState *fmstate = NULL;
-	char *relationName = NULL;
-	int executorFlags = 0;
-	MemoryContext oldContext = CurrentMemoryContext;
-	MemoryContext tupleContext = NULL;
+	int                      sampleRowCount = 0;
+	double                   rowCount = 0;
+	double                   rowCountToSkip = -1; /* -1 means not set yet */
+	double                   randomState = 0;
+	Datum                    *columnValues = NULL;
+	bool                     *columnNulls = NULL;
+	Oid                      foreignTableId = InvalidOid;
+	TupleDesc                tupleDescriptor = NULL;
+	Form_pg_attribute        *attributesPtr = NULL;
+	AttrNumber               columnCount = 0;
+	AttrNumber               columnId = 0;
+	HTAB                     *columnMappingHash = NULL;
+	MONGO_CURSOR             *mongoCursor = NULL;
+	BSON                     *queryDocument = NULL;
+	List                     *columnList = NIL;
+	ForeignScanState         *scanState = NULL;
+	List                     *foreignPrivateList = NIL;
+	ForeignScan              *foreignScan = NULL;
+	MongoFdwModifyState      *fmstate = NULL;
+	char                     *relationName = NULL;
+	int                      executorFlags = 0;
+	MemoryContext            oldContext = CurrentMemoryContext;
+	MemoryContext            tupleContext = NULL;
 
 	/* create list of columns in the relation */
 	tupleDescriptor = RelationGetDescr(relation);

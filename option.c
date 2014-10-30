@@ -61,9 +61,9 @@ PG_FUNCTION_INFO_V1(mongo_fdw_validator);
 Datum
 mongo_fdw_validator(PG_FUNCTION_ARGS)
 {
-	Datum optionArray = PG_GETARG_DATUM(0);
-	Oid optionContextId = PG_GETARG_OID(1);
-	List *optionList = untransformRelOptions(optionArray);
+	Datum    optionArray = PG_GETARG_DATUM(0);
+	Oid      optionContextId = PG_GETARG_OID(1);
+	List     *optionList = untransformRelOptions(optionArray);
 	ListCell *optionCell = NULL;
 
 	foreach(optionCell, optionList)
@@ -114,8 +114,8 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 StringInfo
 mongo_option_names_string(Oid currentContextId)
 {
-	StringInfo optionNamesString = makeStringInfo();
-	bool firstOptionPrinted = false;
+	StringInfo  optionNamesString = makeStringInfo();
+	bool        firstOptionPrinted = false;
 
 	int32 optionIndex = 0;
 	for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
@@ -144,14 +144,14 @@ mongo_option_names_string(Oid currentContextId)
 MongoFdwOptions *
 mongo_get_options(Oid foreignTableId)
 {
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	char *addressName = NULL;
-	char *portName = NULL;
-	int32 portNumber = 0;
-	char *svr_database = NULL;
-	char *collectionName = NULL;
-	char *svr_username= NULL;
-	char *svr_password= NULL;
+	MongoFdwOptions         *mongoFdwOptions = NULL;
+	char                    *addressName = NULL;
+	char                    *portName = NULL;
+	int32                   portNumber = 0;
+	char                    *svr_database = NULL;
+	char                    *collectionName = NULL;
+	char                    *svr_username= NULL;
+	char                    *svr_password= NULL;
 
 	addressName = mongo_get_option_value(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -206,12 +206,12 @@ mongo_free_options(MongoFdwOptions *mongoFdwOptions)
 static char *
 mongo_get_option_value(Oid foreignTableId, const char *optionName)
 {
-	ForeignTable *foreignTable = NULL;
-	ForeignServer *foreignServer = NULL;
-	List *optionList = NIL;
-	ListCell *optionCell = NULL;
-	UserMapping *mapping= NULL;
-	char *optionValue = NULL;
+	ForeignTable           *foreignTable = NULL;
+	ForeignServer          *foreignServer = NULL;
+	List                   *optionList = NIL;
+	ListCell               *optionCell = NULL;
+	UserMapping            *mapping= NULL;
+	char                   *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
