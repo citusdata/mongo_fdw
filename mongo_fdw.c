@@ -380,19 +380,19 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 static void
 MongoExplainForeignScan(ForeignScanState *scanState, ExplainState *explainState)
 {
-	MongoFdwOptions        *mongoFdwOptions = NULL;
+	MongoFdwOptions        *options = NULL;
 	StringInfo             namespaceName = NULL;
 	Oid                    foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = mongo_get_options(foreignTableId);
+	options = mongo_get_options(foreignTableId);
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
-	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->svr_database,
-					 mongoFdwOptions->collectionName);
+	appendStringInfo(namespaceName, "%s.%s", options->svr_database,
+					 options->collectionName);
 
-	mongo_free_options(mongoFdwOptions);
+	mongo_free_options(options);
 
 	ExplainPropertyText("Foreign Namespace", namespaceName->data, explainState);
 }
@@ -404,19 +404,19 @@ MongoExplainForeignModify(ModifyTableState *mtstate,
 							int subplan_index,
 							ExplainState *es)
 {
-	MongoFdwOptions       *mongoFdwOptions = NULL;
+	MongoFdwOptions       *options = NULL;
 	StringInfo            namespaceName = NULL;
 	Oid                   foreignTableId = InvalidOid;
 
 	foreignTableId = RelationGetRelid(rinfo->ri_RelationDesc);
-	mongoFdwOptions = mongo_get_options(foreignTableId);
+	options = mongo_get_options(foreignTableId);
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
-	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->svr_database,
-					 mongoFdwOptions->collectionName);
+	appendStringInfo(namespaceName, "%s.%s", options->svr_database,
+					 options->collectionName);
 
-	mongo_free_options(mongoFdwOptions);
+	mongo_free_options(options);
 	ExplainPropertyText("Foreign Namespace", namespaceName->data, es);
 }
 
@@ -438,7 +438,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	ForeignScan              *foreignScan = NULL;
 	List                     *foreignPrivateList = NIL;
 	BSON                     *queryDocument = NULL;
-	MongoFdwOptions          *mongoFdwOptions = NULL;
+	MongoFdwOptions          *options = NULL;
 	MongoFdwModifyState      *fmstate = NULL;
 	List                     *opExpressionList = NIL;
 	RangeTblEntry            *rte;
@@ -455,7 +455,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 		return;
 
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = mongo_get_options(foreignTableId);
+	options = mongo_get_options(foreignTableId);
 
 	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 	/*
@@ -475,7 +475,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
 	 */
-	mongoConnection = mongo_get_connection(server, user, mongoFdwOptions);
+	mongoConnection = mongo_get_connection(server, user, options);
 
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
@@ -489,14 +489,14 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
 	/* create cursor for collection name and set query */
-	mongoCursor = MongoCursorCreate(mongoConnection, mongoFdwOptions->svr_database, mongoFdwOptions->collectionName, queryDocument);
+	mongoCursor = MongoCursorCreate(mongoConnection, options->svr_database, options->collectionName, queryDocument);
 
 	/* create and set foreign execution state */
 	fmstate->columnMappingHash = columnMappingHash;
 	fmstate->mongoConnection = mongoConnection;
 	fmstate->mongoCursor = mongoCursor;
 	fmstate->queryDocument = queryDocument;
-	fmstate->mongoFdwOptions = mongoFdwOptions;
+	fmstate->options = options;
 
 	scanState->fdw_state = (void *) fmstate;
 }
@@ -578,10 +578,10 @@ MongoEndForeignScan(ForeignScanState *scanState)
 	/* if we executed a query, reclaim mongo related resources */
 	if (fmstate != NULL)
 	{
-		if (fmstate->mongoFdwOptions)
+		if (fmstate->options)
 		{
-			mongo_free_options(fmstate->mongoFdwOptions);
-			fmstate->mongoFdwOptions = NULL;
+			mongo_free_options(fmstate->options);
+			fmstate->options = NULL;
 		}
 		MongoFreeScanState(fmstate);
 	}
@@ -598,7 +598,7 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 {
 	MongoFdwModifyState      *fmstate = (MongoFdwModifyState *) scanState->fdw_state;
 	MONGO_CONN               *mongoConnection = fmstate->mongoConnection;
-	MongoFdwOptions          *mongoFdwOptions = NULL;
+	MongoFdwOptions          *options = NULL;
 	Oid                      foreignTableId = InvalidOid;
 
 	/* close down the old cursor */
@@ -606,14 +606,14 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 
 	/* reconstruct full collection name */
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
-	mongoFdwOptions = mongo_get_options(foreignTableId);
+	options = mongo_get_options(foreignTableId);
 
 	/* reconstruct cursor for collection name and set query */
 	fmstate->mongoCursor = MongoCursorCreate(mongoConnection,
-													fmstate->mongoFdwOptions->svr_database,
-													fmstate->mongoFdwOptions->collectionName,
+													fmstate->options->svr_database,
+													fmstate->options->collectionName,
 													fmstate->queryDocument);
-	mongo_free_options(mongoFdwOptions);
+	mongo_free_options(options);
 }
 
 static List *
@@ -715,7 +715,7 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 
 	fmstate->rel = rel;
-	fmstate->mongoFdwOptions = mongo_get_options(foreignTableId);
+	fmstate->options = mongo_get_options(foreignTableId);
 
 	fmstate->target_attrs = (List *) list_nth(fdw_private, 0);
 
@@ -777,7 +777,7 @@ MongoExecForeignInsert(EState *estate,
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
 	 */
-	options = fmstate->mongoFdwOptions;
+	options = fmstate->options;
 	mongoConnection = mongo_get_connection(server, user, options);
 
 	b = BsonCreate();
@@ -894,7 +894,7 @@ MongoExecForeignUpdate(EState *estate,
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 	/* resolve foreign table options; and connect to mongo server */
-	options = fmstate->mongoFdwOptions;
+	options = fmstate->options;
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(foreignTableId);
@@ -991,7 +991,7 @@ MongoExecForeignDelete(EState *estate,
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 	/* resolve foreign table options; and connect to mongo server */
-	options = fmstate->mongoFdwOptions;
+	options = fmstate->options;
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(foreignTableId);
@@ -1038,10 +1038,10 @@ MongoEndForeignModify(EState *estate, ResultRelInfo *resultRelInfo)
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 	if (fmstate)
 	{
-		if (fmstate->mongoFdwOptions)
+		if (fmstate->options)
 		{
-			mongo_free_options(fmstate->mongoFdwOptions);
-			fmstate->mongoFdwOptions = NULL;
+			mongo_free_options(fmstate->options);
+			fmstate->options = NULL;
 		}
 		MongoFreeScanState(fmstate);
 		pfree(fmstate);

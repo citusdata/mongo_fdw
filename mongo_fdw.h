@@ -161,20 +161,20 @@ typedef struct MongoFdwOptions
  */
 typedef struct MongoFdwModifyState
 {
-	Relation			rel;			/* relcache entry for the foreign table */
-	List				*target_attrs;	/* list of target attribute numbers */
+	Relation		rel;             /* relcache entry for the foreign table */
+	List			*target_attrs;   /* list of target attribute numbers */
 
 	/* info about parameters for prepared statement */
-	int					p_nums;			/* number of parameters to transmit */
-	FmgrInfo			*p_flinfo;		/* output conversion functions for them */
+	int			p_nums;			/* number of parameters to transmit */
+	FmgrInfo		*p_flinfo;		/* output conversion functions for them */
 
 	struct HTAB 		*columnMappingHash;
 
-	MONGO_CONN			*mongoConnection;	/* MongoDB connection */
+	MONGO_CONN		*mongoConnection;	/* MongoDB connection */
 	MONGO_CURSOR		*mongoCursor;		/* MongoDB cursor */
-	BSON				*queryDocument;		/* Bson Document */
+	BSON			*queryDocument;		/* Bson Document */
 
-	MongoFdwOptions 	*mongoFdwOptions;
+	MongoFdwOptions 	*options;
 
 	/* working memory context */
 	MemoryContext temp_cxt;				/* context for per-tuple temporary data */
@@ -198,7 +198,7 @@ typedef struct ColumnMapping
 
 /* options.c */
 extern MongoFdwOptions * mongo_get_options(Oid foreignTableId);
-extern void mongo_free_options(MongoFdwOptions *mongoFdwOptions);
+extern void mongo_free_options(MongoFdwOptions *options);
 extern StringInfo mongo_option_names_string(Oid currentContextId);
 
 /* connection.c */

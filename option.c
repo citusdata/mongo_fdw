@@ -144,7 +144,7 @@ mongo_option_names_string(Oid currentContextId)
 MongoFdwOptions *
 mongo_get_options(Oid foreignTableId)
 {
-	MongoFdwOptions         *mongoFdwOptions = NULL;
+	MongoFdwOptions         *options = NULL;
 	char                    *addressName = NULL;
 	char                    *portName = NULL;
 	int32                   portNumber = 0;
@@ -174,27 +174,27 @@ mongo_get_options(Oid foreignTableId)
 	svr_username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
 	svr_password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
 
-	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
+	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 
-	mongoFdwOptions->svr_address = addressName;
-	mongoFdwOptions->svr_port = portNumber;
-	mongoFdwOptions->svr_database = svr_database;
-	mongoFdwOptions->collectionName = collectionName;
-	mongoFdwOptions->svr_username = svr_username;
-	mongoFdwOptions->svr_password = svr_password;
+	options->svr_address = addressName;
+	options->svr_port = portNumber;
+	options->svr_database = svr_database;
+	options->collectionName = collectionName;
+	options->svr_username = svr_username;
+	options->svr_password = svr_password;
 
-	return mongoFdwOptions;
+	return options;
 }
 
 
 void
-mongo_free_options(MongoFdwOptions *mongoFdwOptions)
+mongo_free_options(MongoFdwOptions *options)
 {
-	if (mongoFdwOptions)
+	if (options)
 	{
-		pfree(mongoFdwOptions->svr_address);
-		pfree(mongoFdwOptions->svr_database);
-		pfree(mongoFdwOptions);
+		pfree(options->svr_address);
+		pfree(options->svr_database);
+		pfree(options);
 	}
 }
 
