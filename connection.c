@@ -34,16 +34,14 @@
 /*
  * Connection cache hash table entry
  *
- * The lookup key in this hash table is the foreign Mongo server name / IP
- * and the server port number. (We use just one connection per user per foreign server,
+ * The lookup key in this hash table is the foreign server OID plus the user
+ * mapping OID.  (We use just one connection per user per foreign server,
  * so that we can ensure all scans use the same snapshot during a query.)
- *
- * The "conn" pointer can be NULL if we don't currently have a live connection.
  */
 typedef struct ConnCacheKey
 {
-	char host[HOST_LEN];	/* MongoDB's host name  / IP address */
-	int32 port;				/* MongoDB's port number */
+	Oid			serverid;		/* OID of foreign server */
+	Oid			userid;			/* OID of local user whose mapping we use */
 } ConnCacheKey;
 
 typedef struct ConnCacheEntry
@@ -64,7 +62,7 @@ static HTAB *ConnectionHash = NULL;
  * is established if we don't already have a suitable one.
  */
 MONGO_CONN*
-mongo_get_connection(char *host, int32 port, char *databaseName, char *user, char *password)
+mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt)
 {
 	bool found;
 	ConnCacheEntry *entry;
@@ -85,10 +83,9 @@ mongo_get_connection(char *host, int32 port, char *databaseName, char *user, cha
 							HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 	}
 
-	/* Create hash key for the entry */
-	memset(key.host, 0, HOST_LEN);
-	strncpy(key.host, host, HOST_LEN);
-	key.port = port;
+	/* Create hash key for the entry.  Assume no pad bytes in key struct */
+	key.serverid = server->serverid;
+	key.userid = user->userid;
 
 	/*
 	 * Find or create cached entry for requested connection.
@@ -101,9 +98,9 @@ mongo_get_connection(char *host, int32 port, char *databaseName, char *user, cha
 	}
 	if (entry->conn == NULL)
 	{
-		entry->conn = MongoConnect(host, port, databaseName, user, password);
+		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password);
 		elog(DEBUG3, "new mongo_fdw connection %p for server \"%s:%d\"",
-			 entry->conn, host, port);
+			 entry->conn, opt->svr_address, opt->svr_port);
 	}
 
 	return entry->conn;

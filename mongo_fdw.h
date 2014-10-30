@@ -143,12 +143,12 @@ static const MongoValidOption ValidOptionArray[] =
  */
 typedef struct MongoFdwOptions
 {
-	char *addressName;
-	int32 portNumber;
-	char *databaseName;
+	char *svr_address;
+	int32 svr_port;
+	char *svr_database;
 	char *collectionName;
-	char *username;
-	char *password;
+	char *svr_username;
+	char *svr_password;
 } MongoFdwOptions;
 
 
@@ -202,7 +202,7 @@ extern void mongo_free_options(MongoFdwOptions *mongoFdwOptions);
 extern StringInfo mongo_option_names_string(Oid currentContextId);
 
 /* connection.c */
-extern MONGO_CONN *mongo_get_connection(char *host, int32 port, char *databaneName, char *user, char *password);
+MONGO_CONN* mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt);
 extern void mongo_cleanup_connection(void);
 extern void mongo_release_connection(MONGO_CONN* conn);
 

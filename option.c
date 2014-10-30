@@ -148,10 +148,10 @@ mongo_get_options(Oid foreignTableId)
 	char *addressName = NULL;
 	char *portName = NULL;
 	int32 portNumber = 0;
-	char *databaseName = NULL;
+	char *svr_database = NULL;
 	char *collectionName = NULL;
-	char *username= NULL;
-	char *password= NULL;
+	char *svr_username= NULL;
+	char *svr_password= NULL;
 
 	addressName = mongo_get_option_value(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -163,24 +163,25 @@ mongo_get_options(Oid foreignTableId)
 	else
 		portNumber = pg_atoi(portName, sizeof(int32), 0);
 
-	databaseName = mongo_get_option_value(foreignTableId, OPTION_NAME_DATABASE);
-	if (databaseName == NULL)
-		databaseName = pstrdup(DEFAULT_DATABASE_NAME);
+	svr_database = mongo_get_option_value(foreignTableId, OPTION_NAME_DATABASE);
+	if (svr_database == NULL)
+		svr_database = pstrdup(DEFAULT_DATABASE_NAME);
 
 	collectionName = mongo_get_option_value(foreignTableId, OPTION_NAME_COLLECTION);
 	if (collectionName == NULL)
 		collectionName = get_rel_name(foreignTableId);
 
-	username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
-	password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
+	svr_username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
+	svr_password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
 
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
-	mongoFdwOptions->addressName = addressName;
-	mongoFdwOptions->portNumber = portNumber;
-	mongoFdwOptions->databaseName = databaseName;
+
+	mongoFdwOptions->svr_address = addressName;
+	mongoFdwOptions->svr_port = portNumber;
+	mongoFdwOptions->svr_database = svr_database;
 	mongoFdwOptions->collectionName = collectionName;
-	mongoFdwOptions->username = username;
-	mongoFdwOptions->password = password;
+	mongoFdwOptions->svr_username = svr_username;
+	mongoFdwOptions->svr_password = svr_password;
 
 	return mongoFdwOptions;
 }
@@ -191,8 +192,8 @@ mongo_free_options(MongoFdwOptions *mongoFdwOptions)
 {
 	if (mongoFdwOptions)
 	{
-		pfree(mongoFdwOptions->addressName);
-		pfree(mongoFdwOptions->databaseName);
+		pfree(mongoFdwOptions->svr_address);
+		pfree(mongoFdwOptions->svr_database);
 		pfree(mongoFdwOptions);
 	}
 }

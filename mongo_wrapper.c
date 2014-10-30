@@ -47,11 +47,11 @@ MongoConnect(const char* host, const unsigned short port, char* databaseName, ch
 	{
 		if (mongo_cmd_authenticate(conn, databaseName, user, password) != MONGO_OK)
 		{
-			int err = conn->err;
+			char *str = pstrdup(conn->errstr);
 			mongo_destroy(conn);
 			mongo_dealloc(conn);
 			ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
-							errhint("Mongo driver connection error: %d", err)));
+							errhint("Mongo driver connection error: %s", str)));
 		}
 	}
 	return conn;

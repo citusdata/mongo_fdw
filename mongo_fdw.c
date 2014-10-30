@@ -389,7 +389,7 @@ MongoExplainForeignScan(ForeignScanState *scanState, ExplainState *explainState)
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
-	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->databaseName,
+	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->svr_database,
 					 mongoFdwOptions->collectionName);
 
 	mongo_free_options(mongoFdwOptions);
@@ -413,7 +413,7 @@ MongoExplainForeignModify(ModifyTableState *mtstate,
 
 	/* construct fully qualified collection name */
 	namespaceName = makeStringInfo();
-	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->databaseName,
+	appendStringInfo(namespaceName, "%s.%s", mongoFdwOptions->svr_database,
 					 mongoFdwOptions->collectionName);
 
 	mongo_free_options(mongoFdwOptions);
@@ -435,17 +435,21 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	Oid foreignTableId = InvalidOid;
 	List *columnList = NIL;
 	HTAB *columnMappingHash = NULL;
-	char *addressName = NULL;
-	int32 portNumber = 0;
-	char *databaseName= NULL;
-	char *username= NULL;
-	char *password= NULL;
 	ForeignScan *foreignScan = NULL;
 	List *foreignPrivateList = NIL;
 	BSON *queryDocument = NULL;
 	MongoFdwOptions *mongoFdwOptions = NULL;
 	MongoFdwModifyState *fmstate = NULL;
 	List *opExpressionList = NIL;
+	RangeTblEntry *rte;
+	EState            *estate = scanState->ss.ps.state;
+	ForeignScan       *fsplan = (ForeignScan *) scanState->ss.ps.plan;
+
+	Oid               userid;
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
+
 
 	/* if Explain with no Analyze, do nothing */
 	if (executorFlags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -454,18 +458,25 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	foreignTableId = RelationGetRelid(scanState->ss.ss_currentRelation);
 	mongoFdwOptions = mongo_get_options(foreignTableId);
 
-	/* resolve hostname and port number; and connect to mongo server */
-	addressName = mongoFdwOptions->addressName;
-	portNumber = mongoFdwOptions->portNumber;
-	databaseName = mongoFdwOptions->databaseName;
-	username = mongoFdwOptions->username;
-	password = mongoFdwOptions->password;
+	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
+	/*
+	 * Identify which user to do the remote access as.  This should match what
+	 * ExecCheckRTEPerms() does.
+	 */
+	rte = rt_fetch(fsplan->scan.scanrelid, estate->es_range_table);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+
+	/* Get info about foreign table. */
+	fmstate->rel = scanState->ss.ss_currentRelation;
+	table = GetForeignTable(RelationGetRelid(fmstate->rel));
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
 
 	/*
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
 	 */
-	mongoConnection = mongo_get_connection(addressName, portNumber, databaseName, username, password);
+	mongoConnection = mongo_get_connection(server, user, mongoFdwOptions);
 
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
 	foreignPrivateList = foreignScan->fdw_private;
@@ -479,10 +490,9 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
 	/* create cursor for collection name and set query */
-	mongoCursor = MongoCursorCreate(mongoConnection, mongoFdwOptions->databaseName, mongoFdwOptions->collectionName, queryDocument);
+	mongoCursor = MongoCursorCreate(mongoConnection, mongoFdwOptions->svr_database, mongoFdwOptions->collectionName, queryDocument);
 
 	/* create and set foreign execution state */
-	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 	fmstate->columnMappingHash = columnMappingHash;
 	fmstate->mongoConnection = mongoConnection;
 	fmstate->mongoCursor = mongoCursor;
@@ -602,7 +612,7 @@ MongoReScanForeignScan(ForeignScanState *scanState)
 
 	/* reconstruct cursor for collection name and set query */
 	fmstate->mongoCursor = MongoCursorCreate(mongoConnection,
-													fmstate->mongoFdwOptions->databaseName,
+													fmstate->mongoFdwOptions->svr_database,
 													fmstate->mongoFdwOptions->collectionName,
 													fmstate->queryDocument);
 	mongo_free_options(mongoFdwOptions);
@@ -750,15 +760,28 @@ MongoExecForeignInsert(EState *estate,
 	Datum value;
 	bool isnull = false;
 
+	Oid               userid;
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
 
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
-	/* resolve foreign table options; and connect to mongo server */
-	options = fmstate->mongoFdwOptions;
+	userid = GetUserId();
 
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	/* Get info about foreign table. */
+	table = GetForeignTable(RelationGetRelid(fmstate->rel));
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	/*
+	 * Get connection to the foreign server. Connection manager will
+	 * establish new connection if necessary.
+	 */
+	options = fmstate->mongoFdwOptions;
+	mongoConnection = mongo_get_connection(server, user, options);
 
 	b = BsonCreate();
 
@@ -798,7 +821,7 @@ MongoExecForeignInsert(EState *estate,
 	BsonFinish(b);
 
 	/* Now we are ready to insert tuple / document into MongoDB */
-	MongoInsert(mongoConnection, options->databaseName, options->collectionName, b);
+	MongoInsert(mongoConnection, options->svr_database, options->collectionName, b);
 
 	BsonDestroy(b);
 
@@ -863,6 +886,11 @@ MongoExecForeignUpdate(EState *estate,
 	BSON *b = NULL;
 	BSON *op = NULL;
 	BSON set;
+	Oid     userid = GetUserId();
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
+
 
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 
@@ -871,7 +899,16 @@ MongoExecForeignUpdate(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	/* Get info about foreign table. */
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	/*
+	 * Get connection to the foreign server. Connection manager will
+	 * establish new connection if necessary.
+	 */
+	mongoConnection = mongo_get_connection(server, user, options);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -919,7 +956,7 @@ MongoExecForeignUpdate(EState *estate,
 	BsonFinish(op);
 
 	/* We are ready to update the row into MongoDB */
-	MongoUpdate(mongoConnection, options->databaseName, options->collectionName, op, b);
+	MongoUpdate(mongoConnection, options->svr_database, options->collectionName, op, b);
 
 	BsonDestroy(op);
 	BsonDestroy(b);
@@ -947,6 +984,12 @@ MongoExecForeignDelete(EState *estate,
 	Oid typoid = InvalidOid;
 	BSON *b = NULL;
 
+	Oid userid = GetUserId();
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
+
+
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -954,7 +997,16 @@ MongoExecForeignDelete(EState *estate,
 	/* resolve foreign table options; and connect to mongo server */
 	options = fmstate->mongoFdwOptions;
 
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	/* Get info about foreign table. */
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
+
+	/*
+	 * Get connection to the foreign server. Connection manager will
+	 * establish new connection if necessary.
+	 */
+	mongoConnection = mongo_get_connection(server, user, options);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -972,7 +1024,7 @@ MongoExecForeignDelete(EState *estate,
 	BsonFinish(b);
 
 	/* Now we are ready to delete a single document from MongoDB */
-	MongoDelete(mongoConnection, options->databaseName, options->collectionName, b);
+	MongoDelete(mongoConnection, options->svr_database, options->collectionName, b);
 
 	BsonDestroy(b);
 
@@ -1012,13 +1064,28 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	MONGO_CONN *mongoConnection = NULL;
 	const BSON *emptyQuery = NULL;
 	double documentCount = 0.0;
+	Oid		   userid = GetUserId();
+	ForeignServer     *server;
+	UserMapping       *user;
+	ForeignTable      *table;
+
+
+	/* Get info about foreign table. */
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
 
 	/* resolve foreign table options; and connect to mongo server */
 	options = mongo_get_options(foreignTableId);
 
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
+	/*
+	 * Get connection to the foreign server. Connection manager will
+	 * establish new connection if necessary.
+	 */
+	mongoConnection = mongo_get_connection(server, user, options);
 
-	documentCount = MongoAggregateCount(mongoConnection, options->databaseName, options->collectionName, emptyQuery);
+
+	documentCount = MongoAggregateCount(mongoConnection, options->svr_database, options->collectionName, emptyQuery);
 
 	mongo_free_options(options);
 
