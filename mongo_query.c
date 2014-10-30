@@ -559,11 +559,11 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			BsonAppendStartArray(queryDocument, keyName, &t);
 			for (i = 0; i < num_elems; i++)
 			{
-				if (elem_nulls[i])
-					continue;
 				char *valueString = NULL;
 				Oid outputFunctionId = InvalidOid;
 				bool typeVarLength = false;
+				if (elem_nulls[i])
+					continue;
 				getTypeOutputInfo(TEXTOID, &outputFunctionId, &typeVarLength);
 				valueString = OidOutputFunctionCall(outputFunctionId, elem_values[i]);
 				status = BsonAppendUTF8(queryDocument, keyName, valueString);

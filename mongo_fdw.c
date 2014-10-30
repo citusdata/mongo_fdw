@@ -1618,7 +1618,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray) {
 				appendStringInfo(output, "%d", bson_iterator_int(&i));
 				break;
 			case BSON_LONG:
-				appendStringInfo(output, "%ld", (uint64_t)bson_iterator_long(&i));
+				appendStringInfo(output, "%lld", (uint64_t)bson_iterator_long(&i));
 				break;
 			case BSON_TIMESTAMP:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
