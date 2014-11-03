@@ -1508,7 +1508,18 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
             }
             is_array = (BSON_TYPE_ARRAY == type);
 
+#ifdef META_DRIVER
+            if (is_array)
+            {
+              DumpJsonArray(buffer, bsonIterator);
+            }
+            else
+            {
+              DumpJsonObject(buffer, bsonIterator);
+            }
+#else
             DumpJson(buffer, bsonIterator, is_array);
+#endif
 
             result = cstring_to_text_with_len(buffer->data, buffer->len);
 
@@ -1540,25 +1551,43 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
  */
 #ifdef META_DRIVER
 void
-DumpJson(StringInfo output, BSON_ITERATOR *iter, bool isArray) {
-    char *str;
-    const uint8_t *buf;
-    uint32_t buf_len;
-    const BSON *bson;
-    if (isArray)
+DumpJsonObject(StringInfo output, BSON_ITERATOR *iter) {
+    char *json;
+    uint32_t len;
+    const uint8_t *data;
+    BSON bson;
+
+    bson_iter_document(iter, &len, &data);
+
+    if (bson_init_static(&bson, data, len))
     {
-        bson_iter_document (&iter, &buf_len, &buf);
-        bson_init_static (&bson, buf, buf_len);
-        str = bson_array_as_json(bson, NULL);
+      if((json = bson_as_json (bson, NULL)))
+      {
+        appendStringInfoString(output, json);
+        bson_free(json);
+      }
+      bson_destroy(bson);
     }
-    else
+}
+
+void
+DumpJsonArray(StringInfo output, BSON_ITERATOR *iter) {
+    char *json;
+    uint32_t len;
+    const uint8_t *data;
+    BSON bson;
+
+    bson_iter_array(iter, &len, &data);
+
+    if (bson_init_static(&bson, data, len))
     {
-        bson_iter_array (&iter, &buf_len, &buf);
-        bson_init_static (&bson, buf, buf_len);
-        str = bson_as_json(bson, NULL);
+      if((json = bson_array_as_json (bson, NULL)))
+      {
+        appendStringInfoString(output, json);
+        bson_free(json);
+      }
+      bson_destroy(bson);
     }
-    appendStringInfoChar(output, *str);
-    bson_free (str);
 }
 #else
 void
