@@ -1115,7 +1115,6 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
     {
         const char *bsonKey = BsonIterKey(&bsonIterator);
         BSON_TYPE bsonType = BsonIterType(&bsonIterator);
-
         ColumnMapping *columnMapping = NULL;
         Oid columnTypeId = InvalidOid;
         Oid columnArrayTypeId = InvalidOid;
@@ -1252,6 +1251,12 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
             {
                 compatibleTypes = true;
             }
+#ifdef META_DRIVER
+            if (bsonType == BSON_TYPE_OID)
+            {
+                compatibleTypes = true;
+            }
+#endif
             break;
         }
         case NAMEOID:
@@ -1371,7 +1376,6 @@ static Datum
 ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 {
     Datum columnValue = 0;
-
     switch(columnTypeId)
     {
         case INT2OID:
@@ -1467,10 +1471,12 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
             switch (BsonIterType(bsonIterator))
             {
                 case BSON_TYPE_OID:
-                    value =  
+                    value = BsonIterOid(bsonIterator);
+                    value_len = 12;
                     break;
                 default: 
                     value = BsonIterBinData(bsonIterator, &value_len);
+                    break;
             }
 #else
             value_len = BsonIterBinLen(bsonIterator);
