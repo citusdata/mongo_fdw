@@ -61,9 +61,9 @@ PG_FUNCTION_INFO_V1(mongo_fdw_validator);
 Datum
 mongo_fdw_validator(PG_FUNCTION_ARGS)
 {
-	Datum optionArray = PG_GETARG_DATUM(0);
-	Oid optionContextId = PG_GETARG_OID(1);
-	List *optionList = untransformRelOptions(optionArray);
+	Datum    optionArray = PG_GETARG_DATUM(0);
+	Oid      optionContextId = PG_GETARG_OID(1);
+	List     *optionList = untransformRelOptions(optionArray);
 	ListCell *optionCell = NULL;
 
 	foreach(optionCell, optionList)
@@ -114,8 +114,8 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 StringInfo
 mongo_option_names_string(Oid currentContextId)
 {
-	StringInfo optionNamesString = makeStringInfo();
-	bool firstOptionPrinted = false;
+	StringInfo  optionNamesString = makeStringInfo();
+	bool        firstOptionPrinted = false;
 
 	int32 optionIndex = 0;
 	for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
@@ -144,16 +144,16 @@ mongo_option_names_string(Oid currentContextId)
 MongoFdwOptions *
 mongo_get_options(Oid foreignTableId)
 {
-	MongoFdwOptions *mongoFdwOptions = NULL;
-	char *addressName = NULL;
-	char *portName = NULL;
-	int32 portNumber = 0;
-	char *databaseName = NULL;
-	char *collectionName = NULL;
-	char *username= NULL;
-	char *password= NULL;
+	MongoFdwOptions         *options = NULL;
+	char                    *addressName = NULL;
+	char                    *portName = NULL;
+	int32                   portNumber = 0;
+	char                    *svr_database = NULL;
+	char                    *collectionName = NULL;
+	char                    *svr_username= NULL;
+	char                    *svr_password= NULL;
 #ifdef META_DRIVER
-	char *readPreference = NULL;
+	char                    *readPreference = NULL;
 
 	readPreference = mongo_get_option_value(foreignTableId, OPTION_NAME_READ_PREFERENCE);
 #endif
@@ -168,39 +168,41 @@ mongo_get_options(Oid foreignTableId)
 	else
 		portNumber = pg_atoi(portName, sizeof(int32), 0);
 
-	databaseName = mongo_get_option_value(foreignTableId, OPTION_NAME_DATABASE);
-	if (databaseName == NULL)
-		databaseName = pstrdup(DEFAULT_DATABASE_NAME);
+	svr_database = mongo_get_option_value(foreignTableId, OPTION_NAME_DATABASE);
+	if (svr_database == NULL)
+		svr_database = pstrdup(DEFAULT_DATABASE_NAME);
 
 	collectionName = mongo_get_option_value(foreignTableId, OPTION_NAME_COLLECTION);
 	if (collectionName == NULL)
 		collectionName = get_rel_name(foreignTableId);
 
-	username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
-	password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
+	svr_username = mongo_get_option_value(foreignTableId, OPTION_NAME_USERNAME);
+	svr_password = mongo_get_option_value(foreignTableId, OPTION_NAME_PASSWORD);
 
-	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
-	mongoFdwOptions->addressName = addressName;
-	mongoFdwOptions->portNumber = portNumber;
-	mongoFdwOptions->databaseName = databaseName;
-	mongoFdwOptions->collectionName = collectionName;
-	mongoFdwOptions->username = username;
-	mongoFdwOptions->password = password;
+	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
+
+	options->svr_address = addressName;
+	options->svr_port = portNumber;
+	options->svr_database = svr_database;
+	options->collectionName = collectionName;
+	options->svr_username = svr_username;
+	options->svr_password = svr_password;
+
 #ifdef META_DRIVER
 	mongoFdwOptions->readPreference = readPreference;
 #endif
 
-	return mongoFdwOptions;
+	return options;
 }
 
 void
-mongo_free_options(MongoFdwOptions *mongoFdwOptions)
+mongo_free_options(MongoFdwOptions *options)
 {
-	if (mongoFdwOptions)
+	if (options)
 	{
-		pfree(mongoFdwOptions->addressName);
-		pfree(mongoFdwOptions->databaseName);
-		pfree(mongoFdwOptions);
+		pfree(options->svr_address);
+		pfree(options->svr_database);
+		pfree(options);
 	}
 }
 
@@ -212,12 +214,12 @@ mongo_free_options(MongoFdwOptions *mongoFdwOptions)
 static char *
 mongo_get_option_value(Oid foreignTableId, const char *optionName)
 {
-	ForeignTable *foreignTable = NULL;
-	ForeignServer *foreignServer = NULL;
-	List *optionList = NIL;
-	ListCell *optionCell = NULL;
-	UserMapping *mapping= NULL;
-	char *optionValue = NULL;
+	ForeignTable           *foreignTable = NULL;
+	ForeignServer          *foreignServer = NULL;
+	List                   *optionList = NIL;
+	ListCell               *optionCell = NULL;
+	UserMapping            *mapping= NULL;
+	char                   *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
