@@ -275,11 +275,7 @@ extern void mongo_free_options(MongoFdwOptions *options);
 extern StringInfo mongo_option_names_string(Oid currentContextId);
 
 /* connection.c */
-#ifdef META_DRIVER
-MONGO_CONN * mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt, char *readPreference);
-#else
-MONGO_CONN * mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt);
-#endif
+MONGO_CONN* mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt);
 
 extern void mongo_cleanup_connection(void);
 extern void mongo_release_connection(MONGO_CONN* conn);

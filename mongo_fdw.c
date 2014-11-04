@@ -142,7 +142,12 @@ static void mongo_fdw_exit(int code, Datum arg);
 extern PGDLLEXPORT void _PG_init(void);
 
 const char * EscapeJsonString(const char *string);
+#ifdef META_DRIVER
+void DumpJsonObject(StringInfo buffer, BSON_ITERATOR *iter);
+void DumpJsonArray(StringInfo buffer, BSON_ITERATOR *iter);
+#else
 void DumpJson(StringInfo buffer, const char *bsonData, bool isArray);
+#endif
 
 /* the null action object used for pure validation */
 static JsonSemAction nullSemAction =
@@ -1340,7 +1345,7 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 		}
 		case JSONOID:
 		{
-			if (bsonType == BSON_OBJECT || bsonType == BSON_ARRAY)
+			if (bsonType == BSON_TYPE_OBJECT || bsonType == BSON_TYPE_ARRAY)
 			{
 				compatibleTypes = true;
 			}
@@ -1565,12 +1570,12 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			bool is_array;
 			StringInfo buffer = makeStringInfo();
 
-			bson_type type = bson_iterator_type(bsonIterator);
-			if (type != BSON_ARRAY && type != BSON_OBJECT)
+			BSON_TYPE type = BSON_ITER_TYPE(bsonIterator);
+			if (type != BSON_TYPE_ARRAY && type != BSON_TYPE_DOCUMENT)
 			{
 				ereport(ERROR, (errmsg("cannot convert scolar to json")));
 			}
-			is_array = (BSON_ARRAY == type);
+			is_array = (BSON_TYPE_ARRAY == type);
 
 #ifdef META_DRIVER
 			if (is_array)
@@ -1652,7 +1657,7 @@ DumpJsonArray(StringInfo output, BSON_ITERATOR *iter) {
 	  }
 	}
 }
-#endif
+#else
 void
 DumpJson(StringInfo output, const char *bsonData, bool isArray)
 {
@@ -1697,80 +1702,80 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 
 		switch (t)
 		{
-			case BSON_DOUBLE:
+			case BSON_TYPE_DOUBLE:
 				appendStringInfo(output, "%f", bson_iterator_double(&i));
 				break;
-			case BSON_STRING:
+			case BSON_TYPE_STRING:
 				appendStringInfo(output, "\"%s\"",
 						EscapeJsonString(bson_iterator_string(&i)));
 				break;
-			case BSON_SYMBOL:
+			case BSON_TYPE_SYMBOL:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("`symbol` BSON type is deprecated and "
 									   "unsupported"),
 								errhint("Symbol: %s", bson_iterator_string(&i))));
 				break;
-			case BSON_OID:
+			case BSON_TYPE_OID:
 			{
 				char oidhex[25];
 				bson_oid_to_string(bson_iterator_oid(&i), oidhex);
 				appendStringInfo(output, "\"%s\"", oidhex);
 				break;
 			}
-			case BSON_BOOL:
+			case BSON_TYPE_BOOL:
 				appendStringInfoString(
 						output, bson_iterator_bool(&i) ? "true" : "false");
 				break;
-			case BSON_DATE:
+			case BSON_TYPE_DATE:
 				appendStringInfo(output, "{\"$date\":%ld}",
 						(long int)bson_iterator_date(&i));
 				break;
-			case BSON_BINDATA:
+			case BSON_TYPE_BINDATA:
 				/* It's possible to encode the data with base64 here. */
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `binary data` BSON type "
 									   "is not implemented")));
 				break;
-			case BSON_UNDEFINED:
+			case BSON_TYPE_UNDEFINED:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("`undefined` BSON type is deprecated "
 									   "and unsupported")));
 				break;
-			case BSON_NULL:
+			case BSON_TYPE_NULL:
 				appendStringInfoString(output, "null");
 				break;
-			case BSON_REGEX:
+			case BSON_TYPE_REGEX:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `regex` BSON type is "
 									   "not implemented"),
 								errhint("Regex: %s", bson_iterator_regex(&i))));
 				break;
-			case BSON_CODE:
+			case BSON_TYPE_CODE:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `code` BSON type is "
 									   "not implemented"),
 								errhint("Code: %s", bson_iterator_code(&i))));
 				break;
-			case BSON_CODEWSCOPE:
+			case BSON_TYPE_CODEWSCOPE:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `code with scope` BSON "
 									   "type is not implemented")));
 				break;
-			case BSON_INT:
+			case BSON_TYPE_INT:
 				appendStringInfo(output, "%d", bson_iterator_int(&i));
 				break;
-			case BSON_LONG:
+			case BSON_TYPE_LONG:
 				appendStringInfo(output, "%lld", (uint64_t)bson_iterator_long(&i));
 				break;
-			case BSON_TIMESTAMP:
+			case BSON_TYPE_TIMESTAMP:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("internal `timestamp` BSON type is "
 									   "and unsupported")));
 				break;
-			case BSON_OBJECT:
+			case BSON_TYPE_DOCUMENT:
 				DumpJson(output, bson_iterator_value(&i), false);
 				break;
-			case BSON_ARRAY:
+			case BSON_TYPE_ARRAY:
 				DumpJson(output, bson_iterator_value(&i), true);
 				break;
 			default:
@@ -1781,7 +1786,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 	}
 	appendStringInfoChar(output, endSymbol);
 }
-
+#endif
 
 /*
  * EscapeJsonString escapes a string for safe inclusion in JSON.

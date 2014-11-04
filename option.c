@@ -189,7 +189,7 @@ mongo_get_options(Oid foreignTableId)
 	options->svr_password = svr_password;
 
 #ifdef META_DRIVER
-	mongoFdwOptions->readPreference = readPreference;
+	options->readPreference = readPreference;
 #endif
 
 	return options;
