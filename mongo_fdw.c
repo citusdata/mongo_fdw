@@ -1464,7 +1464,14 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
             int value_len;
             const char *value;
 #ifdef META_DRIVER
-            value = BsonIterBinData(bsonIterator, &value_len);
+            switch (BsonIterType(bsonIterator))
+            {
+                case BSON_TYPE_OID:
+                    value =  
+                    break;
+                default: 
+                    value = BsonIterBinData(bsonIterator, &value_len);
+            }
 #else
             value_len = BsonIterBinLen(bsonIterator);
             value = BsonIterBinData(bsonIterator);
@@ -1556,17 +1563,16 @@ DumpJsonObject(StringInfo output, BSON_ITERATOR *iter) {
     uint32_t len;
     const uint8_t *data;
     BSON bson;
-
+    
     bson_iter_document(iter, &len, &data);
 
     if (bson_init_static(&bson, data, len))
     {
-      if((json = bson_as_json (bson, NULL)))
+      if((json = bson_as_json (&bson, NULL)))
       {
         appendStringInfoString(output, json);
         bson_free(json);
       }
-      bson_destroy(bson);
     }
 }
 
@@ -1581,12 +1587,11 @@ DumpJsonArray(StringInfo output, BSON_ITERATOR *iter) {
 
     if (bson_init_static(&bson, data, len))
     {
-      if((json = bson_array_as_json (bson, NULL)))
+      if((json = bson_array_as_json (&bson, NULL)))
       {
         appendStringInfoString(output, json);
         bson_free(json);
       }
-      bson_destroy(bson);
     }
 }
 #else
