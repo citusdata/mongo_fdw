@@ -1700,7 +1700,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 			case BSON_TYPE_DOUBLE:
 				appendStringInfo(output, "%f", bson_iterator_double(&i));
 				break;
-			case BSON_TYPE_STRING:
+			case BSON_TYPE_UTF8:
 				appendStringInfo(output, "\"%s\"",
 						EscapeJsonString(bson_iterator_string(&i)));
 				break;
@@ -1721,7 +1721,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 				appendStringInfoString(
 						output, bson_iterator_bool(&i) ? "true" : "false");
 				break;
-			case BSON_TYPE_DATE:
+			case BSON_TYPE_DATE_TIME:
 				appendStringInfo(output, "{\"$date\":%ld}",
 						(long int)bson_iterator_date(&i));
 				break;
@@ -1756,10 +1756,10 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 								errmsg("support for `code with scope` BSON "
 									   "type is not implemented")));
 				break;
-			case BSON_TYPE_INT:
+			case BSON_TYPE_INT32:
 				appendStringInfo(output, "%d", bson_iterator_int(&i));
 				break;
-			case BSON_TYPE_LONG:
+			case BSON_TYPE_INT64:
 				appendStringInfo(output, "%lld", (uint64_t)bson_iterator_long(&i));
 				break;
 			case BSON_TYPE_TIMESTAMP:
