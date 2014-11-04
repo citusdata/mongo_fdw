@@ -1079,11 +1079,6 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	/* resolve foreign table options; and connect to mongo server */
 	options = mongo_get_options(foreignTableId);
 
-#ifdef META_DRIVER
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password, options->readPreference);
-#else
-	mongoConnection = mongo_get_connection(options->addressName, options->portNumber, options->databaseName, options->username, options->password);
-#endif
 	/*
 	 * Get connection to the foreign server. Connection manager will
 	 * establish new connection if necessary.
@@ -1345,7 +1340,7 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 		}
 		case JSONOID:
 		{
-			if (bsonType == BSON_TYPE_OBJECT || bsonType == BSON_TYPE_ARRAY)
+			if (bsonType == BSON_TYPE_DOCUMENT || bsonType == BSON_TYPE_ARRAY)
 			{
 				compatibleTypes = true;
 			}
