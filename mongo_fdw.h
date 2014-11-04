@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_fdw.h
- *      Foreign-data wrapper for remote MongoDB servers
+ * 		Foreign-data wrapper for remote MongoDB servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  *
@@ -10,7 +10,7 @@
  * Portions Copyright (c) 2012–2014 Citus Data, Inc.
  *
  * IDENTIFICATION
- *      mongo_fdw.h
+ * 		mongo_fdw.h
  *
  *-------------------------------------------------------------------------
  */
@@ -234,23 +234,23 @@ typedef struct MongoFdwOptions
  */
 typedef struct MongoFdwModifyState
 {
-	Relation		rel;             /* relcache entry for the foreign table */
-	List			*target_attrs;   /* list of target attribute numbers */
+	Relation		rel;				/* relcache entry for the foreign table */
+	List			*target_attrs;		/* list of target attribute numbers */
 
 	/* info about parameters for prepared statement */
-	int			p_nums;			/* number of parameters to transmit */
-	FmgrInfo		*p_flinfo;		/* output conversion functions for them */
+	int				p_nums;				/* number of parameters to transmit */
+	FmgrInfo		*p_flinfo;			/* output conversion functions for them */
 
-	struct HTAB         *columnMappingHash;
+	struct HTAB		*columnMappingHash;
 
 	MONGO_CONN		*mongoConnection;	/* MongoDB connection */
-	MONGO_CURSOR		*mongoCursor;		/* MongoDB cursor */
+	MONGO_CURSOR	*mongoCursor;		/* MongoDB cursor */
 	BSON			*queryDocument;		/* Bson Document */
 
-	MongoFdwOptions 	*options;
+	MongoFdwOptions	*options;
 
 	/* working memory context */
-	MemoryContext temp_cxt;             /* context for per-tuple temporary data */
+	MemoryContext	temp_cxt;			/* context for per-tuple temporary data */
 } MongoFdwModifyState;
 
 
