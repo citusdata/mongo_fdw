@@ -1518,6 +1518,7 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		{
 			int value_len;
 			const char *value;
+			bytea *result;
 #ifdef META_DRIVER
 			switch (BsonIterType(bsonIterator))
 			{
@@ -1533,7 +1534,7 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 			value_len = BsonIterBinLen(bsonIterator);
 			value = BsonIterBinData(bsonIterator);
 #endif
-			bytea *result = (bytea *)palloc(value_len + VARHDRSZ);
+			result = (bytea *)palloc(value_len + VARHDRSZ);
 			memcpy(VARDATA(result), value, value_len);
 			SET_VARSIZE(result, value_len + VARHDRSZ);
 			columnValue = PointerGetDatum(result);
