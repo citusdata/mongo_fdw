@@ -114,7 +114,7 @@ MongoDelete(MONGO_CONN* conn, char* database, char *collection, BSON* b)
 
 	c = mongoc_client_get_collection (conn, database, collection);
 
-	r = mongoc_collection_delete(c, MONGOC_DELETE_SINGLE_REMOVE, b, NULL, &error);
+	r = mongoc_collection_remove(c, MONGOC_DELETE_SINGLE_REMOVE, b, NULL, &error);
 	mongoc_collection_destroy(c);
 	if (!r)
 		ereport(ERROR, (errmsg("failed to delete row"),
@@ -256,7 +256,7 @@ BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 {
 	const uint8_t *binary = NULL;
 	bson_subtype_t subtype = BSON_SUBTYPE_BINARY;
-	bson_iter_binary (it, &subtype, &len, &binary);
+	bson_iter_binary (it, &subtype, len, &binary);
 	return (char*)binary;
 }
 
@@ -369,7 +369,7 @@ BsonAppendUTF8(BSON *b, const char* key, char *v)
 bool
 BsonAppendBinary(BSON *b, const char* key, char *v, size_t len)
 {
-	return bson_append_binary(b, key, (int)strlen(key), BSON_SUBTYPE_BINARY, v, len);
+	return bson_append_binary(b, key, (int)strlen(key), BSON_SUBTYPE_BINARY, (const uint8_t *)v, len);
 }
 
 bool
@@ -414,9 +414,9 @@ BsonFinish(BSON* b)
 double
 MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b)
 {
-	const BSON *command;
+	BSON *command;
 	BSON *reply;
-	const BSON *doc;
+	BSON *doc;
 	double count;
 	mongoc_cursor_t *cursor;
 	bool ret;
@@ -431,11 +431,11 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 
 	cursor = mongoc_client_command(conn, database, MONGOC_QUERY_SLAVE_OK, 0, 1, 0, command, NULL, NULL);
 
-	ret = mongoc_cursor_next(cursor, &doc);
+	ret = mongoc_cursor_next(cursor, (const BSON**)&doc);
 
 	if (ret) {
-		bson_copy_to(doc, reply);
 		bson_iter_t it;
+		bson_copy_to(doc, reply);
 		if (bson_iter_init_find(&it, reply, "n"))
 			count = BsonIterDouble(&it);
 	} else {

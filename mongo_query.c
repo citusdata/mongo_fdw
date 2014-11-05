@@ -470,7 +470,7 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
                         if (strcmp(keyName, "_id") == 0)
                         {
                             bson_oid_t oid;
-                            bson_oid_init_from_data(&oid, data);
+                            bson_oid_init_from_data(&oid, (const uint8_t *)data);
                             status = BsonAppendOid(queryDocument, keyName, &oid);
                         }
                         else

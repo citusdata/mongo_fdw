@@ -1517,22 +1517,22 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		case BYTEAOID:
 		{
 			int value_len;
-			const char *value;
+			char *value;
 			bytea *result;
 #ifdef META_DRIVER
 			switch (BsonIterType(bsonIterator))
 			{
 				case BSON_TYPE_OID:
-					value = BsonIterOid(bsonIterator);
+					value = (char*) BsonIterOid(bsonIterator);
 					value_len = 12;
 					break;
 				default: 
-					value = BsonIterBinData(bsonIterator, &value_len);
+					value = (char*)BsonIterBinData(bsonIterator, (uint32_t *)&value_len);
 					break;
 			}
 #else
 			value_len = BsonIterBinLen(bsonIterator);
-			value = BsonIterBinData(bsonIterator);
+			value = (char*)BsonIterBinData(bsonIterator);
 #endif
 			result = (bytea *)palloc(value_len + VARHDRSZ);
 			memcpy(VARDATA(result), value, value_len);
