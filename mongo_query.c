@@ -36,7 +36,9 @@
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/timestamp.h"
-
+#include "bson.h"
+#include "json.h"
+#include "bits.h"
 
 /* Local functions forward declarations */
 static Expr * FindArgumentOfType(List *argumentList, NodeTag argumentType);
@@ -47,6 +49,53 @@ static List * ColumnOperatorList(Var *column, List *operatorList);
 static void AppendConstantValue(BSON *queryDocument, const char *keyName,
 								Const *constant);
 
+
+bool json_to_bson_append_element( bson *bb , const char *k , struct json_object *v );
+
+bool json_to_bson_append_element( bson *bb , const char *k , struct json_object *v ) {
+	bool status;
+	status = true;
+    if ( ! v ) {
+        bson_append_null( bb , k );
+        return status;
+    }
+
+    switch ( json_object_get_type( v ) ) {
+    case json_type_int:
+        bson_append_int( bb , k , json_object_get_int( v ) );
+        break;
+    case json_type_boolean:
+        bson_append_bool( bb , k , json_object_get_boolean( v ) );
+        break;
+    case json_type_double:
+        bson_append_double( bb , k , json_object_get_double( v ) );
+        break;
+    case json_type_string:
+        bson_append_string( bb , k , json_object_get_string( v ) );
+        break;
+    case json_type_object:
+        bson_append_start_object( bb , k );
+		json_object_object_foreach( v, kk, vv ) {
+			json_to_bson_append_element( bb , kk , vv );
+		}
+        bson_append_finish_object( bb );
+        break;
+    case json_type_array:
+        bson_append_start_array( bb , k );
+		int i;
+		char buf[10];
+		for ( i=0; i<json_object_array_length( v ); i++ ) {
+			sprintf( buf , "%d" , i );
+			json_to_bson_append_element( bb , buf , json_object_array_get_idx( v , i ) );
+		}
+        bson_append_finish_object( bb );
+        break;
+    default:
+    	status = false;
+        fprintf( stderr , "can't handle type for : %s\n" , json_object_to_json_string( v ) );
+    }
+    return status;
+}
 
 /*
  * ApplicableOpExpressionList walks over all filter clauses that relate to this
@@ -571,6 +620,24 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			BsonAppendFinishArray(queryDocument, &t);
 			pfree(elem_values);
 			pfree(elem_nulls);
+			break;
+		}
+		case JSONOID:
+		{
+			char *outputString = NULL;
+			Oid outputFunctionId = InvalidOid;
+			bool typeVarLength = false;
+			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+			outputString = OidOutputFunctionCall(outputFunctionId, value);
+    		struct json_object *o = json_tokener_parse( outputString );
+
+			if ( is_error( o ) ) {
+				fprintf( stderr , "\t ERROR PARSING\n" );
+				status = 0;
+				break;
+			}
+
+			status = json_to_bson_append_element( queryDocument, keyName, o );
 			break;
 		}
 		default:
