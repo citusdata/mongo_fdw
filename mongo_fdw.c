@@ -1715,7 +1715,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 			{
 				char oidhex[25];
 				bson_oid_to_string(bson_iterator_oid(&i), oidhex);
-				appendStringInfo(output, "\"%s\"", oidhex);
+				appendStringInfo(output, "{\"$oid\":\"%s\"}", oidhex);
 				break;
 			}
 			case BSON_TYPE_BOOL:

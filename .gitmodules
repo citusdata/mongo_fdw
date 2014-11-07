@@ -1,3 +1,6 @@
 [submodule "mongo-c-driver"]
 	path = mongo-c-driver
 	url = ../../mongodb/mongo-c-driver.git
+[submodule "json-c"]
+	path = json-c
+	url = https://github.com/json-c/json-c.git
