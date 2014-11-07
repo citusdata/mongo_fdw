@@ -74,12 +74,29 @@ bool json_to_bson_append_element( bson *bb , const char *k , struct json_object 
         bson_append_string( bb , k , json_object_get_string( v ) );
         break;
     case json_type_object:
+    {
+		struct json_object *joj = NULL;
+		joj = json_object_object_get( v, "$oid" );
+		if (joj != NULL) {
+			bson_oid_t bsonObjectId;
+			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
+			BsonOidFromString(&bsonObjectId, json_object_get_string(joj) );
+			status = BsonAppendOid( bb, k , &bsonObjectId);
+			break;
+		}
+		joj = json_object_object_get( v, "$date" );
+		if (joj != NULL) {
+			status = BsonAppendDate( bb, k , json_object_get_int64(joj));
+			break;
+		}
+
         bson_append_start_object( bb , k );
 		json_object_object_foreach( v, kk, vv ) {
 			json_to_bson_append_element( bb , kk , vv );
 		}
         bson_append_finish_object( bb );
         break;
+    }
     case json_type_array:
         bson_append_start_array( bb , k );
 		int i;
