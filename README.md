@@ -42,16 +42,20 @@ In order to use MongoDB driver 1.0.0+, take the following steps:
   * ensure pkg-config / pkgconf is installed on your system.
   * run `make -f Makefile.meta && make -f Makefile.meta install`
   * if you get an error when trying to `CREATE EXTENSION mongo_fdw;`, then try running `ldconfig`
- 
+
 Compilation script
 -----------------
-To avoid all the manual steps to compile and install differnet type of [MongoDB][1] drivers and supported libraries, there is a shell script to download and the install appropriate driver and libraries.
+Number of manual steps needs to be performed to compile and install different type of MongoDB drivers and supported libraries. If you want to avoid the manual steps, there is a shell script available which will download and install the appropriate drivers and libraries for you.
 
-Use [MongoDB][1]'s legacy branch driver
-  * sudo -s ./autogen --with-legacy
+Here is how it works :
 
-Use [MongoDB][1]'s master branch driver
-  * sudo -s ./autogen --with-master
+Build with [MongoDB][1]'s legacy branch driver
+   * autogen.sh --with-legacy
+
+Build [MongoDB][1]'s  master branch driver
+   * autogen.sh --with-master
+
+The script will do all the necessary steps to build with legacy and metadriver accordingly.
 
 Usage
 -----
