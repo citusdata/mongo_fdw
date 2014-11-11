@@ -26,6 +26,10 @@
 	#include "mongo.h"
 #endif
 
+#include <bson.h>
+#include <json.h>
+#include <bits.h>
+
 #ifdef META_DRIVER
 MONGO_CONN* MongoConnect(const char* host, const unsigned short port, char *databaseName, char *user, char *password, char *readPreference);
 #else
@@ -81,4 +85,6 @@ bool BsonAppendStartObject(BSON* b, char *key, BSON *r);
 bool BsonAppendFinishObject(BSON* b, BSON* r);
 bool BsonAppendBson(BSON* b, char *key, BSON* c);
 bool BsonFinish(BSON* b);
+bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v);
+
 #endif

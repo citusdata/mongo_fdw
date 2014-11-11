@@ -24,6 +24,10 @@
 	#include "mongo.h"
 #endif
 
+#include <bson.h>
+#include <json.h>
+#include <bits.h>
+
 #include "mongo_fdw.h"
 
 #define QUAL_STRING_LEN 512
@@ -345,11 +349,85 @@ BsonAppendBson(BSON* b, char *key, BSON* c)
 }
 
 
+
+
 bool
 BsonFinish(BSON* b)
 {
 	return (bson_finish(b) == MONGO_OK);
 }
+
+
+bool
+JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
+{
+	bool status;
+	status = true;
+    if (!v) 
+	{
+        bson_append_null(bb, k);
+        return status;
+    }
+
+    switch (json_object_get_type(v))
+	{
+    case json_type_int:
+        bson_append_int(bb, k, json_object_get_int(v));
+        break;
+    case json_type_boolean:
+        bson_append_bool(bb , k, json_object_get_boolean(v));
+        break;
+    case json_type_double:
+        bson_append_double(bb, k, json_object_get_double(v));
+        break;
+    case json_type_string:
+        bson_append_string(bb, k, json_object_get_string(v));
+        break;
+    case json_type_object:
+    {
+		struct json_object *joj = NULL;
+		joj = json_object_object_get(v, "$oid");
+		if (joj != NULL)
+		{
+			bson_oid_t bsonObjectId;
+			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
+			BsonOidFromString(&bsonObjectId, json_object_get_string(joj));
+			status = BsonAppendOid(bb, k , &bsonObjectId);
+			break;
+		}
+		joj = json_object_object_get( v, "$date" );
+		if (joj != NULL)
+		{
+			status = BsonAppendDate(bb, k, json_object_get_int64(joj));
+			break;
+		}
+
+        bson_append_start_object(bb , k);
+		json_object_object_foreach(v, kk, vv)
+		{
+			json_to_bson_append_element(bb ,kk ,vv);
+		}
+        bson_append_finish_object(bb);
+        break;
+    }
+    case json_type_array:
+        bson_append_start_array(bb ,k);
+		int i;
+		char buf[10];
+		for (i = 0; i<json_object_array_length(v); i++)
+		{
+			sprintf(buf , "%d" , i);
+			json_to_bson_append_element(bb ,buf ,json_object_array_get_idx(v, i));
+		}
+        bson_append_finish_object( bb );
+        break;
+    default:
+			 ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+					errmsg("can't handle type for : %s", json_object_to_json_string(v))));
+    }
+    return status;
+}
+
 
 double
 MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b)

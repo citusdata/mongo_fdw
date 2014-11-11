@@ -38,6 +38,27 @@ function checkout_legacy_branch
 	git checkout legacy
 	cd ..
 }
+##
+# Pull the json-c library
+#
+function checkout_json_lib
+{
+	rm -rf json-c
+	git clone https://github.com/json-c/json-c.git
+}
+
+
+##
+# Compile and instal json-c library
+#
+function install_json_lib
+{
+	cd json-c
+	sh ./autogen.sh
+	./configure
+	make install
+	cd ..
+}
 
 ###
 # Configure and install the Mongo C Driver and libbson
@@ -75,7 +96,9 @@ cleanup
 
 if [ "--with-legacy" = $1 ]; then
 	checkout_mongo_driver
+	checkout_json_lib
 	checkout_legacy_branch
+	install_json_lib
 	cp Makefile.legacy Makefile
 	echo "Done"
 elif [ "--with-master" == $1 ]; then

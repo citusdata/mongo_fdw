@@ -7,17 +7,11 @@ PostgreSQL Version **9.3** and greater.
 
 Installation
 ------------
-The MongoDB FDW depends on the official MongoDB C Driver version 0.8  and
-includes it as a git submodule. If you are cloning this repository for the
-first time, be sure to pass the --recursive option to git clone in order to
-initialize the driver submodule to a useable
-state.
+The MongoDB FDW depends on the official MongoDB C Driver version 0.8  and includes it as a git submodule. If you are cloning this repository for the first time, be sure to pass the --recursive option to git clone in order to initialize the driver submodule to a useable state.
 
-If have checked out this project before and for some reason your submodule is
-not up-to-date, run git submodule update --init.
+If checked out this project before and for some reason your submodule is not up-to-date, run git submodule update --init.
 
-When you type `make`, the C driver's source code also gets automatically
-compiled and linked.
+When you type `make`, the C driver's source code also gets automaticallycompiled and linked.
 
 Note: Make sure you have permission to "/usr/local" (default installation location) folder.
 
@@ -31,23 +25,15 @@ The following enhancements are added to the latest version of mongo_fdw
 Write-able FDW
 --------------
 The previous version was only read-only, the latest version provides the write capability.
-The user can now issue insert/update and delete statements for the foreign tables using the mongo_fdw.
+The user can now issue an insert / update and delete statements for the foreign tables using the mongo_fdw.
 
 Connection Pooling
 ------------------
-The latest version comes with a connection pooler that utilises the same mongo
-database connection for all the queries in the same session. The previous version
-would open a new mongodb connection for every query.
-This is a performance enhancement.
+The latest version comes with a connection pooler that utilizes the same mango database connection for all the queries in the same session. The previous version would open a new [MongoDB][1] connection for every query. This is a performance enhancement.
 
 New MongoDB C Driver Support
 ----------------------------
-The third enhancement is to add a new [MongoDB][1]' C driver. The current implementation is
-based on the legacy driver of MongoDB. But [MongoDB][1] is provided completely new library
-for driver called MongoDB's Meta Driver. So I have added support of  that driver.
-Now compile time option is available to use legacy and Meta driver.  I am sure there
-are many other benefits of the new Mongo-C-driver that we are not leveraging but we
-will adopt those as we learn more about the new C driver.
+The third enhancement is to add a new [MongoDB][1]' C driver. The current implementation is based on the legacy driver of MongoDB. But [MongoDB][1] is provided completely new library for driver called MongoDB's Meta Driver. So I have added support of  that driver. Now compile time option is available to use legacy and Meta driver.  I am sure there are many other benefits of the new Mongo-C-driver that we are not leveraging but we will adopt those as we learn more about the new C driver.
 
 In order to use MongoDB driver 1.0.0+, take the following steps:
 
@@ -56,6 +42,16 @@ In order to use MongoDB driver 1.0.0+, take the following steps:
   * ensure pkg-config / pkgconf is installed on your system.
   * run `make -f Makefile.meta && make -f Makefile.meta install`
   * if you get an error when trying to `CREATE EXTENSION mongo_fdw;`, then try running `ldconfig`
+ 
+Compilation script
+-----------------
+To avoid all the manual steps to compile and install differnet type of [MongoDB][1] drivers and supported libraries, there is a shell script to download and the install appropriate driver and libraries.
+
+Use [MongoDB][1]'s legacy branch driver
+  * sudo -s ./autogen --with-legacy
+
+Use [MongoDB][1]'s master branch driver
+  * sudo -s ./autogen --with-master
 
 Usage
 -----
@@ -76,9 +72,7 @@ a MongoDB collection. The commands also show specifying option values in the
 `OPTIONS` clause. If an option value isn't provided, the wrapper uses the
 default value mentioned above.
 
-`mongo_fdw` can collect data distribution statistics will incorporate them when
-estimating costs for the query execution plan. To see selected execution plans
-for a query, just run `EXPLAIN`.
+`mongo_fdw` can collect data distribution statistics will incorporate them when estimating costs for the query execution plan. To see selected execution plans for a query, just run `EXPLAIN`.
 
 Examples with [MongoDB][1]'s equivalent statments.
 
@@ -186,15 +180,13 @@ Limitations
 
 Contributing
 ------------
-Have a fix for a bug or an idea for a great new feature? Great! Check out the
-contribution guidelines [here][4]. For all other types of questions or comments
-about the wrapper please contact us at `mongo_fdw` `@` `enterprisedb.com`.
+Have a fix for a bug or an idea for a great new feature? Great! Check out the contribution guidelines [here][4]. For all other types of questions or comments about the wrapper please contact us at `mongo_fdw` `@` `enterprisedb.com`.
 
 
 Support
 -------
 This project will be modified to maintain compatibility with new PostgreSQL
-releases. The project owners set aside a day every month to look over open
+releases. The project owners to set aside a day every month to look over open
 issues and support emails, but are not engaged in active feature development.
 Reported bugs will be addressed by apparent severity.
 
@@ -206,10 +198,8 @@ Portions Copyright © 2004-2014, EnterpriseDB Corporation.
 
 Portions Copyright © 2012–2014 Citus Data, Inc.
 
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU Lesser General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version.
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 See the [`LICENSE`][5] file for full details.
 

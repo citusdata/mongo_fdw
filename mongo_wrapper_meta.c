@@ -408,6 +408,10 @@ BsonFinish(BSON* b)
 	return true;
 }
 
+bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
+{
+	elog(ERROR, "JSON support for Meta Driver not implemented");
+}
 /*
  * Count the number of documents.
  */
