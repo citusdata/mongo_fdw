@@ -357,6 +357,11 @@ BsonFinish(BSON* b)
 	return (bson_finish(b) == MONGO_OK);
 }
 
+json_object*
+JsonTokenerPrase(char * s)
+{
+	return json_tokener_parse(s);
+}
 
 bool
 JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )

@@ -602,7 +602,7 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 			bool typeVarLength = false;
 			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			o = json_tokener_parse(outputString);
+			o = JsonTokenerPrase(outputString);
 
 			if (is_error(o))
 			{

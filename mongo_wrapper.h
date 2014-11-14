@@ -87,4 +87,5 @@ bool BsonAppendBson(BSON* b, char *key, BSON* c);
 bool BsonFinish(BSON* b);
 bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v);
 
+json_object *JsonTokenerPrase(char * s);
 #endif

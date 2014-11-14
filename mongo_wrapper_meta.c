@@ -412,6 +412,14 @@ bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
 {
 	elog(ERROR, "JSON support for Meta Driver not implemented");
 }
+
+json_object*
+JsonTokenerPrase(char * s)
+{
+	elog(ERROR, "JSON support for Meta Driver not implemented");
+	return NULL;
+}
+
 /*
  * Count the number of documents.
  */
