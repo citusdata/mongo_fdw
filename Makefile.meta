@@ -26,6 +26,9 @@ OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
 
+REGRESS = mongo_fdw
+REGRESS_OPTS = --load-extension=$(EXTENSION)
+
 #
 # Users need to specify their Postgres installation path through pg_config. For
 # example: /usr/local/pgsql/bin/pg_config or /usr/lib/postgresql/9.1/bin/pg_config

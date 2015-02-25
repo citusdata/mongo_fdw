@@ -1,4 +1,4 @@
-# mongo_fdw/Makefile
+# mongo_fdw/Makefile.meta
 #
 # Portions Copyright © 2004-2014, EnterpriseDB Corporation.
 #
@@ -12,27 +12,22 @@ MODULE_big = mongo_fdw
 # on another platform, change env_posix.os in MONGO_OBJS with the appropriate
 # environment object file.
 #
-MONGO_DRIVER = mongo-c-driver
-MONGO_PATH = $(MONGO_DRIVER)/src
-MONGO_OBJS = $(MONGO_PATH)/bson.os $(MONGO_PATH)/encoding.os $(MONGO_PATH)/md5.os \
-             $(MONGO_PATH)/mongo.os $(MONGO_PATH)/numbers.os $(MONGO_PATH)/env.os
 LIBJSON = json-c
-LIBJSON_OBJS =	$(LIBJSON)/json_util.o $(LIBJSON)/json_object.o $(LIBJSON)/json_tokener.o \
-				$(LIBJSON)/json_object_iterator.o $(LIBJSON)/printbuf.o $(LIBJSON)/linkhash.o \
-				$(LIBJSON)/arraylist.o $(LIBJSON)/random_seed.o $(LIBJSON)/debug.o
-PG_CPPFLAGS = --std=c99 -I$(MONGO_PATH) -I$(LIBJSON)
-OBJS = connection.o option.o  mongo_wrapper.o mongo_fdw.o mongo_query.o $(MONGO_OBJS) $(LIBJSON_OBJS)
+LIBJSON_OBJS =  $(LIBJSON)/json_util.o $(LIBJSON)/json_object.o $(LIBJSON)/json_tokener.o \
+                                $(LIBJSON)/json_object_iterator.o $(LIBJSON)/printbuf.o $(LIBJSON)/linkhash.o \
+                                $(LIBJSON)/arraylist.o $(LIBJSON)/random_seed.o $(LIBJSON)/debug.o
+
+MONGO_INCLUDE = $(shell pkg-config --cflags libmongoc-1.0)
+PG_CPPFLAGS = --std=c99 $(MONGO_INCLUDE) -I$(LIBJSON) -DMETA_DRIVER
+SHLIB_LINK = $(shell pkg-config --libs libmongoc-1.0)
+
+OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o
 
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
 
 REGRESS = mongo_fdw
 REGRESS_OPTS = --load-extension=$(EXTENSION)
-
-$(MONGO_DRIVER)/%.os:
-	$(MAKE) -C $(MONGO_DRIVER) $*.os
-#$(LIBJSON)/json.o:
-#	$(MAKE) -C $(LIBJSON)
 
 #
 # Users need to specify their Postgres installation path through pg_config. For
