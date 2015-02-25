@@ -426,12 +426,12 @@ JsonTokenerPrase(char * s)
 double
 MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b)
 {
-	BSON *command;
-	BSON *reply;
-	BSON *doc;
-	double count;
-	mongoc_cursor_t *cursor;
-	bool ret;
+	BSON            *command = NULL;
+	BSON            *reply = NULL;
+	BSON            *doc = NULL;
+	double          count = 0;
+	mongoc_cursor_t *cursor = NULL;
+	bool            ret = false;
 
 	command = BsonCreate();
 	reply = BsonCreate();
@@ -442,23 +442,20 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 	BsonFinish(command);
 
 	cursor = mongoc_client_command(conn, database, MONGOC_QUERY_SLAVE_OK, 0, 1, 0, command, NULL, NULL);
-
-	ret = mongoc_cursor_next(cursor, (const BSON**)&doc);
-
-	if (ret) {
-		bson_iter_t it;
-		bson_copy_to(doc, reply);
-		if (bson_iter_init_find(&it, reply, "n"))
-			count = BsonIterDouble(&it);
-	} else {
-		count = -1;
+	if (cursor)
+	{
+		ret = mongoc_cursor_next(cursor, (const BSON**)&doc);
+		if (ret)
+		{
+			bson_iter_t it;
+			bson_copy_to(doc, reply);
+			if (bson_iter_init_find(&it, reply, "n"))
+				count = BsonIterDouble(&it);
+			BsonDestroy(doc);
+		}
+		mongoc_cursor_destroy(cursor);
 	}
-
-	mongoc_cursor_destroy(cursor);
-
 	BsonDestroy(reply);
-	BsonDestroy(doc);
 	BsonDestroy(command);
-
 	return count;
 }

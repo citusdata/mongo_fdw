@@ -124,7 +124,7 @@ db.warehouse.find({"warehouse_id" : 1}).pretty()
 
 
 -- insert row in table
-INSERT INTO warehouse values (0, 1, 'UPS', to_date('2014-12-12T07:12:10Z'));
+INSERT INTO warehouse values (0, 1, 'UPS', '2014-12-12T07:12:10Z');
 
 db.warehouse.insert
 (

@@ -393,7 +393,7 @@ AppendConstantValue(BSON *queryDocument, const char *keyName, Const *constant)
 bool
 AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnull, Oid id)
 {
-	bool status;
+	bool status = false;
 	if (isnull)
 	{
 		status = BsonAppendNull(queryDocument, keyName);
