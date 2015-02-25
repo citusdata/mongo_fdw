@@ -546,27 +546,6 @@ MongoIterateForeignScan(ForeignScanState *scanState)
 
 		ExecStoreVirtualTuple(tupleSlot);
 	}
-	else
-	{
-		#ifdef META_DRIVER
-		bson_error_t error;
-		if (mongoc_cursor_error (mongoCursor, &error))
-		{
-			MongoFreeScanState(fmstate);
-			ereport(ERROR, (errmsg("could not iterate over mongo collection"),
-					errhint("Mongo driver error: %s", error.message)));
-		}
-		#else
-		mongo_cursor_error_t errorCode = mongoCursor->err;
-		if (errorCode != MONGO_CURSOR_EXHAUSTED)
-		{
-			MongoFreeScanState(fmstate);
-			ereport(ERROR, (errmsg("could not iterate over mongo collection"),
-									errhint("Mongo driver cursor error code: %d", errorCode)));
-		}
-		#endif
-	}
-
 	return tupleSlot;
 }
 
