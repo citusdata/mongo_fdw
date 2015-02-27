@@ -31,13 +31,13 @@ MongoConnect(const char* host, const unsigned short port, char* databaseName, ch
 	char* uri = NULL;
 
 	if (user && password && readPreference)
-		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/?readPreference=%s", user, password, host, port, readPreference);
+		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s", user, password, host, port, databaseName, readPreference);
 	else if (user && password)
-		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/", user, password, host, port);
+		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s", user, password, host, port, databaseName);
 	else if (readPreference)
-		uri = bson_strdup_printf ("mongodb://%s:%hu/?readPreference=%s", host, port, readPreference);
+		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s", host, port, databaseName, readPreference);
 	else
-		uri = bson_strdup_printf ("mongodb://%s:%hu/", host, port);
+		uri = bson_strdup_printf ("mongodb://%s:%hu/%s", host, port, databaseName);
 
 	client = mongoc_client_new(uri);
 
