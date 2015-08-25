@@ -21,7 +21,8 @@ MONGO_INCLUDE = $(shell pkg-config --cflags libmongoc-1.0)
 PG_CPPFLAGS = --std=c99 $(MONGO_INCLUDE) -I$(LIBJSON) -DMETA_DRIVER
 SHLIB_LINK = $(shell pkg-config --libs libmongoc-1.0)
 
-OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o
+OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o $(LIBJSON_OBJS)
+
 
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql
@@ -42,6 +43,6 @@ ifndef MAJORVERSION
     MAJORVERSION := $(basename $(VERSION))
 endif
 
-ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5))
-    $(error PostgreSQL 9.3, 9.4 or 9.5 is required to compile this extension)
+ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5 9.6))
+    $(error PostgreSQL 9.3, 9.4, 9.5 or 9.6 is required to compile this extension)
 endif

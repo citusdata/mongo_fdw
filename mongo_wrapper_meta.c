@@ -410,14 +410,86 @@ BsonFinish(BSON* b)
 
 bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
 {
-	elog(ERROR, "JSON support for Meta Driver not implemented");
+	bool status;
+
+	status = true;
+	if (!v)
+	{
+		BsonAppendNull(bb, k);
+		return status;
+	}
+
+	switch (json_object_get_type(v))
+	{
+		case json_type_int:
+		BsonAppendInt32(bb, k, json_object_get_int(v));
+		break;
+
+		case json_type_boolean:
+		BsonAppendBool(bb , k, json_object_get_boolean(v));
+		break;
+
+		case json_type_double:
+		BsonAppendDouble(bb, k, json_object_get_double(v));
+		break;
+
+		case json_type_string:
+		BsonAppendUTF8(bb, k, (char*)json_object_get_string(v));
+		break;
+
+		case json_type_object:
+		{
+			BSON t;
+			struct json_object *joj = NULL;
+			joj = json_object_object_get(v, "$oid");
+
+			if (joj != NULL)
+			{
+				bson_oid_t bsonObjectId;
+				memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
+				BsonOidFromString(&bsonObjectId, (char*)json_object_get_string(joj));
+				status = BsonAppendOid(bb, k , &bsonObjectId);
+				break;
+			}
+			joj = json_object_object_get( v, "$date" );
+			if (joj != NULL)
+			{
+				status = BsonAppendDate(bb, k, json_object_get_int64(joj));
+				break;
+			}
+			BsonAppendStartObject(bb , (char*)k, &t);
+			json_object_object_foreach(v, kk, vv)
+			{
+				JsonToBsonAppendElement(&t, kk, vv);
+			}
+			BsonAppendFinishObject(bb, &t);
+			break;
+		}
+		case json_type_array:
+		{
+			int i;
+			char buf[10];
+			BSON t;
+			BsonAppendStartArray(bb ,k, &t);
+			for (i = 0; i<json_object_array_length(v); i++)
+			{
+				sprintf(buf , "%d" , i);
+				JsonToBsonAppendElement(&t ,buf ,json_object_array_get_idx(v, i));
+			}
+			BsonAppendFinishObject( bb, &t );
+			break;
+		}
+		default:
+			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+			errmsg("can't handle type for : %s", json_object_to_json_string(v))));
+	}
+	return status;
 }
 
 json_object*
 JsonTokenerPrase(char * s)
 {
-	elog(ERROR, "JSON support for Meta Driver not implemented");
-	return NULL;
+	return json_tokener_parse(s);
 }
 
 /*

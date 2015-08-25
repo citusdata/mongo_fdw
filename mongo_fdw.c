@@ -373,7 +373,11 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 	foreignScan =  make_foreignscan(targetList, restrictionClauses,
 									scanRangeTableIndex,
 									NIL, /* no expressions to evaluate */
-									foreignPrivateList);
+									foreignPrivateList
+#if PG_VERSION_NUM >= 90500
+									,NIL
+#endif
+                               );
 
 	return foreignScan;
 }
@@ -632,7 +636,11 @@ MongoPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
-		Bitmapset  *tmpset = bms_copy(rte->modifiedCols);
+#if PG_VERSION_NUM >= 90500
+                Bitmapset *tmpset = bms_copy(rte->updatedCols);
+#else
+                Bitmapset *tmpset = bms_copy(rte->modifiedCols);
+#endif
 		AttrNumber	col;
 
 		while ((col = bms_first_member(tmpset)) >= 0)
