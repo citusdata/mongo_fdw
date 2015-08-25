@@ -79,7 +79,7 @@ function install_mongoc_driver
 {
 	cd mongo-c-driver
 	./autogen.sh 
-	configure --with-libbson=system
+	./configure --with-libbson=system
 	make install
 	cd ..
 }
