@@ -1185,7 +1185,7 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		}
 
 		/* recurse into nested objects */
-		if (bsonType == BSON_TYPE_DOCUMENT && columnTypeId != JSONOID)
+		if (bsonType == BSON_TYPE_DOCUMENT && columnTypeId != JSONOID && columnTypeId != 0)
 		{
 			BSON subObject;
 			BsonIterSubObject(&bsonIterator, &subObject);
