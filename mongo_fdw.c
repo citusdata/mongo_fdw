@@ -13,6 +13,7 @@
 #include "postgres.h"
 #include "mongo_fdw.h"
 
+#include "miscadmin.h"
 #include "access/reloptions.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -391,6 +392,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	mongo *mongoConnection = NULL;
 	mongo_cursor *mongoCursor = NULL;
 	int32 connectStatus = MONGO_ERROR;
+	int32 authStatus = MONGO_ERROR;
 	Oid foreignTableId = InvalidOid;
 	List *columnList = NIL;
 	HTAB *columnMappingHash = NULL;
@@ -431,6 +433,26 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 
 		ereport(ERROR, (errmsg("could not connect to %s:%d", addressName, portNumber),
 						errhint("Mongo driver connection error: %d", errorCode)));
+	}
+
+	if (mongoFdwOptions->username)
+	{
+		authStatus = mongo_cmd_authenticate(mongoConnection, mongoFdwOptions->databaseName, mongoFdwOptions->username, mongoFdwOptions->password);
+	}
+	else
+	{
+		authStatus = MONGO_OK;
+	}
+
+	if (authStatus != MONGO_OK)
+	{
+		errorCode = (int32) mongoConnection->err;
+
+		mongo_destroy(mongoConnection);
+		mongo_dispose(mongoConnection);
+
+		ereport(ERROR, (errmsg("could not authenticate mongo to %s:%d", addressName, portNumber),
+					errhint("Mongo driver connection error: %d", errorCode)));
 	}
 
 	/* deserialize query document; and create column info hash */
@@ -653,8 +675,20 @@ ForeignTableDocumentCount(Oid foreignTableId)
 	status = mongo_connect(mongoConnection, options->addressName, options->portNumber);
 	if (status == MONGO_OK)
 	{
-		documentCount = mongo_count(mongoConnection, options->databaseName,
-									options->collectionName, emptyQuery);
+		if (options->username)
+		{
+			status = mongo_cmd_authenticate(mongoConnection, options->databaseName, options->username, options->password);
+		}
+
+		if (status == MONGO_OK)
+		{
+			documentCount = mongo_count(mongoConnection, options->databaseName,
+					options->collectionName, emptyQuery);
+		}
+		else
+		{
+			documentCount = -1.0;
+		}
 	}
 	else
 	{
@@ -682,6 +716,8 @@ MongoGetOptions(Oid foreignTableId)
 	int32 portNumber = 0;
 	char *databaseName = NULL;
 	char *collectionName = NULL;
+	char *username = NULL;
+	char *password = NULL;
 
 	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -711,11 +747,16 @@ MongoGetOptions(Oid foreignTableId)
 		collectionName = get_rel_name(foreignTableId);
 	}
 
+	username = MongoGetOptionValue(foreignTableId, OPTION_NAME_USERNAME);
+	password = MongoGetOptionValue(foreignTableId, OPTION_NAME_PASSWORD);
+
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 	mongoFdwOptions->addressName = addressName;
 	mongoFdwOptions->portNumber = portNumber;
 	mongoFdwOptions->databaseName = databaseName;
 	mongoFdwOptions->collectionName = collectionName;
+	mongoFdwOptions->username = username;
+	mongoFdwOptions->password = password;
 
 	return mongoFdwOptions;
 }
@@ -731,15 +772,22 @@ MongoGetOptionValue(Oid foreignTableId, const char *optionName)
 {
 	ForeignTable *foreignTable = NULL;
 	ForeignServer *foreignServer = NULL;
+	UserMapping *userMapping = NULL;
 	List *optionList = NIL;
 	ListCell *optionCell = NULL;
 	char *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
+	userMapping = GetUserMapping(GetUserId(), foreignServer->serverid);
 
 	optionList = list_concat(optionList, foreignTable->options);
 	optionList = list_concat(optionList, foreignServer->options);
+
+	if (userMapping)
+	{
+		optionList = list_concat(optionList, userMapping->options);
+	}
 
 	foreach(optionCell, optionList)
 	{

@@ -18,6 +18,7 @@
 #include "fmgr.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
+#include "catalog/pg_user_mapping.h"
 #include "utils/datetime.h"
 #include "nodes/pg_list.h"
 #include "nodes/relation.h"
@@ -29,6 +30,8 @@
 #define OPTION_NAME_PORT "port"
 #define OPTION_NAME_DATABASE "database"
 #define OPTION_NAME_COLLECTION "collection"
+#define OPTION_NAME_USERNAME "username"
+#define OPTION_NAME_PASSWORD "password"
 
 /* Default values for option parameters */
 #define DEFAULT_IP_ADDRESS "127.0.0.1"
@@ -58,7 +61,7 @@ typedef struct MongoValidOption
 
 
 /* Array of options that are valid for mongo_fdw */
-static const uint32 ValidOptionCount = 4;
+static const uint32 ValidOptionCount = 6;
 static const MongoValidOption ValidOptionArray[] =
 {
 	/* foreign server options */
@@ -67,7 +70,11 @@ static const MongoValidOption ValidOptionArray[] =
 
 	/* foreign table options */
 	{ OPTION_NAME_DATABASE, ForeignTableRelationId },
-	{ OPTION_NAME_COLLECTION, ForeignTableRelationId }
+	{ OPTION_NAME_COLLECTION, ForeignTableRelationId },
+
+	/* user mapping options */
+	{ OPTION_NAME_USERNAME, UserMappingRelationId },
+	{ OPTION_NAME_PASSWORD, UserMappingRelationId }
 };
 
 
@@ -82,6 +89,8 @@ typedef struct MongoFdwOptions
 	int32 portNumber;
 	char *databaseName;
 	char *collectionName;
+	char *username;
+	char *password;
 
 } MongoFdwOptions;
 
