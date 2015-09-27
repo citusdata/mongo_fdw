@@ -1,3 +1,5 @@
+Please note this repository has moved to [here](https://github.com/EnterpriseDB/mongo_fdw).
+
 MongoDB FDW for PostgreSQL
 ==========================
 
