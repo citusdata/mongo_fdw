@@ -1185,13 +1185,16 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		}
 
 		/* recurse into nested objects */
-		if (bsonType == BSON_TYPE_DOCUMENT && columnTypeId != JSONOID && columnTypeId != 0)
+		if (bsonType == BSON_TYPE_DOCUMENT)
 		{
-			BSON subObject;
-			BsonIterSubObject(&bsonIterator, &subObject);
-			FillTupleSlot(&subObject, bsonFullKey,
+			if (columnTypeId != JSONOID)
+			{
+				BSON subObject;
+				BsonIterSubObject(&bsonIterator, &subObject);
+				FillTupleSlot(&subObject, bsonFullKey,
 						  columnMappingHash, columnValues, columnNulls);
-			continue;
+				continue;
+			}
 		}
 
 		/* if no corresponding column or null BSON value, continue */
