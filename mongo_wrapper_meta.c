@@ -212,7 +212,11 @@ BsonIterInit(BSON_ITERATOR *it, BSON *b)
 bool
 BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 {
-	/* TODO: Need to see the Meta Driver equalient for "bson_iterator_subobject" */
+	const uint8_t *buffer;
+	uint32_t len;
+
+	bson_iter_document(it, &len, &buffer);
+	bson_init_static(b, buffer, len);
 	return true;
 }
 
