@@ -78,7 +78,7 @@ function install_json_lib
 function install_mongoc_driver
 {
 	cd mongo-c-driver
-	./configure --with-libbson=system
+	./configure --with-libbson=auto
 	make install
 	cd ..
 }

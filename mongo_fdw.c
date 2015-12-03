@@ -376,6 +376,7 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 									foreignPrivateList
 #if PG_VERSION_NUM >= 90500
 									,NIL
+									,NIL
 #endif
                                );
 
