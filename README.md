@@ -1,4 +1,4 @@
-Please note this repository has moved to [here](https://github.com/EnterpriseDB/mongo_fdw).
+Please note this repository has moved to https://github.com/EnterpriseDB/mongo_fdw
 
 MongoDB FDW for PostgreSQL
 ==========================
@@ -100,21 +100,10 @@ Limitations
 	constant in `src/include/pg_config_manual.h`, compile, and reinstall.
 
 
-Contributing
-------------
-
-Have a fix for a bug or an idea for a great new feature? Great! Check out the
-contribution guidelines [here][4]. For all other types of questions or comments
-about the wrapper please contact us at `engage` `@` `citusdata.com`.
-
-
 Support
 -------
 
-This project will be modified to maintain compatibility with new PostgreSQL
-releases. The project owners set aside a day every month to look over open
-issues and support emails, but are not engaged in active feature development.
-Reported bugs will be addressed by apparent severity.
+Please note this repository has moved to https://github.com/EnterpriseDB/mongo_fdw
 
 
 License
@@ -132,5 +121,4 @@ See the [`LICENSE`][5] file for full details.
 [1]: http://www.mongodb.com
 [2]: http://www.citusdata.com/blog/51-run-sql-on-mongodb
 [3]: https://github.com/citusdata/mongo_fdw/issues/new
-[4]: CONTRIBUTING.md
 [5]: LICENSE
