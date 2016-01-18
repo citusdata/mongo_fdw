@@ -74,9 +74,16 @@ static void MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
 						Oid foreignTableId);
 static void MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel,
 						Oid foreignTableId);
-static ForeignScan * MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
-						Oid foreignTableId, ForeignPath *bestPath,
-						List *targetList, List *restrictionClauses);
+
+static ForeignScan *
+MongoGetForeignPlan(PlannerInfo *root,
+				RelOptInfo *baserel,
+				Oid foreigntableid,
+				ForeignPath *best_path,
+				List *targetlist,
+				List *restrictionClauses,
+ 				Plan *outer_plan);
+
 static void MongoExplainForeignScan(ForeignScanState *scanState,
 						ExplainState *explainState);
 static void MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags);
@@ -319,6 +326,9 @@ MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 												   startupCost, totalCost,
 												   NIL,	 /* no pathkeys */
 												   NULL, /* no outer rel either */
+#if PG_VERSION_NUM >= 90500
+									 NULL,	/* no extra plan */
+#endif
 												   NIL); /* no fdw_private data */
 
 	/* add foreign path as the only possible path */
@@ -332,8 +342,14 @@ MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
  * scan, but that decision isn't deterministic or visible to us.
  */
 static ForeignScan *
-MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
-					ForeignPath *bestPath, List *targetList, List *restrictionClauses)
+MongoGetForeignPlan(PlannerInfo *root,
+				RelOptInfo *baserel,
+				Oid foreigntableid,
+				ForeignPath *best_path,
+				List *targetList,
+				List *restrictionClauses,
+				Plan *outer_plan)
+
 {
 	Index                scanRangeTableIndex = baserel->relid;
 	ForeignScan          *foreignScan = NULL;
@@ -358,7 +374,7 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 	 * the MongoDB server-side, so we instead filter out columns on our side.
 	 */
 	opExpressionList = ApplicableOpExpressionList(baserel);
-	queryDocument = QueryDocument(foreignTableId, opExpressionList);
+	queryDocument = QueryDocument(foreigntableid, opExpressionList);
 
 	/* we don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(baserel);
@@ -375,6 +391,7 @@ MongoGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,	Oid foreignTableId,
 									NIL, /* no expressions to evaluate */
 									foreignPrivateList
 #if PG_VERSION_NUM >= 90500
+									,NIL
 									,NIL
 									,NIL
 #endif
@@ -1752,7 +1769,7 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 				appendStringInfo(output, "%d", bson_iterator_int(&i));
 				break;
 			case BSON_TYPE_INT64:
-				appendStringInfo(output, "%lld", (uint64_t)bson_iterator_long(&i));
+				appendStringInfo(output, "%lu", (uint64_t)bson_iterator_long(&i));
 				break;
 			case BSON_TYPE_TIMESTAMP:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),

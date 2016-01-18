@@ -1,3 +1,5 @@
+\c postgres postgres
+CREATE EXTENSION mongo_fdw;
 CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address '127.0.0.1', port '27017');
 \! mongoimport --db mongo_fdw_regress --collection countries --jsonArray --drop --quiet < data/mongo_fixture.json
 CREATE USER MAPPING FOR postgres SERVER mongo_server;
@@ -1381,11 +1383,11 @@ _id NAME,
 "lastElections.date" TIMESTAMP
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
 SELECT * FROM country_elections;
-           _id            | lastElections.type |      lastElections.date      
---------------------------+--------------------+------------------------------
- 5381ccf9d6d81c8e8bf0434f | presedential       | Sat Jan 10 10:51:01.504 1970
- 5381ccf9d6d81c8e8bf04350 | parliamentary      | Fri Dec 26 22:44:00.128 1969
- 5381ccf9d6d81c8e8bf04351 | parliamentary      | Wed Dec 10 05:00:43.904 1969
+           _id            | lastElections.type |    lastElections.date    
+--------------------------+--------------------+--------------------------
+ 5381ccf9d6d81c8e8bf0434f | presedential       | Sun May 25 00:00:00 2014
+ 5381ccf9d6d81c8e8bf04350 | parliamentary      | Sun Oct 09 00:00:00 2011
+ 5381ccf9d6d81c8e8bf04351 | parliamentary      | Sun Nov 28 00:00:00 2010
 (3 rows)
 
 -- 
