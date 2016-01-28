@@ -25,10 +25,10 @@ fi
 function checkout_mongo_driver
 {
 	rm -rf mongo-c-driver
-	wget https://github.com/mongodb/mongo-c-driver/releases/download/1.1.0/mongo-c-driver-1.1.0.tar.gz
-	tar -zxvf mongo-c-driver-1.1.0.tar.gz
-	mv mongo-c-driver-1.1.0 mongo-c-driver
-	rm -rf mongo-c-driver-1.1.0.tar.gz
+	wget https://github.com/mongodb/mongo-c-driver/releases/download/1.3.1/mongo-c-driver-1.3.1.tar.gz
+	tar -zxvf mongo-c-driver-1.3.1.tar.gz
+	mv mongo-c-driver-1.3.1 mongo-c-driver
+	rm -rf mongo-c-driver-1.3.1.tar.gz
 }
 
 ###
@@ -106,7 +106,6 @@ function create_config
 cleanup
 
 if [ "--with-legacy" = $1 ]; then
-	checkout_mongo_driver
 	checkout_json_lib
 	checkout_legacy_branch
 	install_json_lib
