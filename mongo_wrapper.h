@@ -61,13 +61,20 @@ const char* BsonIterBinData(BSON_ITERATOR *it, uint32_t *len);
 const char* BsonIterBinData(BSON_ITERATOR *it);
 int BsonIterBinLen(BSON_ITERATOR *it);
 #endif
-const bson_oid_t * BsonIterOid(BSON_ITERATOR *it);
+bson_oid_t * BsonIterOid(BSON_ITERATOR *it);
 time_t BsonIterDate(BSON_ITERATOR *it);
-const char* BsonIterKey(BSON_ITERATOR *it);
 int BsonIterType(BSON_ITERATOR *it);
 int BsonIterNext(BSON_ITERATOR *it);
 bool BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR* sub);
 void BsonOidFromString(bson_oid_t *o, char* str);
+void BsonOidToString(bson_oid_t *o, char* str[25]);
+const char* BsonIterCode(BSON_ITERATOR *i);
+const char* BsonIterRegex(BSON_ITERATOR *i);
+const char* BsonIterKey(BSON_ITERATOR *i);
+const char* BsonIterValue(BSON_ITERATOR *i);
+
+void BsonIteratorFromBuffer(BSON_ITERATOR* i, const char * buffer);
+
 
 BSON *BsonCreate();
 bool BsonAppendOid(BSON *b, const char* key, bson_oid_t *v);
@@ -86,6 +93,14 @@ bool BsonAppendFinishObject(BSON* b, BSON* r);
 bool BsonAppendBson(BSON* b, char *key, BSON* c);
 bool BsonFinish(BSON* b);
 bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v);
-
 json_object *JsonTokenerPrase(char * s);
+
+char* BsonAsJson(const BSON* bsonDocument);
+
+void BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray);
+void DumpJsonObject(StringInfo output, BSON_ITERATOR *iter);
+void DumpJsonArray(StringInfo output, BSON_ITERATOR *iter);
+
+
+
 #endif

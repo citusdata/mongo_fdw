@@ -149,12 +149,8 @@ static void mongo_fdw_exit(int code, Datum arg);
 extern PGDLLEXPORT void _PG_init(void);
 
 const char * EscapeJsonString(const char *string);
-#ifdef META_DRIVER
-void DumpJsonObject(StringInfo buffer, BSON_ITERATOR *iter);
-void DumpJsonArray(StringInfo buffer, BSON_ITERATOR *iter);
-#else
-void DumpJson(StringInfo buffer, const char *bsonData, bool isArray);
-#endif
+
+void BsonToJsonString(StringInfo output, BSON_ITERATOR iter, bool isArray);
 
 /* the null action object used for pure validation */
 static JsonSemAction nullSemAction =
@@ -393,7 +389,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 #if PG_VERSION_NUM >= 90500
 									,NIL
 									,NIL
-									,NIL
+									,NULL
 #endif
                                );
 
@@ -1162,15 +1158,39 @@ static void
 FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 			  HTAB *columnMappingHash, Datum *columnValues, bool *columnNulls)
 {
-	BSON_ITERATOR bsonIterator = { NULL, 0 };
-	BsonIterInit(&bsonIterator, (BSON*)bsonDocument);
+	ColumnMapping*       columnMapping = NULL;
+	bool                 handleFound = false;
+	void*                hashKey = NULL;
+	BSON_ITERATOR        bsonIterator = { NULL, 0 };
+
+	if (BsonIterInit(&bsonIterator, (BSON*)bsonDocument) == false)
+		elog(ERROR, "failed to init");
+
+	hashKey = "__doc";
+	columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
+												HASH_FIND, &handleFound);
+
+	if (columnMapping != NULL && handleFound == true && columnValues[columnMapping->columnIndex] == 0) 
+	{
+		JsonLexContext* lex = NULL;
+		text*           result = NULL;
+		Datum           columnValue = 0;
+		char            *str;
+
+		str = BsonAsJson(bsonDocument);
+		result = cstring_to_text_with_len(str, strlen(str));
+		lex = makeJsonLexContext(result, false);
+		pg_parse_json(lex, &nullSemAction);
+		columnValue = PointerGetDatum(result);
+		columnValues[columnMapping->columnIndex] = columnValue;
+		columnNulls[columnMapping->columnIndex] = false;
+	}
+
 
 	while (BsonIterNext(&bsonIterator))
 	{
 		const char *bsonKey = BsonIterKey(&bsonIterator);
 		BSON_TYPE bsonType = BsonIterType(&bsonIterator);
-
-		ColumnMapping *columnMapping = NULL;
 		Oid columnTypeId = InvalidOid;
 		Oid columnArrayTypeId = InvalidOid;
 		bool compatibleTypes = false;
@@ -1178,6 +1198,7 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		const char *bsonFullKey = NULL;
 		void *hashKey = NULL;
 
+		columnMapping = NULL;
 		if (bsonDocumentKey != NULL)
 		{
 			/*
@@ -1197,7 +1218,8 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		hashKey = (void *) bsonFullKey;
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
 													  HASH_FIND, &handleFound);
-		if (columnMapping != NULL) {
+		if (columnMapping != NULL)
+		{
 			columnTypeId = columnMapping->columnTypeId;
 			columnArrayTypeId = columnMapping->columnArrayTypeId;
 		}
@@ -1231,6 +1253,7 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		{
 			compatibleTypes = ColumnTypesCompatible(bsonType, columnTypeId);
 		}
+
 
 		/* if types are incompatible, leave this column null */
 		if (!compatibleTypes)
@@ -1570,33 +1593,21 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		case JSONOID:
 		{
 			JsonLexContext *lex;
-			text *result;
-			bool is_array;
-			StringInfo buffer = makeStringInfo();
+			text           *result;
+			StringInfo     buffer = makeStringInfo();
 
 			BSON_TYPE type = BSON_ITER_TYPE(bsonIterator);
 			if (type != BSON_TYPE_ARRAY && type != BSON_TYPE_DOCUMENT)
-			{
 				ereport(ERROR, (errmsg("cannot convert scolar to json")));
-			}
-			is_array = (BSON_TYPE_ARRAY == type);
 
 #ifdef META_DRIVER
-			if (is_array)
-			{
-				DumpJsonArray(buffer, bsonIterator);
-			}
-			else
-			{
-				DumpJsonObject(buffer, bsonIterator);
-			}
+			/* Convert BSON to JSON value */
+			BsonToJsonStringValue(buffer, bsonIterator, BSON_TYPE_ARRAY == type);
 #else
-			DumpJson(buffer, bson_iterator_value(bsonIterator), is_array);
+			/* Convert BSON to JSON value */
+			BsonToJsonString(buffer, *bsonIterator, BSON_TYPE_ARRAY == type);
 #endif
-
 			result = cstring_to_text_with_len(buffer->data, buffer->len);
-
-			/* validate it */
 			lex = makeJsonLexContext(result, false);
 			pg_parse_json(lex, &nullSemAction);
 			columnValue = PointerGetDatum(result);
@@ -1614,125 +1625,74 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 	return columnValue;
 }
 
-
-/*
- * DumpJson converts BSON document to a JSON string.
- * isArray signifies if bsonData is contents of array or object.
- * [Some of] special BSON datatypes are converted to JSON using
- * "Strict MongoDB Extended JSON" [1].
- *
- * [1] http://docs.mongodb.org/manual/reference/mongodb-extended-json/
- */
-#ifdef META_DRIVER
 void
-DumpJsonObject(StringInfo output, BSON_ITERATOR *iter) {
-	char *json;
-	uint32_t len;
-	const uint8_t *data;
-	BSON bson;
-	
-	bson_iter_document(iter, &len, &data);
-
-	if (bson_init_static(&bson, data, len))
-	{
-	  if((json = bson_as_json (&bson, NULL)))
-	  {
-		appendStringInfoString(output, json);
-		bson_free(json);
-	  }
-	}
-}
-
-void
-DumpJsonArray(StringInfo output, BSON_ITERATOR *iter) {
-	char *json;
-	uint32_t len;
-	const uint8_t *data;
-	BSON bson;
-
-	bson_iter_array(iter, &len, &data);
-
-	if (bson_init_static(&bson, data, len))
-	{
-	  if((json = bson_array_as_json (&bson, NULL)))
-	  {
-		appendStringInfoString(output, json);
-		bson_free(json);
-	  }
-	}
-}
-#else
-void
-DumpJson(StringInfo output, const char *bsonData, bool isArray)
+BsonToJsonString(StringInfo output, BSON_ITERATOR i, bool isArray)
 {
-	bson_iterator    i;
-	const char       *key;
+	const char       *key = NULL;
 	bool             isFirstElement;
-	char             beginSymbol, endSymbol;
-	bson_type        t;
-
-
-	bson_iterator_from_buffer(&i, bsonData);
+	char             beginSymbol = '{';
+	char             endSymbol = '}';
+	BSON_TYPE        t;
 
 	if (isArray)
 	{
 		beginSymbol = '[';
 		endSymbol = ']';
 	}
-	else
+
+#ifndef META_DRIVER
 	{
-		beginSymbol = '{';
-		endSymbol = '}';
+		char *bsonData = bson_iterator_value(&i);
+		bson_iterator_from_buffer(&i, bsonData);
 	}
+#endif
 
 	appendStringInfoChar(output, beginSymbol);
 
 	isFirstElement = true;
-	while (bson_iterator_next(&i))
+	while (BsonIterNext(&i))
 	{
 		if (!isFirstElement)
-		{
 			appendStringInfoChar(output, ',');
-		}
 
-		t = bson_iterator_type(&i);
-		if (t == 0) break;
-		key = bson_iterator_key(&i);
+		t = BsonIterType(&i);
+		if (t == 0)
+			break;
+
+		key = BsonIterKey(&i);
 
 		if (!isArray)
-		{
 			appendStringInfo(output, "\"%s\":", key);
-		}
 
 		switch (t)
 		{
 			case BSON_TYPE_DOUBLE:
-				appendStringInfo(output, "%f", bson_iterator_double(&i));
+				appendStringInfo(output, "%f", BsonIterDouble(&i));
 				break;
 			case BSON_TYPE_UTF8:
 				appendStringInfo(output, "\"%s\"",
-						EscapeJsonString(bson_iterator_string(&i)));
+						EscapeJsonString(BsonIterString(&i)));
 				break;
 			case BSON_TYPE_SYMBOL:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("`symbol` BSON type is deprecated and "
 									   "unsupported"),
-								errhint("Symbol: %s", bson_iterator_string(&i))));
+								errhint("Symbol: %s", BsonIterString(&i))));
 				break;
 			case BSON_TYPE_OID:
 			{
 				char oidhex[25];
-				bson_oid_to_string(bson_iterator_oid(&i), oidhex);
+				BsonOidToString(BsonIterOid(&i), (char**)&oidhex);
 				appendStringInfo(output, "{\"$oid\":\"%s\"}", oidhex);
 				break;
 			}
 			case BSON_TYPE_BOOL:
 				appendStringInfoString(
-						output, bson_iterator_bool(&i) ? "true" : "false");
+						output, BsonIterBool(&i) ? "true" : "false");
 				break;
 			case BSON_TYPE_DATE_TIME:
 				appendStringInfo(output, "{\"$date\":%ld}",
-						(long int)bson_iterator_date(&i));
+						(long int)BsonIterDate(&i));
 				break;
 			case BSON_TYPE_BINDATA:
 				/* It's possible to encode the data with base64 here. */
@@ -1752,13 +1712,13 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `regex` BSON type is "
 									   "not implemented"),
-								errhint("Regex: %s", bson_iterator_regex(&i))));
+								errhint("Regex: %s", BsonIterRegex(&i))));
 				break;
 			case BSON_TYPE_CODE:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
 								errmsg("support for `code` BSON type is "
 									   "not implemented"),
-								errhint("Code: %s", bson_iterator_code(&i))));
+								errhint("Code: %s", BsonIterCode(&i))));
 				break;
 			case BSON_TYPE_CODEWSCOPE:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -1766,10 +1726,10 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 									   "type is not implemented")));
 				break;
 			case BSON_TYPE_INT32:
-				appendStringInfo(output, "%d", bson_iterator_int(&i));
+				appendStringInfo(output, "%d", BsonIterInt32(&i));
 				break;
 			case BSON_TYPE_INT64:
-				appendStringInfo(output, "%lu", (uint64_t)bson_iterator_long(&i));
+				appendStringInfo(output, "%lu", (uint64_t)BsonIterInt64(&i));
 				break;
 			case BSON_TYPE_TIMESTAMP:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
@@ -1777,20 +1737,19 @@ DumpJson(StringInfo output, const char *bsonData, bool isArray)
 									   "and unsupported")));
 				break;
 			case BSON_TYPE_DOCUMENT:
-				DumpJson(output, bson_iterator_value(&i), false);
+				BsonToJsonString(output, i, false);
 				break;
 			case BSON_TYPE_ARRAY:
-				DumpJson(output, bson_iterator_value(&i), true);
+				BsonToJsonString(output, i, true);
 				break;
 			default:
 				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
-								errmsg("unsupported BSON type: %d", t)));
+								errmsg("unsupported BSON type: %x", t)));
 		}
 		isFirstElement = false;
 	}
 	appendStringInfoChar(output, endSymbol);
 }
-#endif
 
 /*
  * EscapeJsonString escapes a string for safe inclusion in JSON.

@@ -18,7 +18,6 @@
 
 #include "postgres.h"
 #include <mongoc.h>
-
 #include "mongo_wrapper.h"
 
 /*
@@ -264,7 +263,7 @@ BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 	return (char*)binary;
 }
 
-const bson_oid_t *
+bson_oid_t *
 BsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iter_oid(it);
@@ -534,4 +533,96 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 	BsonDestroy(reply);
 	BsonDestroy(command);
 	return count;
+}
+
+void
+BsonIteratorFromBuffer(BSON_ITERATOR *i, const char * buffer)
+{
+
+}
+
+void
+BsonOidToString(bson_oid_t *o, char* str[25])
+{
+	bson_oid_to_string (o, str);
+}
+
+const char*
+BsonIterCode(BSON_ITERATOR *i)
+{
+	return bson_iter_code (i, NULL);
+}
+
+const char*
+BsonIterRegex(BSON_ITERATOR *i)
+{
+	return bson_iter_regex(i, NULL);
+}
+
+const char*
+BsonIterValue(BSON_ITERATOR *i)
+{
+	return bson_iter_value(i);
+}
+
+void
+BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
+{
+	if (isArray)
+		DumpJsonArray(output, iter);
+	else
+		DumpJsonObject(output, iter);
+}
+
+/*
+ * DumpJson converts BSON document to a JSON string.
+ * isArray signifies if bsonData is contents of array or object.
+ * [Some of] special BSON datatypes are converted to JSON using
+ * "Strict MongoDB Extended JSON" [1].
+ *
+ * [1] http://docs.mongodb.org/manual/reference/mongodb-extended-json/
+ */
+void
+DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
+{
+	char *json;
+	uint32_t len;
+	const uint8_t *data = NULL;
+	BSON bson;
+
+	bson_iter_document(iter, &len, &data);
+	if (bson_init_static(&bson, data, len))
+	{
+		json = bson_as_json (&bson, NULL);
+		if (json != NULL)
+		{
+			appendStringInfoString(output, json);
+			bson_free(json);
+		}
+	}
+}
+
+void
+DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
+{
+	char *json;
+	uint32_t len;
+	const uint8_t *data;
+	BSON bson;
+
+	bson_iter_array(iter, &len, &data);
+	if (bson_init_static(&bson, data, len))
+	{
+		if((json = bson_array_as_json (&bson, NULL)))
+		{
+			appendStringInfoString(output, json);
+			bson_free(json);
+		}
+	}
+}
+
+char*
+BsonAsJson(const BSON* bsonDocument)
+{
+	return bson_as_json(bsonDocument, NULL);
 }

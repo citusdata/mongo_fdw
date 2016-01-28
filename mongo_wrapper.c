@@ -215,7 +215,9 @@ int BsonIterBinLen(BSON_ITERATOR *it)
 {
 	return bson_iterator_bin_len(it);
 }
-const bson_oid_t *
+
+
+bson_oid_t *
 BsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iterator_oid(it);
@@ -228,12 +230,6 @@ BsonIterDate(BSON_ITERATOR *it)
 	return bson_iterator_date(it);
 }
 
-
-const char*
-BsonIterKey(BSON_ITERATOR *it)
-{
-	return bson_iterator_key(it);
-}
 
 int
 BsonIterType(BSON_ITERATOR *it)
@@ -447,4 +443,67 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 {
 	return mongo_count(conn, database, collection, b);
 }
+
+
+void BsonIteratorFromBuffer(BSON_ITERATOR * i, const char * buffer)
+{
+	bson_iterator_from_buffer(i, buffer);
+}
+
+void BsonOidToString(bson_oid_t *o, char* str[25])
+{
+	bson_oid_to_string (o, str);
+}
+
+const char*
+BsonIterCode(BSON_ITERATOR *i)
+{
+	return bson_iterator_code (i);
+}
+
+const char*
+BsonIterRegex(BSON_ITERATOR *i)
+{
+	return bson_iterator_regex(i);
+}
+
+const char*
+BsonIterKey(BSON_ITERATOR *i)
+{
+	return bson_iterator_key(i);
+}
+
+const char*
+BsonIterValue(BSON_ITERATOR *i)
+{
+	return bson_iterator_value(i);
+}
+
+void
+BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
+{
+	if (isArray)
+		DumpJsonArray(output, iter);
+	else
+		DumpJsonObject(output, iter);
+}
+
+void
+DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
+{
+
+}
+
+void
+DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
+{
+
+}
+
+char*
+BsonAsJson(const BSON* bsonDocument)
+{
+	elog (ERROR, "Full document retrival only available in MongoC meta driver");
+}
+
 
