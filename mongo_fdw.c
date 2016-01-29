@@ -807,6 +807,9 @@ MongoExecForeignInsert(EState *estate,
 			if (typoid != NAMEOID)
 				elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
 
+			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "__doc") == 0)
+				continue;
+
 			if (attnum == 1)
 			{
 				/*
@@ -934,8 +937,11 @@ MongoExecForeignUpdate(EState *estate,
 			Datum value;
 			bool isnull;
  
-		if (strcmp("_id", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
-			continue;
+			if (strcmp("_id", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
+				continue;
+
+			if (strcmp("__doc", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
+				elog(ERROR, "system column '__doc' update is not supported");
 
 			value = slot_getattr(slot, attnum, &isnull);
 #ifdef META_DRIVER
@@ -1164,7 +1170,7 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 	BSON_ITERATOR        bsonIterator = { NULL, 0 };
 
 	if (BsonIterInit(&bsonIterator, (BSON*)bsonDocument) == false)
-		elog(ERROR, "failed to init");
+		elog(ERROR, "failed to initialize BSON iterator");
 
 	hashKey = "__doc";
 	columnMapping = (ColumnMapping *) hash_search(columnMappingHash, hashKey,
