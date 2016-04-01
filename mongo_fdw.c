@@ -405,6 +405,9 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	MongoFdwOptions *mongoFdwOptions = NULL;
 	MongoFdwExecState *executionState = NULL;
 
+	char *databaseName= NULL;
+	char *username= NULL;
+	char *password= NULL;
 	/* if Explain with no Analyze, do nothing */
 	if (executorFlags & EXEC_FLAG_EXPLAIN_ONLY)
 	{
@@ -431,7 +434,31 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 
 		ereport(ERROR, (errmsg("could not connect to %s:%d", addressName, portNumber),
 						errhint("Mongo driver connection error: %d", errorCode)));
+		return;
 	}
+
+	/*authentication*/
+	databaseName = mongoFdwOptions->databaseName;
+	username = mongoFdwOptions->username;		
+	password = mongoFdwOptions->password;		
+	if (username && password) 
+	{
+		connectStatus = mongo_cmd_authenticate(mongoConnection, databaseName, username, password);
+		if (connectStatus != MONGO_OK)
+		{
+
+			errorCode = (int32) mongoConnection->err;
+
+			mongo_destroy(mongoConnection);
+			mongo_dispose(mongoConnection);
+
+			ereport(ERROR, (errmsg("could not authenticate to %s:%s:%s", databaseName, username, password),
+						errhint("Mongo driver connection error: %d", errorCode)));
+			return;
+
+		}
+	}
+	/*end authentication*/
 
 	/* deserialize query document; and create column info hash */
 	foreignScan = (ForeignScan *) scanState->ss.ps.plan;
@@ -682,6 +709,8 @@ MongoGetOptions(Oid foreignTableId)
 	int32 portNumber = 0;
 	char *databaseName = NULL;
 	char *collectionName = NULL;
+	char *username= NULL;
+	char *password= NULL;
 
 	addressName = MongoGetOptionValue(foreignTableId, OPTION_NAME_ADDRESS);
 	if (addressName == NULL)
@@ -710,12 +739,16 @@ MongoGetOptions(Oid foreignTableId)
 	{
 		collectionName = get_rel_name(foreignTableId);
 	}
-
+	username = MongoGetOptionValue(foreignTableId, OPTION_NAME_USERNAME);
+	password = MongoGetOptionValue(foreignTableId, OPTION_NAME_PASSWORD);
+	
 	mongoFdwOptions = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 	mongoFdwOptions->addressName = addressName;
 	mongoFdwOptions->portNumber = portNumber;
 	mongoFdwOptions->databaseName = databaseName;
 	mongoFdwOptions->collectionName = collectionName;
+	mongoFdwOptions->username = username;
+	mongoFdwOptions->password = password;
 
 	return mongoFdwOptions;
 }
@@ -731,15 +764,18 @@ MongoGetOptionValue(Oid foreignTableId, const char *optionName)
 {
 	ForeignTable *foreignTable = NULL;
 	ForeignServer *foreignServer = NULL;
+	UserMapping *mapping= NULL;
 	List *optionList = NIL;
 	ListCell *optionCell = NULL;
 	char *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
+	mapping = GetUserMapping(GetUserId(), foreignTable->serverid);
 
 	optionList = list_concat(optionList, foreignTable->options);
 	optionList = list_concat(optionList, foreignServer->options);
+	optionList = list_concat(optionList, mapping->options);
 
 	foreach(optionCell, optionList)
 	{
