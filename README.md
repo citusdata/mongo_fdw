@@ -2,8 +2,7 @@
 
 This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper.
 
-Please note that this version of `mongo_fdw` only works with
-PostgreSQL Version **9.3** and greater.
+Please note that this version of mongo_fdw works with PostgreSQL and EDB Postgres Advanced Server 9.3, 9.4 and 9.5. Work is underway for certification with 9.6Beta.
 
 Installation
 ------------
@@ -189,16 +188,13 @@ Have a fix for a bug or an idea for a great new feature? Great! Check out the co
 
 Support
 -------
-This project will be modified to maintain compatibility with new PostgreSQL
-releases. The project owners to set aside a day every month to look over open
-issues and support emails, but are not engaged in active feature development.
-Reported bugs will be addressed by apparent severity.
+This project will be modified to maintain compatibility with new PostgreSQL and EDB Postgres Advanced Server releases.
 
-As with many open source projects, you may be able to obtain support via the public mailing list (`mongo_fdw` `@` `enterprisedb.com`).  If you need commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mongo_fdw.
+If you need commercial support, please contact the EnterpriseDB sales team, or check whether your existing PostgreSQL support provider can also support mongo_fdw.
 
 License
 -------
-Portions Copyright © 2004-2014, EnterpriseDB Corporation.
+Portions Copyright © 2004-2016, EnterpriseDB Corporation.
 
 Portions Copyright © 2012–2014 Citus Data, Inc.
 
