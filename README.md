@@ -62,7 +62,14 @@ The following parameters can be set on a MongoDB foreign server object:
 
   * **`address`**: the address or hostname of the MongoDB server Defaults to `127.0.0.1`
   * **`port`**: the port number of the MongoDB server. Defaults to `27017`
-  * **`read_preference`**: primary [default], secondary, primaryPreferred, secondaryPreferred, or nearest (meta driver only).  Defaults to `primary'
+  * **`read_preference`**: primary [default], secondary, primaryPreferred, secondaryPreferred, or nearest (meta driver only).  Defaults to `primary`
+  * **`ssl`**: false [default], true to enable ssl (meta driver only). See http://mongoc.org/libmongoc/current/mongoc_ssl_opt_t.html to understand the options.
+  * **`pem_file`**: SSL option;
+  * **`pem_pwd`**: SSL option;
+  * **`ca_file`**: SSL option;
+  * **`ca_dir`**: SSL option;
+  * **`crl_file`**: SSL option;
+  * **`weak_cert_validation`**: SSL option;
 
 The following parameters can be set on a MongoDB foreign table object:
 

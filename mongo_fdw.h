@@ -150,6 +150,13 @@
 #define OPTION_NAME_PASSWORD "password"
 #ifdef META_DRIVER
 #define OPTION_NAME_READ_PREFERENCE "read_preference"
+#define OPTION_NAME_SSL "ssl"
+#define OPTION_NAME_PEM_FILE "pem_file"
+#define OPTION_NAME_PEM_PWD "pem_pwd"
+#define OPTION_NAME_CA_FILE "ca_file"
+#define OPTION_NAME_CA_DIR "ca_dir"
+#define OPTION_NAME_CRL_FILE "crl_file"
+#define OPTION_NAME_WEAK_CERT "weak_cert_validation"
 #endif
 
 /* Default values for option parameters */
@@ -181,7 +188,7 @@ typedef struct MongoValidOption
 
 /* Array of options that are valid for mongo_fdw */
 #ifdef META_DRIVER
-static const uint32 ValidOptionCount = 7;
+static const uint32 ValidOptionCount = 14;
 #else
 static const uint32 ValidOptionCount = 6;
 #endif
@@ -193,6 +200,13 @@ static const MongoValidOption ValidOptionArray[] =
 
 #ifdef META_DRIVER
 	{ OPTION_NAME_READ_PREFERENCE, ForeignServerRelationId },
+	{ OPTION_NAME_SSL, ForeignServerRelationId },
+	{ OPTION_NAME_PEM_FILE, ForeignServerRelationId },
+	{ OPTION_NAME_PEM_PWD, ForeignServerRelationId },
+	{ OPTION_NAME_CA_FILE, ForeignServerRelationId },
+	{ OPTION_NAME_CA_DIR, ForeignServerRelationId },
+	{ OPTION_NAME_CRL_FILE, ForeignServerRelationId },
+	{ OPTION_NAME_WEAK_CERT, ForeignServerRelationId },
 #endif
 
 	/* foreign table options */
@@ -221,6 +235,13 @@ typedef struct MongoFdwOptions
 	char *svr_password;
 #ifdef META_DRIVER
 	char *readPreference;
+ 	bool ssl;
+	char *pem_file;
+ 	char *pem_pwd;
+ 	char *ca_file;
+ 	char *ca_dir;
+ 	char *crl_file;
+ 	bool weak_cert_validation;
 #endif
 } MongoFdwOptions;
 

@@ -154,8 +154,22 @@ mongo_get_options(Oid foreignTableId)
 	char                    *svr_password= NULL;
 #ifdef META_DRIVER
 	char                    *readPreference = NULL;
+ 	bool  									ssl = false;
+	char 										*pem_file = NULL;
+ 	char 										*pem_pwd = NULL;
+ 	char 										*ca_file = NULL;
+ 	char 										*ca_dir = NULL;
+ 	char 										*crl_file = NULL;
+ 	bool 										weak_cert_validation = false;
 
 	readPreference = mongo_get_option_value(foreignTableId, OPTION_NAME_READ_PREFERENCE);
+	ssl = mongo_get_option_value(foreignTableId, OPTION_NAME_SSL);
+	pem_file = mongo_get_option_value(foreignTableId, OPTION_NAME_PEM_FILE);
+	pem_pwd = mongo_get_option_value(foreignTableId, OPTION_NAME_PEM_PWD);
+	ca_file = mongo_get_option_value(foreignTableId, OPTION_NAME_CA_FILE);
+	ca_dir = mongo_get_option_value(foreignTableId, OPTION_NAME_CA_DIR);
+	crl_file = mongo_get_option_value(foreignTableId, OPTION_NAME_CRL_FILE);
+	weak_cert_validation = mongo_get_option_value(foreignTableId, OPTION_NAME_WEAK_CERT);
 #endif
 
 	addressName = mongo_get_option_value(foreignTableId, OPTION_NAME_ADDRESS);
@@ -190,6 +204,13 @@ mongo_get_options(Oid foreignTableId)
 
 #ifdef META_DRIVER
 	options->readPreference = readPreference;
+	options->ssl = ssl;
+	options->pem_file = pem_file;
+	options->pem_pwd = pem_pwd;
+	options->ca_file = ca_file;
+	options->ca_dir = ca_dir;
+	options->crl_file = crl_file;
+	options->weak_cert_validation = weak_cert_validation;
 #endif
 
 	return options;
@@ -242,4 +263,3 @@ mongo_get_option_value(Oid foreignTableId, const char *optionName)
 	}
 	return optionValue;
 }
-

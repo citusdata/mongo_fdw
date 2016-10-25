@@ -24,21 +24,34 @@
  * Connect to MongoDB server using Host/ip and Port number.
  */
 MONGO_CONN*
-MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password, char *readPreference)
+MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password, char *readPreference, bool ssl, char *pem_file,
+	char *pem_pwd, char *ca_file, char *ca_dir, char *crl_file, bool weak_cert_validation)
 {
 	MONGO_CONN *client = NULL;
 	char* uri = NULL;
 
 	if (user && password && readPreference)
-		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s", user, password, host, port, databaseName, readPreference);
+		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false");
 	else if (user && password)
-		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s", user, password, host, port, databaseName);
+		uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s", user, password, host, port, databaseName,  ssl ? "true" : "false");
 	else if (readPreference)
-		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s", host, port, databaseName, readPreference);
+		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s", host, port, databaseName, readPreference, ssl ? "true" : "false");
 	else
-		uri = bson_strdup_printf ("mongodb://%s:%hu/%s", host, port, databaseName);
+		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?ssl=%s", host, port, databaseName, ssl ? "true" : "false");
 
 	client = mongoc_client_new(uri);
+
+	if (ssl) {
+		mongoc_ssl_opt_t *ssl_opts = (mongoc_ssl_opt_t*) malloc(sizeof(mongoc_ssl_opt_t));
+		ssl_opts->pem_file = pem_file;
+		ssl_opts->pem_pwd = pem_pwd;
+		ssl_opts->ca_file = ca_file;
+		ssl_opts->ca_dir = ca_dir;
+		ssl_opts->crl_file = crl_file;
+		ssl_opts->weak_cert_validation = weak_cert_validation;
+		mongoc_client_set_ssl_opts (client, ssl_opts);
+		free(ssl_opts);
+	}
 
 	bson_free(uri);
 
@@ -365,7 +378,7 @@ BsonAppendDouble(BSON *b, const char* key, double v)
 bool
 BsonAppendUTF8(BSON *b, const char* key, char *v)
 {
-  
+
 	return bson_append_utf8(b, key, strlen(key), v, strlen(v));
 }
 
