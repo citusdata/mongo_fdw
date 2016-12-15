@@ -644,7 +644,12 @@ ColumnList(RelOptInfo *baserel)
 	List *neededColumnList = NIL;
 	AttrNumber columnIndex = 1;
 	AttrNumber columnCount = baserel->max_attr;
+
+#if PG_VERSION_NUM >= 90600
+        List *targetColumnList = baserel->reltarget->exprs;
+#else
 	List *targetColumnList = baserel->reltargetlist;
+#endif
 	List *restrictInfoList = baserel->baserestrictinfo;
 	ListCell *restrictInfoCell = NULL;
 
@@ -660,8 +665,10 @@ ColumnList(RelOptInfo *baserel)
 
 		/* recursively pull up any columns used in the restriction clause */
 		clauseColumnList = pull_var_clause(restrictClause,
-										   PVC_RECURSE_AGGREGATES,
-										   PVC_RECURSE_PLACEHOLDERS);
+#if PG_VERSION_NUM < 90600
+							PVC_RECURSE_AGGREGATES,
+#endif
+							PVC_RECURSE_PLACEHOLDERS);
 
 		neededColumnList = list_union(neededColumnList, clauseColumnList);
 	}

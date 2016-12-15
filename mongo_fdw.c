@@ -318,14 +318,20 @@ MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 	}
 
 	/* create a foreign path node */
-	foreignPath = (Path *) create_foreignscan_path(root, baserel, baserel->rows,
-												   startupCost, totalCost,
-												   NIL,	 /* no pathkeys */
-												   NULL, /* no outer rel either */
-#if PG_VERSION_NUM >= 90500
-									 NULL,	/* no extra plan */
+
+	create_foreignscan_path(root, baserel,
+#if PG_VERSION_NUM >= 90600
+				NULL,          /* default pathtarget */
 #endif
-												   NIL); /* no fdw_private data */
+				baserel->rows,
+				startupCost,
+				totalCost,
+				NIL,   /* no pathkeys */
+				NULL,  /* no outer rel either */
+#if PG_VERSION_NUM >= 90500
+				NULL,  /* no extra plan */
+#endif
+				NULL);        /* no fdw_private data */
 
 	/* add foreign path as the only possible path */
 	add_path(baserel, foreignPath);	
