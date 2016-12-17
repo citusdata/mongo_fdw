@@ -319,7 +319,7 @@ MongoGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreignTableId)
 
 	/* create a foreign path node */
 
-	create_foreignscan_path(root, baserel,
+	foreignPath = (Path *) create_foreignscan_path(root, baserel,
 #if PG_VERSION_NUM >= 90600
 				NULL,          /* default pathtarget */
 #endif
