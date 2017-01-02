@@ -78,7 +78,7 @@ function install_json_lib
 function install_mongoc_driver
 {
 	cd mongo-c-driver
-	./configure --with-libbson=auto
+	./configure --with-libbson=auto --enable-ssl
 	make install
 	cd ..
 }
@@ -123,4 +123,3 @@ elif [ "--with-master" == $1 ]; then
 else
 	echo "Usage: autogen.sh --[with-legacy | with-master]"
 fi
-
