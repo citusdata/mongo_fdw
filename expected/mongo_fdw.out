@@ -1404,6 +1404,47 @@ SELECT * FROM main_exports;
  5381ccf9d6d81c8e8bf04351 | {"Wine of fresh grapes, including fortified wines","Insulated (including enamelled or anodised) wire, cable","Sunflower seeds, whether or not broken"}
 (3 rows)
 
+-- __doc tests
+-- the collection warehouse must contain the following data
+-- use testdb;
+-- db.warehouse.insert ({"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
+-- db.warehouse.insert({"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
+CREATE FOREIGN TABLE test_json(__doc json) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_jsonb(__doc jsonb) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_text(__doc text) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_varchar(__doc varchar) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+SELECT * FROM test_json;
+                                                                          __doc                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
+(2 rows)
+
+SELECT * FROM test_jsonb;
+                                                                    __doc                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------
+ {"_id": {"$oid": "58a1ebbaf543ec0b90545859"}, "warehouse_id": 1, "warehouse_name": "UPS", "warehouse_created": {"$date": 1418368330000}}
+ {"_id": {"$oid": "58a1ebbaf543ec0b9054585a"}, "warehouse_id": 2, "warehouse_name": "Laptop", "warehouse_created": {"$date": 1447229590000}}
+(2 rows)
+
+SELECT * FROM test_text;
+                                                                          __doc                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
+(2 rows)
+
+SELECT * FROM test_varchar;
+                                                                          __doc                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
+ { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
+(2 rows)
+
+DROP FOREIGN TABLE test_json;
+DROP FOREIGN TABLE test_jsonb;
+DROP FOREIGN TABLE test_text;
+DROP FOREIGN TABLE test_varchar;
 DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
 DROP FOREIGN TABLE countries;

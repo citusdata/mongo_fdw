@@ -64,6 +64,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/jsonapi.h"
+#include "utils/jsonb.h"
 #if PG_VERSION_NUM >= 90300
 	#include "access/htup_details.h"
 #endif
@@ -1193,8 +1194,50 @@ FillTupleSlot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		lex = makeJsonLexContext(result, false);
 		pg_parse_json(lex, &nullSemAction);
 		columnValue = PointerGetDatum(result);
+
+		switch (columnMapping->columnTypeId)
+		{
+			case BOOLOID:
+			case INT2OID:
+			case INT4OID:
+			case INT8OID:
+			case BOXOID:
+			case BYTEAOID:
+			case CHAROID:
+			case VARCHAROID:
+			case NAMEOID:
+			case JSONOID:
+			case XMLOID:
+			case POINTOID:
+			case LSEGOID:
+			case LINEOID:
+			case UUIDOID:
+			case LSNOID:
+			case TEXTOID:
+			case CASHOID:
+			case DATEOID:
+			case MACADDROID:
+			case TIMESTAMPOID:
+			case TIMESTAMPTZOID:
+			case BPCHAROID:
+				columnValue =  PointerGetDatum(result);
+				break;
+
+			case JSONBOID:
+				columnValue =  DirectFunctionCall1(jsonb_in, PointerGetDatum(str));
+				break;
+
+			default:
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("un-supported type for column __doc"),
+								errhint("Column type: %u", (uint32) columnMapping->columnTypeId)));
+				break;
+		}
+
 		columnValues[columnMapping->columnIndex] = columnValue;
 		columnNulls[columnMapping->columnIndex] = false;
+
+		return;
 	}
 
 

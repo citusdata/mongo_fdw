@@ -65,6 +65,29 @@ _id NAME,
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
 SELECT * FROM main_exports;
 
+-- __doc tests
+
+-- the collection warehouse must contain the following data
+-- use testdb;
+-- db.warehouse.insert ({"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
+-- db.warehouse.insert({"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
+
+
+CREATE FOREIGN TABLE test_json(__doc json) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_jsonb(__doc jsonb) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_text(__doc text) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+CREATE FOREIGN TABLE test_varchar(__doc varchar) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
+
+SELECT * FROM test_json;
+SELECT * FROM test_jsonb;
+SELECT * FROM test_text;
+SELECT * FROM test_varchar;
+
+DROP FOREIGN TABLE test_json;
+DROP FOREIGN TABLE test_jsonb;
+DROP FOREIGN TABLE test_text;
+DROP FOREIGN TABLE test_varchar;
+
 DROP FOREIGN TABLE department;
 DROP FOREIGN TABLE employee;
 DROP FOREIGN TABLE countries;
