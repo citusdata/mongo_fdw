@@ -376,7 +376,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 	 * the MongoDB server-side, so we instead filter out columns on our side.
 	 */
 	opExpressionList = ApplicableOpExpressionList(baserel);
-	queryDocument = QueryDocument(foreigntableid, opExpressionList);
+	queryDocument = QueryDocument(foreigntableid, opExpressionList, NULL);
 
 	/* we don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(baserel);
@@ -513,7 +513,7 @@ MongoBeginForeignScan(ForeignScanState *scanState, int executorFlags)
 	columnList = list_nth(foreignPrivateList, 0);
 	opExpressionList = list_nth(foreignPrivateList, 1);
 
-	queryDocument = QueryDocument(foreignTableId, opExpressionList);
+	queryDocument = QueryDocument(foreignTableId, opExpressionList, scanState);
 
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
@@ -1995,7 +1995,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	scanState->ss.ss_currentRelation = relation;
 
 	foreignTableId = RelationGetRelid(relation);
-	queryDocument = QueryDocument(foreignTableId, NIL);
+	queryDocument = QueryDocument(foreignTableId, NIL, NULL);
 	foreignPrivateList = list_make2(columnList, NULL);
 
 	/* only clean up the query struct, but not its data */

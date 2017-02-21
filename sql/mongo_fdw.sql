@@ -83,6 +83,57 @@ SELECT * FROM test_jsonb;
 SELECT * FROM test_text;
 SELECT * FROM test_varchar;
 
+-- where clause push down test
+CREATE FOREIGN TABLE test_numbers(_id NAME, a int, b text) SERVER mongo_server OPTIONS (database 'testdb', collection 'test_numbers');
+insert into test_numbers values('1', 1, 'One');
+insert into test_numbers values('2', 2, 'Two');
+insert into test_numbers values('3', 3, 'Three');
+insert into test_numbers values('4', 4, 'Four');
+insert into test_numbers values('5', 5, 'Five');
+insert into test_numbers values('6', 6, 'Six');
+insert into test_numbers values('7', 7, 'Seven');
+insert into test_numbers values('8', 8, 'Eight');
+insert into test_numbers values('9', 9, 'Nine');
+insert into test_numbers values('10', 10, 'Ten');
+
+create or replace function test_param_where() returns void as $$
+DECLARE
+  n varchar;
+BEGIN
+  FOR x IN 1..9 LOOP
+    select b into n from test_numbers where a=x;
+    raise notice 'Found Item %', n;
+  end loop;
+  return;
+END
+$$ LANGUAGE plpgsql;
+
+SELECT test_param_where();
+
+PREPARE test_where_pd(int) as SELECT b FROM test_numbers WHERE a =$1;
+explain (verbose, costs false) execute test_where_pd(1);
+explain (verbose, costs false) execute test_where_pd(2);
+explain (verbose, costs false) execute test_where_pd(3);
+explain (verbose, costs false) execute test_where_pd(4);
+explain (verbose, costs false) execute test_where_pd(5);
+explain (verbose, costs false) execute test_where_pd(6);
+explain (verbose, costs false) execute test_where_pd(7);
+explain (verbose, costs false) execute test_where_pd(8);
+explain (verbose, costs false) execute test_where_pd(9);
+
+execute test_where_pd(1);
+execute test_where_pd(2);
+execute test_where_pd(3);
+execute test_where_pd(4);
+execute test_where_pd(5);
+execute test_where_pd(6);
+execute test_where_pd(7);
+execute test_where_pd(8);
+execute test_where_pd(9);
+
+DELETE FROM test_numbers;
+DROP FOREIGN TABLE test_numbers;
+
 DROP FOREIGN TABLE test_json;
 DROP FOREIGN TABLE test_jsonb;
 DROP FOREIGN TABLE test_text;
