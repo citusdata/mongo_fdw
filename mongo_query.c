@@ -50,7 +50,8 @@ static List * UniqueColumnList(List *operatorList);
 static List * ColumnOperatorList(Var *column, List *operatorList);
 static void AppendConstantValue(BSON *queryDocument, const char *keyName,
 								Const *constant);
-
+static void AppendParamValue(BSON *queryDocument, const char *keyName,
+				Param *paramNode, ForeignScanState *scanStateNode);
 /*
  * ApplicableOpExpressionList walks over all filter clauses that relate to this
  * foreign table, and chooses applicable clauses that we know we can translate
@@ -79,6 +80,7 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 		Const *constant = NULL;
 		bool equalsOperator = false;
 		bool constantIsArray = false;
+		Param *paramNode = NULL;
 
 		/* we only support operator expressions */
 		expressionType = nodeTag(expression);
@@ -109,6 +111,7 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 		argumentList = opExpression->args;
 		column = (Var *) FindArgumentOfType(argumentList, T_Var);
 		constant = (Const *) FindArgumentOfType(argumentList, T_Const);
+		paramNode = (Param *) FindArgumentOfType(argumentList, T_Param);
 
 		/*
 		 * We don't push down operators where the constant is an array, since
@@ -127,6 +130,11 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 		}
 
 		if (column != NULL && constant != NULL && !constantIsArray)
+		{
+			opExpressionList = lappend(opExpressionList, opExpression);
+		}
+
+		if (column != NULL && paramNode != NULL)
 		{
 			opExpressionList = lappend(opExpressionList, opExpression);
 		}
@@ -169,7 +177,7 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
  * "l_shipdate: { $gte: new Date(757382400000), $lt: new Date(788918400000) }".
  */
 BSON *
-QueryDocument(Oid relationId, List *opExpressionList)
+QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStateNode)
 {
 	List *equalityOperatorList = NIL;
 	List *comparisonOperatorList = NIL;
@@ -193,15 +201,21 @@ QueryDocument(Oid relationId, List *opExpressionList)
 		OpExpr *equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
 		Oid columnId = InvalidOid;
 		char *columnName = NULL;
+		Const *constant = NULL;
+		Param *paramNode = NULL;
 
 		List *argumentList = equalityOperator->args;
 		Var *column = (Var *) FindArgumentOfType(argumentList, T_Var);
-		Const *constant = (Const *) FindArgumentOfType(argumentList, T_Const);
+		constant = (Const *) FindArgumentOfType(argumentList, T_Const);
+		paramNode = (Param *) FindArgumentOfType(argumentList, T_Param);
 
 		columnId = column->varattno;
 		columnName = get_relid_attribute_name(relationId, columnId);
 
-		AppendConstantValue(queryDocument, columnName, constant);
+		if (constant != NULL)
+			AppendConstantValue(queryDocument, columnName, constant);
+		else
+			AppendParamValue(queryDocument, columnName, paramNode, scanStateNode);
 	}
 
 	/*
@@ -373,6 +387,29 @@ ColumnOperatorList(Var *column, List *operatorList)
 	return columnOperatorList;
 }
 
+static void
+AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
+		ForeignScanState *scanStateNode)
+{
+	ExprState	*param_expr;
+	Datum		param_value;
+	bool		isNull;
+	ExprContext	*econtext;
+
+	if (scanStateNode == NULL)
+		return;
+
+	econtext = scanStateNode->ss.ps.ps_ExprContext;
+
+	/* Prepare for parameter expression evaluation */
+	param_expr = ExecInitExpr((Expr *) paramNode, (PlanState *)scanStateNode);
+
+	/* Evaluate the parameter expression */
+	param_value = ExecEvalExpr(param_expr, econtext, &isNull, NULL);
+
+	AppenMongoValue(queryDocument, keyName, param_value, isNull,
+				paramNode->paramtype);
+}
 
 /*
  * AppendConstantValue appends to the query document the key name and constant

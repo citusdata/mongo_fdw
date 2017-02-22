@@ -303,7 +303,8 @@ extern void mongo_release_connection(MONGO_CONN* conn);
 
 /* Function declarations related to creating the mongo query */
 extern List * ApplicableOpExpressionList(RelOptInfo *baserel);
-extern BSON * QueryDocument(Oid relationId, List *opExpressionList);
+extern BSON * QueryDocument(Oid relationId, List *opExpressionList,
+				ForeignScanState *scanStateNode);
 extern List * ColumnList(RelOptInfo *baserel);
 
 /* Function declarations for foreign data wrapper */
