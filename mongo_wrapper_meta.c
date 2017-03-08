@@ -25,7 +25,7 @@
  */
 MONGO_CONN*
 MongoConnect(const char* host, const unsigned short port, char* databaseName, char *user, char *password,
-    char *authenticationDatabase, char *readPreference, bool ssl, char *pem_file,
+    char *authenticationDatabase, char *replicaSet, char *readPreference, bool ssl, char *pem_file,
 	char *pem_pwd, char *ca_file, char *ca_dir, char *crl_file, bool weak_cert_validation)
 {
 	MONGO_CONN *client = NULL;
@@ -33,19 +33,39 @@ MongoConnect(const char* host, const unsigned short port, char* databaseName, ch
 
 	if (user && password)
 	    if (authenticationDatabase)
-	        if (readPreference)
-		        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false",authenticationDatabase);
+	        if (replicaSet)
+	            if (readPreference)
+		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s&replicaSet=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false",authenticationDatabase,replicaSet);
+		        else
+		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s&replicaSet=%s", user, password, host, port, databaseName,  ssl ? "true" : "false",authenticationDatabase,replicaSet);
 		    else
-		        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s", user, password, host, port, databaseName,  ssl ? "true" : "false",authenticationDatabase);
+   	            if (readPreference)
+   		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false",authenticationDatabase);
+   		        else
+   		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s", user, password, host, port, databaseName,  ssl ? "true" : "false",authenticationDatabase);
 		else
-	        if (readPreference)
-		        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false");
+	        if (replicaSet)
+    	        if (readPreference)
+	    	        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false",replicaSet);
+		        else
+		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s&replicaSet=%s", user, password, host, port, databaseName,  ssl ? "true" : "false",replicaSet);
 		    else
-		        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s", user, password, host, port, databaseName,  ssl ? "true" : "false");
-	else if (readPreference)
-		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s", host, port, databaseName, readPreference, ssl ? "true" : "false");
+    	        if (readPreference)
+	    	        uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false");
+		        else
+		            uri = bson_strdup_printf ("mongodb://%s:%s@%s:%hu/%s?ssl=%s", user, password, host, port, databaseName,  ssl ? "true" : "false");
 	else
-		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?ssl=%s", host, port, databaseName, ssl ? "true" : "false");
+        if (replicaSet)
+        	if (readPreference)
+		        uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s", host, port, databaseName, readPreference, ssl ? "true" : "false",replicaSet);
+        	else
+        		uri = bson_strdup_printf ("mongodb://%s:%hu/%s?ssl=%s&replicaSet=%s", host, port, databaseName, ssl ? "true" : "false",replicaSet);
+        else
+        	if (readPreference)
+        	    uri = bson_strdup_printf ("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s", host, port, databaseName, readPreference, ssl ? "true" : "false");
+            else
+            	uri = bson_strdup_printf ("mongodb://%s:%hu/%s?ssl=%s", host, port, databaseName, ssl ? "true" : "false");
+
 
 	client = mongoc_client_new(uri);
 
