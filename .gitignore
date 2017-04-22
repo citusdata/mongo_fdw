@@ -27,3 +27,5 @@
 
 # pgregress results directory
 results/
+
+.idea/

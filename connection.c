@@ -99,7 +99,8 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 	if (entry->conn == NULL)
 	{
 #ifdef META_DRIVER
-		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password, opt->readPreference,
+		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password,
+		opt->authenticationDatabase, opt->replicaSet, opt->readPreference,
 			opt->ssl, opt->pem_file, opt->pem_pwd, opt->ca_file, opt->ca_dir, opt->crl_file, opt->weak_cert_validation);
 #else
 		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password);

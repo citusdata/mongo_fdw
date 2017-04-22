@@ -154,6 +154,8 @@ mongo_get_options(Oid foreignTableId)
 	char                    *svr_password= NULL;
 #ifdef META_DRIVER
 	char                    *readPreference = NULL;
+	char                    *authenticationDatabase = NULL;
+	char                    *replicaSet = NULL;
  	bool  									ssl = false;
 	char 										*pem_file = NULL;
  	char 										*pem_pwd = NULL;
@@ -163,6 +165,8 @@ mongo_get_options(Oid foreignTableId)
  	bool 										weak_cert_validation = false;
 
 	readPreference = mongo_get_option_value(foreignTableId, OPTION_NAME_READ_PREFERENCE);
+	authenticationDatabase = mongo_get_option_value(foreignTableId, OPTION_NAME_AUTHENTICATION_DATABASE);
+	replicaSet = mongo_get_option_value(foreignTableId, OPTION_NAME_REPLICA_SET);
 	ssl = mongo_get_option_value(foreignTableId, OPTION_NAME_SSL);
 	pem_file = mongo_get_option_value(foreignTableId, OPTION_NAME_PEM_FILE);
 	pem_pwd = mongo_get_option_value(foreignTableId, OPTION_NAME_PEM_PWD);
@@ -204,6 +208,8 @@ mongo_get_options(Oid foreignTableId)
 
 #ifdef META_DRIVER
 	options->readPreference = readPreference;
+	options->authenticationDatabase = authenticationDatabase;
+	options->replicaSet = replicaSet;
 	options->ssl = ssl;
 	options->pem_file = pem_file;
 	options->pem_pwd = pem_pwd;

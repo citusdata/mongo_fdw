@@ -62,6 +62,8 @@ The following parameters can be set on a MongoDB foreign server object:
 
   * **`address`**: the address or hostname of the MongoDB server Defaults to `127.0.0.1`
   * **`port`**: the port number of the MongoDB server. Defaults to `27017`
+  * **`authentication_database`**: database against which user will be authenticated against. Only valid with password based authentication. Defaults to per same database as the MongoDB collection database.
+  * **`replica_set`**: replica set the server is member of. If set, driver will auto-connect to correct primary in the replica set when writing.  
   * **`read_preference`**: primary [default], secondary, primaryPreferred, secondaryPreferred, or nearest (meta driver only).  Defaults to `primary`
   * **`ssl`**: false [default], true to enable ssl (meta driver only). See http://mongoc.org/libmongoc/current/mongoc_ssl_opt_t.html to understand the options.
   * **`pem_file`**: SSL option;
