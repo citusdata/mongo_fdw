@@ -405,7 +405,12 @@ AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
 	param_expr = ExecInitExpr((Expr *) paramNode, (PlanState *)scanStateNode);
 
 	/* Evaluate the parameter expression */
+#if PG_VERSION_NUM >= 100000
+	param_value = ExecEvalExpr(param_expr, econtext, &isNull);
+#else
 	param_value = ExecEvalExpr(param_expr, econtext, &isNull, NULL);
+#endif
+
 
 	AppenMongoValue(queryDocument, keyName, param_value, isNull,
 				paramNode->paramtype);

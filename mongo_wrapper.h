@@ -17,6 +17,7 @@
 #ifndef MONGO_WRAPPER_H
 #define MONGO_WRAPPER_H
 
+
 #include "mongo_fdw.h"
 #include "bson.h"
 
@@ -25,6 +26,7 @@
 #else
 	#include "mongo.h"
 #endif
+#define json_object json_object_tmp
 
 #include <bson.h>
 #include <json.h>
