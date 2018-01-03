@@ -49,9 +49,9 @@ function checkout_json_lib
 {
 	echo $PWD
 	rm -rf json-c
-	wget https://github.com/json-c/json-c/archive/json-c-0.12-20140410.tar.gz
-	tar -zxvf json-c-0.12-20140410.tar.gz
-	mv json-c-json-c-0.12-20140410 json-c
+	wget https://github.com/json-c/json-c/archive/json-c-0.12.1-20160607.tar.gz
+	tar -zxvf json-c-0.12.1-20160607.tar.gz
+	mv json-c-json-c-0.12.1-20160607 json-c
 	cd json-c
 	patch -p1 < ../json_compilation_error.patch
 	cd ..
