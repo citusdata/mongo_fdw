@@ -69,6 +69,12 @@
 	#include "access/htup_details.h"
 #endif
 
+/*
+ * In PG 9.5.1 the number will be 90501,
+ * our version is 5.1.0 so number will be 50100
+ */
+#define CODE_VERSION   50100
+
 
 /* Local functions forward declarations */
 static void MongoGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
@@ -164,6 +170,7 @@ static JsonSemAction nullSemAction =
 PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(mongo_fdw_handler);
+PG_FUNCTION_INFO_V1(mongo_fdw_version);
 
 /*
  * Library load-time initalization, sets on_proc_exit() callback for
@@ -2136,4 +2143,10 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	(*totalDeadRowCount) = 0;
 
 	return sampleRowCount;
+}
+
+Datum
+mongo_fdw_version(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT32(CODE_VERSION);
 }

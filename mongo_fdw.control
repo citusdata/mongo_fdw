@@ -4,6 +4,6 @@
 # Portions Copyright © 2012–2014 Citus Data, Inc.
 #
 comment = 'foreign data wrapper for MongoDB access'
-default_version = '1.0'
+default_version = '1.1'
 module_pathname = '$libdir/mongo_fdw'
 relocatable = true

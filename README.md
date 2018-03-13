@@ -2,7 +2,7 @@
 
 This [MongoDB][1] extension implements the PostgreSQL's Foreign Data Wrapper.
 
-Please note that this version of mongo_fdw works with PostgreSQL and EDB Postgres Advanced Server 9.3, 9.4, 9.5 and 9.6.
+Please note that this version of mongo_fdw works with PostgreSQL and EDB Postgres Advanced Server 9.3, 9.4, 9.5, 9.6 and 10.
 
 Installation
 ------------
@@ -175,6 +175,13 @@ EXPLAIN SELECT * FROM warehouse WHERE warehouse_id = 1;
 
 -- collect data distribution statistics`
 ANALYZE warehouse;
+
+select mongo_fdw_version();
+ mongo_fdw_version
+-------------------
+             50100
+(1 row)
+
 
 ```
 
