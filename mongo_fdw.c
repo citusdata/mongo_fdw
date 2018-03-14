@@ -73,7 +73,7 @@
  * In PG 9.5.1 the number will be 90501,
  * our version is 5.1.0 so number will be 50100
  */
-#define CODE_VERSION   50100
+#define CODE_VERSION   50200
 
 
 /* Local functions forward declarations */
