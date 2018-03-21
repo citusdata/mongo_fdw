@@ -24,7 +24,7 @@ PG_CPPFLAGS = --std=c99 -I$(MONGO_PATH) -I$(LIBJSON)
 OBJS = connection.o option.o  mongo_wrapper.o mongo_fdw.o mongo_query.o $(MONGO_OBJS) $(LIBJSON_OBJS)
 
 EXTENSION = mongo_fdw
-DATA = mongo_fdw--1.0.sql
+DATA = mongo_fdw--1.0.sql  mongo_fdw--1.1.sql mongo_fdw--1.0--1.1.sql
 
 REGRESS = mongo_fdw
 REGRESS_OPTS = --load-extension=$(EXTENSION)
