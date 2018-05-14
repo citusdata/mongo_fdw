@@ -14,6 +14,10 @@
 #
 #-------------------------------------------------------------------------
 
+
+MONGOC_VERSION=1.9.5
+JSONC_VERSION=0.12.1-20160607
+
 if [ "$#" -ne 1 ]; then
     echo "Usage: autogen.sh --[with-legacy | with-master]"
     exit
@@ -25,10 +29,10 @@ fi
 function checkout_mongo_driver
 {
 	rm -rf mongo-c-driver
-	wget https://github.com/mongodb/mongo-c-driver/releases/download/1.3.1/mongo-c-driver-1.3.1.tar.gz
-	tar -zxvf mongo-c-driver-1.3.1.tar.gz
-	mv mongo-c-driver-1.3.1 mongo-c-driver
-	rm -rf mongo-c-driver-1.3.1.tar.gz
+	wget https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz
+	tar -zxvf mongo-c-driver-$MONGOC_VERSION.tar.gz
+	mv mongo-c-driver-$MONGOC_VERSION mongo-c-driver
+	rm -rf mongo-c-driver-$MONGOC_VERSION.tar.gz
 }
 
 ###
@@ -49,13 +53,13 @@ function checkout_json_lib
 {
 	echo $PWD
 	rm -rf json-c
-	wget https://github.com/json-c/json-c/archive/json-c-0.12.1-20160607.tar.gz
-	tar -zxvf json-c-0.12.1-20160607.tar.gz
-	mv json-c-json-c-0.12.1-20160607 json-c
+	wget https://github.com/json-c/json-c/archive/json-c-$JSONC_VERSION.tar.gz
+	tar -zxvf json-c-$JSONC_VERSION.tar.gz
+	mv json-c-json-c-$JSONC_VERSION json-c
 	cd json-c
 	patch -p1 < ../json_compilation_error.patch
 	cd ..
-	rm -rf json-c-0.12-20140410.tar.gz
+	rm -rf json-c-$JSONC_VERSION.tar.gz
 	echo $PWD
 }
 
