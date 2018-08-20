@@ -567,7 +567,6 @@ MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collecti
 			bson_copy_to(doc, reply);
 			if (bson_iter_init_find(&it, reply, "n"))
 				count = BsonIterDouble(&it);
-			BsonDestroy(doc);
 		}
 		mongoc_cursor_destroy(cursor);
 	}
