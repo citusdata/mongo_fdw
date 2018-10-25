@@ -655,7 +655,11 @@ MongoPlanForeignModify(PlannerInfo *root,
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
+#if PG_VERSION_NUM < 110000
 			Form_pg_attribute attr = tupdesc->attrs[attnum - 1];
+#else
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+#endif
 
 			if (!attr->attisdropped)
 				targetAttrs = lappend_int(targetAttrs, attnum);
@@ -746,7 +750,11 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 	foreach(lc, fmstate->target_attrs)
 	{
 		int attnum = lfirst_int(lc);
+#if PG_VERSION_NUM < 110000
 		Form_pg_attribute attr = RelationGetDescr(rel)->attrs[attnum - 1];
+#else
+		Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(rel), attnum - 1);
+#endif
 
 		Assert(!attr->attisdropped);
 
@@ -811,16 +819,24 @@ MongoExecForeignInsert(EState *estate,
 		foreach(lc, fmstate->target_attrs)
 		{
 			int attnum = lfirst_int(lc);
+
 			value = slot_getattr(slot, attnum, &isnull);
 
 			/* first column of MongoDB's foreign table must be _id */
+#if PG_VERSION_NUM < 110000
 			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "_id") != 0)
+#else
+			if (strcmp(TupleDescAttr(slot->tts_tupleDescriptor, 0)->attname.data, "_id") != 0)
+#endif
 				elog(ERROR, "first column of MongoDB's foreign table must be \"_id\"");
 
 			if (typoid != NAMEOID)
 				elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
-
+#if PG_VERSION_NUM < 110000
 			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "__doc") == 0)
+#else
+			if (strcmp(TupleDescAttr(slot->tts_tupleDescriptor, 0)->attname.data, "__doc") == 0)
+#endif
 				continue;
 
 			if (attnum == 1)
@@ -832,8 +848,13 @@ MongoExecForeignInsert(EState *estate,
 			}
 			else
 			{
+#if PG_VERSION_NUM < 110000
 				AppenMongoValue(b, slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data, value,
 						isnull, slot->tts_tupleDescriptor->attrs[attnum -1]->atttypid);
+#else
+				AppenMongoValue(b, TupleDescAttr(slot->tts_tupleDescriptor, attnum-1)->attname.data, value,
+						isnull, TupleDescAttr(slot->tts_tupleDescriptor, attnum-1)->atttypid);
+#endif
 			}
 		}
 	}
@@ -865,8 +886,11 @@ MongoAddForeignUpdateTargets(Query *parsetree,
 	/*
 	 * What we need is the rowid which is the first column
 	 */
-	Form_pg_attribute attr =
-				RelationGetDescr(target_relation)->attrs[0];
+#if PG_VERSION_NUM < 110000
+	Form_pg_attribute attr = RelationGetDescr(target_relation)->attrs[0];
+#else
+	Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(target_relation), 0);
+#endif
 
 	/* Make a Var representing the desired value */
 	var = makeVar(parsetree->resultRelation,
@@ -947,22 +971,27 @@ MongoExecForeignUpdate(EState *estate,
 		foreach(lc, fmstate->target_attrs)
 		{
 			int attnum = lfirst_int(lc);
+#if PG_VERSION_NUM < 110000
+			Form_pg_attribute attr = slot->tts_tupleDescriptor->attrs[attnum - 1];
+#else
+			Form_pg_attribute attr = TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1);
+#endif
 			Datum value;
 			bool isnull;
 
-			if (strcmp("_id", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
+			if (strcmp("_id", attr->attname.data) == 0)
 				continue;
 
-			if (strcmp("__doc", slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data) == 0)
+			if (strcmp("__doc", attr->attname.data) == 0)
 				elog(ERROR, "system column '__doc' update is not supported");
 
 			value = slot_getattr(slot, attnum, &isnull);
 #ifdef META_DRIVER
-			AppenMongoValue(&set, slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data, value,
-							isnull ? true : false, slot->tts_tupleDescriptor->attrs[attnum - 1]->atttypid);
+			AppenMongoValue(&set, attr->attname.data, value,
+							isnull ? true : false, attr->atttypid);
 #else
-			AppenMongoValue(b, slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data, value,
-							isnull ? true : false, slot->tts_tupleDescriptor->attrs[attnum - 1]->atttypid);
+			AppenMongoValue(b, attr->attname.data, value,
+							isnull ? true : false, attr->atttypid);
 #endif
 		}
 	}
@@ -2023,11 +2052,17 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	 * Use per-tuple memory context to prevent leak of memory used to read
 	 * rows from the file with copy routines.
 	 */
+#if PG_VERSION_NUM < 110000
 	tupleContext = AllocSetContextCreate(CurrentMemoryContext,
 										 "mongo_fdw temporary context",
 										 ALLOCSET_DEFAULT_MINSIZE,
 										 ALLOCSET_DEFAULT_INITSIZE,
 										 ALLOCSET_DEFAULT_MAXSIZE);
+#else
+	tupleContext = AllocSetContextCreate(CurrentMemoryContext,
+										 "mongo_fdw temporary context",
+										 ALLOCSET_DEFAULT_SIZES);
+#endif
 
 	/* prepare for sampling rows */
 	randomState = anl_init_selection_state(targetRowCount);
