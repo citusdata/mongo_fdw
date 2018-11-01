@@ -210,7 +210,11 @@ QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStat
 		paramNode = (Param *) FindArgumentOfType(argumentList, T_Param);
 
 		columnId = column->varattno;
+#if PG_VERSION_NUM < 110000
 		columnName = get_relid_attribute_name(relationId, columnId);
+#else
+		columnName = get_attname(relationId, columnId, false);
+#endif
 
 		if (constant != NULL)
 			AppendConstantValue(queryDocument, columnName, constant);
@@ -238,7 +242,11 @@ QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStat
 		BSON r;
 
 		columnId = column->varattno;
+#if PG_VERSION_NUM < 110000
 		columnName = get_relid_attribute_name(relationId, columnId);
+#else
+		columnName = get_attname(relationId, columnId, false);
+#endif
 
 		/* find all expressions that correspond to the column */
 		columnOperatorList = ColumnOperatorList(column, comparisonOperatorList);
