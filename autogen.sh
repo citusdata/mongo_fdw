@@ -16,7 +16,7 @@
 
 
 MONGOC_VERSION=1.9.5
-JSONC_VERSION=0.12.1-20160607
+JSONC_VERSION=0.13.1-20180305
 
 if [ "$#" -ne 1 ]; then
     echo "Usage: autogen.sh --[with-legacy | with-master]"
@@ -57,7 +57,6 @@ function checkout_json_lib
 	tar -zxvf json-c-$JSONC_VERSION.tar.gz
 	mv json-c-json-c-$JSONC_VERSION json-c
 	cd json-c
-	patch -p1 < ../json_compilation_error.patch
 	cd ..
 	rm -rf json-c-$JSONC_VERSION.tar.gz
 	echo $PWD
@@ -71,7 +70,7 @@ function install_json_lib
 {
 	cd json-c
 	sh ./autogen.sh
-	./configure
+	./configure CFLAGS='-fPIC'
 	make install
 	cd ..
 }
