@@ -56,8 +56,6 @@ function checkout_json_lib
 	wget https://github.com/json-c/json-c/archive/json-c-$JSONC_VERSION.tar.gz
 	tar -zxvf json-c-$JSONC_VERSION.tar.gz
 	mv json-c-json-c-$JSONC_VERSION json-c
-	cd json-c
-	cd ..
 	rm -rf json-c-$JSONC_VERSION.tar.gz
 	echo $PWD
 }
