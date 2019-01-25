@@ -19,7 +19,7 @@ MONGO_OBJS = $(MONGO_PATH)/bson.os $(MONGO_PATH)/encoding.os $(MONGO_PATH)/md5.o
 LIBJSON = json-c
 LIBJSON_OBJS =	$(LIBJSON)/json_util.o $(LIBJSON)/json_object.o $(LIBJSON)/json_tokener.o \
 				$(LIBJSON)/json_object_iterator.o $(LIBJSON)/printbuf.o $(LIBJSON)/linkhash.o \
-				$(LIBJSON)/arraylist.o $(LIBJSON)/random_seed.o $(LIBJSON)/debug.o
+				$(LIBJSON)/arraylist.o $(LIBJSON)/random_seed.o $(LIBJSON)/debug.o $(LIBJSON)/strerror_override.o
 PG_CPPFLAGS = --std=c99 -I$(MONGO_PATH) -I$(LIBJSON)
 OBJS = connection.o option.o  mongo_wrapper.o mongo_fdw.o mongo_query.o $(MONGO_OBJS) $(LIBJSON_OBJS)
 
