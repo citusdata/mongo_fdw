@@ -89,7 +89,7 @@ function install_mongoc_driver
 #
 function cleanup
 {
-	rm config.h
+	rm -f config.h
 	touch config.h
 }
 
