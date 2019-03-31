@@ -30,7 +30,7 @@ function checkout_mongo_driver
 {
 	rm -rf mongo-c-driver
 	wget https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz
-	tar -zxvf mongo-c-driver-$MONGOC_VERSION.tar.gz
+	tar -zxf mongo-c-driver-$MONGOC_VERSION.tar.gz
 	mv mongo-c-driver-$MONGOC_VERSION mongo-c-driver
 	rm -rf mongo-c-driver-$MONGOC_VERSION.tar.gz
 }
@@ -42,7 +42,7 @@ function checkout_legacy_branch
 {
 	rm -rf mongo-c-driver
 	wget https://github.com/mongodb/mongo-c-driver/archive/v0.8.tar.gz
-	tar -zxvf v0.8.tar.gz
+	tar -zxf v0.8.tar.gz
 	mv  mongo-c-driver-0.8 mongo-c-driver
 	rm -rf v0.8.tar.gz
 }
@@ -54,7 +54,7 @@ function checkout_json_lib
 	echo $PWD
 	rm -rf json-c
 	wget https://github.com/json-c/json-c/archive/json-c-$JSONC_VERSION.tar.gz
-	tar -zxvf json-c-$JSONC_VERSION.tar.gz
+	tar -zxf json-c-$JSONC_VERSION.tar.gz
 	mv json-c-json-c-$JSONC_VERSION json-c
 	rm -rf json-c-$JSONC_VERSION.tar.gz
 	echo $PWD
