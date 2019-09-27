@@ -2038,7 +2038,7 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	for (columnId = 1; columnId <= columnCount; columnId++)
 	{
 		Var *column = (Var *) palloc0(sizeof(Var));
-#if PG_VERSION_NUM >= 120000
+#if PG_VERSION_NUM >= 110000
 		Form_pg_attribute attr = TupleDescAttr(tupleDescriptor, columnId-1);
 
 		column->varattno = columnId;
