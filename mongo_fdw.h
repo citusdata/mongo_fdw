@@ -33,7 +33,9 @@
 #include "catalog/pg_foreign_table.h"
 #include "utils/datetime.h"
 #include "nodes/pg_list.h"
-#include "nodes/relation.h"
+#if PG_VERSION_NUM < 120000
+	#include "nodes/relation.h"
+#endif
 #include "utils/timestamp.h"
 #include "access/reloptions.h"
 #include "catalog/pg_type.h"

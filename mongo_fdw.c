@@ -22,6 +22,9 @@
 #include "mongo_query.h"
 
 #include "access/reloptions.h"
+#if PG_VERSION_NUM >= 120000
+	#include "access/table.h"
+#endif
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
@@ -30,6 +33,9 @@
 #include "foreign/foreign.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
+#if PG_VERSION_NUM >= 120000
+	#include "optimizer/optimizer.h"
+#endif
 #include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
@@ -57,7 +63,9 @@
 #include "optimizer/planmain.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/var.h"
+#if PG_VERSION_NUM < 120000
+	#include "optimizer/var.h"
+#endif
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -646,8 +654,11 @@ MongoPlanForeignModify(PlannerInfo *root,
 	 * Core code already has some lock on each rel being planned, so we can
 	 * use NoLock here.
 	 */
+#if PG_VERSION_NUM < 120000
 	rel = heap_open(rte->relid, NoLock);
-
+#else
+	rel = table_open(rte->relid, NoLock);
+#endif
 	if (operation == CMD_INSERT)
 	{
 		TupleDesc tupdesc = RelationGetDescr(rel);

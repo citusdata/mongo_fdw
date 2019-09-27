@@ -33,8 +33,13 @@
 
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
-#include "nodes/relation.h"
-#include "optimizer/var.h"
+#if PG_VERSION_NUM < 120000
+	#include "nodes/relation.h"
+	#include "optimizer/var.h"
+#endif
+#if PG_VERSION_NUM >= 120000
+	#include "optimizer/optimizer.h"
+#endif
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
