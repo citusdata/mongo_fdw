@@ -2016,7 +2016,6 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	bool                     *columnNulls = NULL;
 	Oid                      foreignTableId = InvalidOid;
 	TupleDesc                tupleDescriptor = NULL;
-	Form_pg_attribute        *attributesPtr = NULL;
 	AttrNumber               columnCount = 0;
 	AttrNumber               columnId = 0;
 	HTAB                     *columnMappingHash = NULL;
@@ -2035,16 +2034,22 @@ MongoAcquireSampleRows(Relation relation, int errorLevel,
 	/* create list of columns in the relation */
 	tupleDescriptor = RelationGetDescr(relation);
 	columnCount = tupleDescriptor->natts;
-	attributesPtr = tupleDescriptor->attrs;
 
 	for (columnId = 1; columnId <= columnCount; columnId++)
 	{
 		Var *column = (Var *) palloc0(sizeof(Var));
+#if PG_VERSION_NUM >= 120000
+		Form_pg_attribute attr = TupleDescAttr(tupleDescriptor, columnId-1);
 
+		column->varattno = columnId;
+		column->vartype = attr->atttypid;
+		column->vartypmod = attr->atttypmod;
+#else
 		/* only assign required fields for column mapping hash */
 		column->varattno = columnId;
-		column->vartype = attributesPtr[columnId-1]->atttypid;
-		column->vartypmod = attributesPtr[columnId-1]->atttypmod;
+		column->vartype = tupleDescriptor->attrs[columnId-1]->atttypid;
+		column->vartypmod = tupleDescriptor->attrs[columnId-1]->atttypmod;
+#endif
 
 		columnList = lappend(columnList, column);
 	}
