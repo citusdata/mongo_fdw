@@ -29,6 +29,11 @@
 #include "commands/defrem.h"
 #include "commands/explain.h"
 #include "commands/vacuum.h"
+#if PG_VERSION_NUM >= 130000
+#include "common/hashfn.h"
+#include "common/jsonapi.h"
+#endif
+
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "nodes/makefuncs.h"
@@ -71,7 +76,11 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#if PG_VERSION_NUM < 130000
 #include "utils/jsonapi.h"
+#else
+#include "utils/jsonfuncs.h"
+#endif
 #include "utils/jsonb.h"
 #if PG_VERSION_NUM >= 90300
 	#include "access/htup_details.h"
@@ -168,11 +177,19 @@ const char * EscapeJsonString(const char *string);
 void BsonToJsonString(StringInfo output, BSON_ITERATOR iter, bool isArray);
 
 /* the null action object used for pure validation */
+#if PG_VERSION_NUM < 130000
 static JsonSemAction nullSemAction =
 {
 	NULL, NULL, NULL, NULL, NULL,
 	NULL, NULL, NULL, NULL, NULL
 };
+#else
+JsonSemAction nullSemAction =
+{
+	NULL, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL
+};
+#endif
 
 /* declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -712,7 +729,11 @@ MongoPlanForeignModify(PlannerInfo *root,
 	if (plan->returningLists)
 		elog(ERROR, "RETURNING is not supported by this FDW");
 
+#if PG_VERSION_NUM < 130000
 	heap_close(rel, NoLock);
+#else
+	table_close(rel, NoLock);
+#endif
 
 	return list_make1(targetAttrs);
 }
