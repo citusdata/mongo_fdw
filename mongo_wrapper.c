@@ -398,7 +398,8 @@ JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
 			{
 				bson_oid_t bsonObjectId;
 				memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
-				BsonOidFromString(&bsonObjectId, json_object_get_string(joj));
+				BsonOidFromString(&bsonObjectId,
+								  (char *)json_object_get_string(joj));
 				status = BsonAppendOid(bb, k , &bsonObjectId);
 				break;
 			}
@@ -410,9 +411,12 @@ JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
 			}
 
 			bson_append_start_object(bb , k);
-			json_object_object_foreach(v, kk, vv)
+
 			{
-				JsonToBsonAppendElement(bb, kk, vv);
+				json_object_object_foreach(v, kk, vv)
+				{
+					JsonToBsonAppendElement(bb, kk, vv);
+				}
 			}
 			bson_append_finish_object(bb);
 			break;
@@ -450,7 +454,7 @@ void BsonIteratorFromBuffer(BSON_ITERATOR * i, const char * buffer)
 	bson_iterator_from_buffer(i, buffer);
 }
 
-void BsonOidToString(bson_oid_t *o, char* str[25])
+void BsonOidToString(const bson_oid_t *o, char str[25])
 {
 	bson_oid_to_string (o, str);
 }

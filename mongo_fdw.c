@@ -1755,7 +1755,7 @@ BsonToJsonString(StringInfo output, BSON_ITERATOR i, bool isArray)
 
 #ifndef META_DRIVER
 	{
-		char *bsonData = bson_iterator_value(&i);
+		const char *bsonData = bson_iterator_value(&i);
 		bson_iterator_from_buffer(&i, bsonData);
 	}
 #endif
@@ -1795,7 +1795,7 @@ BsonToJsonString(StringInfo output, BSON_ITERATOR i, bool isArray)
 			case BSON_TYPE_OID:
 			{
 				char oidhex[25];
-				BsonOidToString(BsonIterOid(&i), (char**)&oidhex);
+				BsonOidToString(BsonIterOid(&i), oidhex);
 				appendStringInfo(output, "{\"$oid\":\"%s\"}", oidhex);
 				break;
 			}

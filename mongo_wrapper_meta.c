@@ -174,7 +174,7 @@ MongoCursorCreate(MONGO_CONN* conn, char* database, char *collection, BSON* q)
 	bson_error_t error;
 
 	c = mongoc_client_get_collection (conn, database, collection);
-	cur = mongoc_collection_find(c, MONGOC_QUERY_SLAVE_OK, 0, 0, 0, q, NULL, NULL);
+	cur = mongoc_collection_find_with_opts(c, q, NULL, NULL);
 	mongoc_cursor_error(cur, &error);
 	if (!cur)
 		ereport(ERROR, (errmsg("failed to create cursor"),
@@ -304,7 +304,7 @@ BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 	return (char*)binary;
 }
 
-bson_oid_t *
+const bson_oid_t *
 BsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iter_oid(it);
@@ -502,9 +502,12 @@ bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v )
 				break;
 			}
 			BsonAppendStartObject(bb , (char*)k, &t);
-			json_object_object_foreach(v, kk, vv)
+
 			{
-				JsonToBsonAppendElement(&t, kk, vv);
+				json_object_object_foreach(v, kk, vv)
+				{
+					JsonToBsonAppendElement(&t, kk, vv);
+				}
 			}
 			BsonAppendFinishObject(bb, &t);
 			break;
@@ -582,7 +585,7 @@ BsonIteratorFromBuffer(BSON_ITERATOR *i, const char * buffer)
 }
 
 void
-BsonOidToString(bson_oid_t *o, char* str[25])
+BsonOidToString(const bson_oid_t *o, char str[25])
 {
 	bson_oid_to_string (o, str);
 }
@@ -599,7 +602,7 @@ BsonIterRegex(BSON_ITERATOR *i)
 	return bson_iter_regex(i, NULL);
 }
 
-const char*
+const bson_value_t*
 BsonIterValue(BSON_ITERATOR *i)
 {
 	return bson_iter_value(i);

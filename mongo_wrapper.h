@@ -65,17 +65,25 @@ const char* BsonIterBinData(BSON_ITERATOR *it, uint32_t *len);
 const char* BsonIterBinData(BSON_ITERATOR *it);
 int BsonIterBinLen(BSON_ITERATOR *it);
 #endif
+#ifdef META_DRIVER
+const bson_oid_t *BsonIterOid(BSON_ITERATOR *it);
+#else
 bson_oid_t * BsonIterOid(BSON_ITERATOR *it);
+#endif
 time_t BsonIterDate(BSON_ITERATOR *it);
 int BsonIterType(BSON_ITERATOR *it);
 int BsonIterNext(BSON_ITERATOR *it);
 bool BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR* sub);
 void BsonOidFromString(bson_oid_t *o, char* str);
-void BsonOidToString(bson_oid_t *o, char* str[25]);
+void BsonOidToString(const bson_oid_t *o, char str[25]);
 const char* BsonIterCode(BSON_ITERATOR *i);
 const char* BsonIterRegex(BSON_ITERATOR *i);
 const char* BsonIterKey(BSON_ITERATOR *i);
+#ifdef META_DRIVER
+const bson_value_t *BsonIterValue(BSON_ITERATOR *i);
+#else
 const char* BsonIterValue(BSON_ITERATOR *i);
+#endif
 
 void BsonIteratorFromBuffer(BSON_ITERATOR* i, const char * buffer);
 
