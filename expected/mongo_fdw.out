@@ -1,12 +1,12 @@
 \c postgres postgres
 CREATE EXTENSION mongo_fdw;
 CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address '127.0.0.1', port '27017');
-\! mongoimport --db mongo_fdw_regress --collection countries --jsonArray --drop --quiet < data/mongo_fixture.json
+\! mongoimport --db mongo_fdw_regress --collection countries --jsonArray --drop --maintainInsertionOrder --host='127.0.0.1' --port=27017 --quiet < data/mongo_fixture.json
 CREATE USER MAPPING FOR postgres SERVER mongo_server;
 CREATE FOREIGN TABLE department(_id NAME, department_id int, department_name text) SERVER mongo_server OPTIONS(database 'testdb', collection 'department');
 CREATE FOREIGN TABLE employee(_id NAME, emp_id int, emp_name text, emp_dept_id int) SERVER mongo_server OPTIONS(database 'testdb', collection 'employee');
-INSERT INTO department VALUES(0, generate_series(1,10), 'dept - ' || generate_series(1,10));
-INSERT INTO employee VALUES(0, generate_series(1,100), 'emp - ' || generate_series(1,100), generate_series(1,10));
+INSERT INTO department SELECT 0, i, 'dept - ' || i FROM generate_series(1,10) i;
+INSERT INTO employee SELECT 0, i, 'emp - ' || i, (i - 1)%10 + 1 FROM generate_series(1,100) i;
 SELECT count(*) FROM department;
  count 
 -------
@@ -24,1147 +24,303 @@ EXPLAIN (COSTS FALSE) SELECT emp_id , emp_name , emp_dept_id, department_id , de
 ----------------------------------------------------------
  Sort
    Sort Key: e.emp_id
-   ->  Hash Join
-         Hash Cond: (e.emp_dept_id = d.department_id)
-         ->  Foreign Scan on employee e
-               Foreign Namespace: testdb.employee
-         ->  Hash
+   ->  Merge Join
+         Merge Cond: (d.department_id = e.emp_dept_id)
+         ->  Sort
+               Sort Key: d.department_id
                ->  Foreign Scan on department d
                      Foreign Namespace: testdb.department
-(9 rows)
-
-EXPLAIN (COSTS FALSE) SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department) ORDER by emp_id;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Sort
-   Sort Key: e.emp_id
-   ->  Hash Join
-         Hash Cond: (department.department_id = d.department_id)
-         ->  Nested Loop
-               ->  HashAggregate
-                     Group Key: department.department_id
-                     ->  Foreign Scan on department
-                           Foreign Namespace: testdb.department
+         ->  Sort
+               Sort Key: e.emp_dept_id
                ->  Foreign Scan on employee e
                      Foreign Namespace: testdb.employee
-         ->  Hash
+(12 rows)
+
+EXPLAIN (COSTS FALSE) SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department) ORDER by emp_id;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Sort
+   Sort Key: e.emp_id
+   ->  Merge Join
+         Merge Cond: (department.department_id = d.department_id)
+         ->  Sort
+               Sort Key: department.department_id
+               ->  Nested Loop
+                     ->  HashAggregate
+                           Group Key: department.department_id
+                           ->  Foreign Scan on department
+                                 Foreign Namespace: testdb.department
+                     ->  Foreign Scan on employee e
+                           Foreign Namespace: testdb.employee
+         ->  Sort
+               Sort Key: d.department_id
                ->  Foreign Scan on department d
                      Foreign Namespace: testdb.department
-(14 rows)
+(17 rows)
 
-SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id = e.emp_dept_id ORDER by emp_id;
+SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id = e.emp_dept_id AND e.emp_dept_id > 5 ORDER by emp_id, department_id;
  emp_id | emp_name  | emp_dept_id | department_id | department_name 
 --------+-----------+-------------+---------------+-----------------
-      1 | emp - 1   |           1 |             1 | dept - 1
-      2 | emp - 2   |           2 |             2 | dept - 2
-      3 | emp - 3   |           3 |             3 | dept - 3
-      4 | emp - 4   |           4 |             4 | dept - 4
-      5 | emp - 5   |           5 |             5 | dept - 5
       6 | emp - 6   |           6 |             6 | dept - 6
       7 | emp - 7   |           7 |             7 | dept - 7
       8 | emp - 8   |           8 |             8 | dept - 8
       9 | emp - 9   |           9 |             9 | dept - 9
      10 | emp - 10  |          10 |            10 | dept - 10
-     11 | emp - 11  |           1 |             1 | dept - 1
-     12 | emp - 12  |           2 |             2 | dept - 2
-     13 | emp - 13  |           3 |             3 | dept - 3
-     14 | emp - 14  |           4 |             4 | dept - 4
-     15 | emp - 15  |           5 |             5 | dept - 5
      16 | emp - 16  |           6 |             6 | dept - 6
      17 | emp - 17  |           7 |             7 | dept - 7
      18 | emp - 18  |           8 |             8 | dept - 8
      19 | emp - 19  |           9 |             9 | dept - 9
      20 | emp - 20  |          10 |            10 | dept - 10
-     21 | emp - 21  |           1 |             1 | dept - 1
-     22 | emp - 22  |           2 |             2 | dept - 2
-     23 | emp - 23  |           3 |             3 | dept - 3
-     24 | emp - 24  |           4 |             4 | dept - 4
-     25 | emp - 25  |           5 |             5 | dept - 5
      26 | emp - 26  |           6 |             6 | dept - 6
      27 | emp - 27  |           7 |             7 | dept - 7
      28 | emp - 28  |           8 |             8 | dept - 8
      29 | emp - 29  |           9 |             9 | dept - 9
      30 | emp - 30  |          10 |            10 | dept - 10
-     31 | emp - 31  |           1 |             1 | dept - 1
-     32 | emp - 32  |           2 |             2 | dept - 2
-     33 | emp - 33  |           3 |             3 | dept - 3
-     34 | emp - 34  |           4 |             4 | dept - 4
-     35 | emp - 35  |           5 |             5 | dept - 5
      36 | emp - 36  |           6 |             6 | dept - 6
      37 | emp - 37  |           7 |             7 | dept - 7
      38 | emp - 38  |           8 |             8 | dept - 8
      39 | emp - 39  |           9 |             9 | dept - 9
      40 | emp - 40  |          10 |            10 | dept - 10
-     41 | emp - 41  |           1 |             1 | dept - 1
-     42 | emp - 42  |           2 |             2 | dept - 2
-     43 | emp - 43  |           3 |             3 | dept - 3
-     44 | emp - 44  |           4 |             4 | dept - 4
-     45 | emp - 45  |           5 |             5 | dept - 5
      46 | emp - 46  |           6 |             6 | dept - 6
      47 | emp - 47  |           7 |             7 | dept - 7
      48 | emp - 48  |           8 |             8 | dept - 8
      49 | emp - 49  |           9 |             9 | dept - 9
      50 | emp - 50  |          10 |            10 | dept - 10
-     51 | emp - 51  |           1 |             1 | dept - 1
-     52 | emp - 52  |           2 |             2 | dept - 2
-     53 | emp - 53  |           3 |             3 | dept - 3
-     54 | emp - 54  |           4 |             4 | dept - 4
-     55 | emp - 55  |           5 |             5 | dept - 5
      56 | emp - 56  |           6 |             6 | dept - 6
      57 | emp - 57  |           7 |             7 | dept - 7
      58 | emp - 58  |           8 |             8 | dept - 8
      59 | emp - 59  |           9 |             9 | dept - 9
      60 | emp - 60  |          10 |            10 | dept - 10
-     61 | emp - 61  |           1 |             1 | dept - 1
-     62 | emp - 62  |           2 |             2 | dept - 2
-     63 | emp - 63  |           3 |             3 | dept - 3
-     64 | emp - 64  |           4 |             4 | dept - 4
-     65 | emp - 65  |           5 |             5 | dept - 5
      66 | emp - 66  |           6 |             6 | dept - 6
      67 | emp - 67  |           7 |             7 | dept - 7
      68 | emp - 68  |           8 |             8 | dept - 8
      69 | emp - 69  |           9 |             9 | dept - 9
      70 | emp - 70  |          10 |            10 | dept - 10
-     71 | emp - 71  |           1 |             1 | dept - 1
-     72 | emp - 72  |           2 |             2 | dept - 2
-     73 | emp - 73  |           3 |             3 | dept - 3
-     74 | emp - 74  |           4 |             4 | dept - 4
-     75 | emp - 75  |           5 |             5 | dept - 5
      76 | emp - 76  |           6 |             6 | dept - 6
      77 | emp - 77  |           7 |             7 | dept - 7
      78 | emp - 78  |           8 |             8 | dept - 8
      79 | emp - 79  |           9 |             9 | dept - 9
      80 | emp - 80  |          10 |            10 | dept - 10
-     81 | emp - 81  |           1 |             1 | dept - 1
-     82 | emp - 82  |           2 |             2 | dept - 2
-     83 | emp - 83  |           3 |             3 | dept - 3
-     84 | emp - 84  |           4 |             4 | dept - 4
-     85 | emp - 85  |           5 |             5 | dept - 5
      86 | emp - 86  |           6 |             6 | dept - 6
      87 | emp - 87  |           7 |             7 | dept - 7
      88 | emp - 88  |           8 |             8 | dept - 8
      89 | emp - 89  |           9 |             9 | dept - 9
      90 | emp - 90  |          10 |            10 | dept - 10
-     91 | emp - 91  |           1 |             1 | dept - 1
-     92 | emp - 92  |           2 |             2 | dept - 2
-     93 | emp - 93  |           3 |             3 | dept - 3
-     94 | emp - 94  |           4 |             4 | dept - 4
-     95 | emp - 95  |           5 |             5 | dept - 5
      96 | emp - 96  |           6 |             6 | dept - 6
      97 | emp - 97  |           7 |             7 | dept - 7
      98 | emp - 98  |           8 |             8 | dept - 8
      99 | emp - 99  |           9 |             9 | dept - 9
     100 | emp - 100 |          10 |            10 | dept - 10
-(100 rows)
+(50 rows)
 
-SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department) ORDER by emp_id;
+SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department WHERE department_id < 3) ORDER by emp_id, department_id;
  emp_id | emp_name  | emp_dept_id | department_id | department_name 
 --------+-----------+-------------+---------------+-----------------
-      1 | emp - 1   |           1 |            10 | dept - 10
-      1 | emp - 1   |           1 |             6 | dept - 6
       1 | emp - 1   |           1 |             1 | dept - 1
-      1 | emp - 1   |           1 |             3 | dept - 3
-      1 | emp - 1   |           1 |             8 | dept - 8
-      1 | emp - 1   |           1 |             5 | dept - 5
-      1 | emp - 1   |           1 |             9 | dept - 9
-      1 | emp - 1   |           1 |             4 | dept - 4
       1 | emp - 1   |           1 |             2 | dept - 2
-      1 | emp - 1   |           1 |             7 | dept - 7
-      2 | emp - 2   |           2 |             8 | dept - 8
-      2 | emp - 2   |           2 |             7 | dept - 7
-      2 | emp - 2   |           2 |             5 | dept - 5
       2 | emp - 2   |           2 |             1 | dept - 1
-      2 | emp - 2   |           2 |             3 | dept - 3
       2 | emp - 2   |           2 |             2 | dept - 2
-      2 | emp - 2   |           2 |             4 | dept - 4
-      2 | emp - 2   |           2 |             9 | dept - 9
-      2 | emp - 2   |           2 |            10 | dept - 10
-      2 | emp - 2   |           2 |             6 | dept - 6
-      3 | emp - 3   |           3 |            10 | dept - 10
       3 | emp - 3   |           3 |             1 | dept - 1
-      3 | emp - 3   |           3 |             7 | dept - 7
-      3 | emp - 3   |           3 |             6 | dept - 6
-      3 | emp - 3   |           3 |             4 | dept - 4
-      3 | emp - 3   |           3 |             8 | dept - 8
-      3 | emp - 3   |           3 |             5 | dept - 5
-      3 | emp - 3   |           3 |             3 | dept - 3
-      3 | emp - 3   |           3 |             9 | dept - 9
       3 | emp - 3   |           3 |             2 | dept - 2
-      4 | emp - 4   |           4 |             3 | dept - 3
       4 | emp - 4   |           4 |             1 | dept - 1
       4 | emp - 4   |           4 |             2 | dept - 2
-      4 | emp - 4   |           4 |             8 | dept - 8
-      4 | emp - 4   |           4 |             7 | dept - 7
-      4 | emp - 4   |           4 |             9 | dept - 9
-      4 | emp - 4   |           4 |             4 | dept - 4
-      4 | emp - 4   |           4 |             6 | dept - 6
-      4 | emp - 4   |           4 |            10 | dept - 10
-      4 | emp - 4   |           4 |             5 | dept - 5
-      5 | emp - 5   |           5 |             6 | dept - 6
-      5 | emp - 5   |           5 |             3 | dept - 3
-      5 | emp - 5   |           5 |             7 | dept - 7
-      5 | emp - 5   |           5 |             9 | dept - 9
-      5 | emp - 5   |           5 |             2 | dept - 2
-      5 | emp - 5   |           5 |             5 | dept - 5
       5 | emp - 5   |           5 |             1 | dept - 1
-      5 | emp - 5   |           5 |             8 | dept - 8
-      5 | emp - 5   |           5 |             4 | dept - 4
-      5 | emp - 5   |           5 |            10 | dept - 10
+      5 | emp - 5   |           5 |             2 | dept - 2
       6 | emp - 6   |           6 |             1 | dept - 1
-      6 | emp - 6   |           6 |             7 | dept - 7
-      6 | emp - 6   |           6 |             5 | dept - 5
       6 | emp - 6   |           6 |             2 | dept - 2
-      6 | emp - 6   |           6 |             9 | dept - 9
-      6 | emp - 6   |           6 |             4 | dept - 4
-      6 | emp - 6   |           6 |            10 | dept - 10
-      6 | emp - 6   |           6 |             6 | dept - 6
-      6 | emp - 6   |           6 |             8 | dept - 8
-      6 | emp - 6   |           6 |             3 | dept - 3
-      7 | emp - 7   |           7 |             4 | dept - 4
-      7 | emp - 7   |           7 |             7 | dept - 7
-      7 | emp - 7   |           7 |             2 | dept - 2
-      7 | emp - 7   |           7 |             5 | dept - 5
-      7 | emp - 7   |           7 |             3 | dept - 3
-      7 | emp - 7   |           7 |            10 | dept - 10
-      7 | emp - 7   |           7 |             6 | dept - 6
-      7 | emp - 7   |           7 |             9 | dept - 9
       7 | emp - 7   |           7 |             1 | dept - 1
-      7 | emp - 7   |           7 |             8 | dept - 8
-      8 | emp - 8   |           8 |            10 | dept - 10
-      8 | emp - 8   |           8 |             4 | dept - 4
-      8 | emp - 8   |           8 |             2 | dept - 2
-      8 | emp - 8   |           8 |             3 | dept - 3
-      8 | emp - 8   |           8 |             6 | dept - 6
-      8 | emp - 8   |           8 |             8 | dept - 8
-      8 | emp - 8   |           8 |             5 | dept - 5
-      8 | emp - 8   |           8 |             7 | dept - 7
-      8 | emp - 8   |           8 |             9 | dept - 9
+      7 | emp - 7   |           7 |             2 | dept - 2
       8 | emp - 8   |           8 |             1 | dept - 1
-      9 | emp - 9   |           9 |            10 | dept - 10
-      9 | emp - 9   |           9 |             4 | dept - 4
-      9 | emp - 9   |           9 |             5 | dept - 5
+      8 | emp - 8   |           8 |             2 | dept - 2
       9 | emp - 9   |           9 |             1 | dept - 1
-      9 | emp - 9   |           9 |             6 | dept - 6
-      9 | emp - 9   |           9 |             9 | dept - 9
-      9 | emp - 9   |           9 |             8 | dept - 8
-      9 | emp - 9   |           9 |             3 | dept - 3
       9 | emp - 9   |           9 |             2 | dept - 2
-      9 | emp - 9   |           9 |             7 | dept - 7
-     10 | emp - 10  |          10 |             4 | dept - 4
-     10 | emp - 10  |          10 |             2 | dept - 2
-     10 | emp - 10  |          10 |             7 | dept - 7
-     10 | emp - 10  |          10 |            10 | dept - 10
-     10 | emp - 10  |          10 |             9 | dept - 9
-     10 | emp - 10  |          10 |             6 | dept - 6
-     10 | emp - 10  |          10 |             5 | dept - 5
      10 | emp - 10  |          10 |             1 | dept - 1
-     10 | emp - 10  |          10 |             3 | dept - 3
-     10 | emp - 10  |          10 |             8 | dept - 8
-     11 | emp - 11  |           1 |             8 | dept - 8
-     11 | emp - 11  |           1 |             2 | dept - 2
-     11 | emp - 11  |           1 |             9 | dept - 9
-     11 | emp - 11  |           1 |            10 | dept - 10
-     11 | emp - 11  |           1 |             6 | dept - 6
+     10 | emp - 10  |          10 |             2 | dept - 2
      11 | emp - 11  |           1 |             1 | dept - 1
-     11 | emp - 11  |           1 |             3 | dept - 3
-     11 | emp - 11  |           1 |             4 | dept - 4
-     11 | emp - 11  |           1 |             5 | dept - 5
-     11 | emp - 11  |           1 |             7 | dept - 7
-     12 | emp - 12  |           2 |             4 | dept - 4
-     12 | emp - 12  |           2 |             5 | dept - 5
-     12 | emp - 12  |           2 |             8 | dept - 8
-     12 | emp - 12  |           2 |             7 | dept - 7
-     12 | emp - 12  |           2 |             3 | dept - 3
-     12 | emp - 12  |           2 |            10 | dept - 10
-     12 | emp - 12  |           2 |             6 | dept - 6
-     12 | emp - 12  |           2 |             2 | dept - 2
+     11 | emp - 11  |           1 |             2 | dept - 2
      12 | emp - 12  |           2 |             1 | dept - 1
-     12 | emp - 12  |           2 |             9 | dept - 9
-     13 | emp - 13  |           3 |             3 | dept - 3
-     13 | emp - 13  |           3 |             2 | dept - 2
-     13 | emp - 13  |           3 |             5 | dept - 5
+     12 | emp - 12  |           2 |             2 | dept - 2
      13 | emp - 13  |           3 |             1 | dept - 1
-     13 | emp - 13  |           3 |             8 | dept - 8
-     13 | emp - 13  |           3 |             7 | dept - 7
-     13 | emp - 13  |           3 |            10 | dept - 10
-     13 | emp - 13  |           3 |             9 | dept - 9
-     13 | emp - 13  |           3 |             6 | dept - 6
-     13 | emp - 13  |           3 |             4 | dept - 4
-     14 | emp - 14  |           4 |             8 | dept - 8
-     14 | emp - 14  |           4 |             9 | dept - 9
-     14 | emp - 14  |           4 |             3 | dept - 3
-     14 | emp - 14  |           4 |             6 | dept - 6
+     13 | emp - 13  |           3 |             2 | dept - 2
      14 | emp - 14  |           4 |             1 | dept - 1
-     14 | emp - 14  |           4 |             4 | dept - 4
-     14 | emp - 14  |           4 |            10 | dept - 10
-     14 | emp - 14  |           4 |             5 | dept - 5
-     14 | emp - 14  |           4 |             7 | dept - 7
      14 | emp - 14  |           4 |             2 | dept - 2
-     15 | emp - 15  |           5 |             9 | dept - 9
-     15 | emp - 15  |           5 |             8 | dept - 8
-     15 | emp - 15  |           5 |            10 | dept - 10
-     15 | emp - 15  |           5 |             4 | dept - 4
-     15 | emp - 15  |           5 |             2 | dept - 2
-     15 | emp - 15  |           5 |             3 | dept - 3
-     15 | emp - 15  |           5 |             6 | dept - 6
-     15 | emp - 15  |           5 |             7 | dept - 7
-     15 | emp - 15  |           5 |             5 | dept - 5
      15 | emp - 15  |           5 |             1 | dept - 1
-     16 | emp - 16  |           6 |            10 | dept - 10
-     16 | emp - 16  |           6 |             3 | dept - 3
-     16 | emp - 16  |           6 |             2 | dept - 2
-     16 | emp - 16  |           6 |             9 | dept - 9
-     16 | emp - 16  |           6 |             7 | dept - 7
+     15 | emp - 15  |           5 |             2 | dept - 2
      16 | emp - 16  |           6 |             1 | dept - 1
-     16 | emp - 16  |           6 |             8 | dept - 8
-     16 | emp - 16  |           6 |             5 | dept - 5
-     16 | emp - 16  |           6 |             6 | dept - 6
-     16 | emp - 16  |           6 |             4 | dept - 4
-     17 | emp - 17  |           7 |             5 | dept - 5
-     17 | emp - 17  |           7 |             6 | dept - 6
-     17 | emp - 17  |           7 |             4 | dept - 4
-     17 | emp - 17  |           7 |             8 | dept - 8
-     17 | emp - 17  |           7 |             7 | dept - 7
-     17 | emp - 17  |           7 |             9 | dept - 9
+     16 | emp - 16  |           6 |             2 | dept - 2
      17 | emp - 17  |           7 |             1 | dept - 1
      17 | emp - 17  |           7 |             2 | dept - 2
-     17 | emp - 17  |           7 |            10 | dept - 10
-     17 | emp - 17  |           7 |             3 | dept - 3
-     18 | emp - 18  |           8 |             4 | dept - 4
      18 | emp - 18  |           8 |             1 | dept - 1
-     18 | emp - 18  |           8 |             3 | dept - 3
      18 | emp - 18  |           8 |             2 | dept - 2
-     18 | emp - 18  |           8 |             8 | dept - 8
-     18 | emp - 18  |           8 |             7 | dept - 7
-     18 | emp - 18  |           8 |             5 | dept - 5
-     18 | emp - 18  |           8 |            10 | dept - 10
-     18 | emp - 18  |           8 |             9 | dept - 9
-     18 | emp - 18  |           8 |             6 | dept - 6
      19 | emp - 19  |           9 |             1 | dept - 1
-     19 | emp - 19  |           9 |             9 | dept - 9
      19 | emp - 19  |           9 |             2 | dept - 2
-     19 | emp - 19  |           9 |             8 | dept - 8
-     19 | emp - 19  |           9 |             6 | dept - 6
-     19 | emp - 19  |           9 |             4 | dept - 4
-     19 | emp - 19  |           9 |            10 | dept - 10
-     19 | emp - 19  |           9 |             3 | dept - 3
-     19 | emp - 19  |           9 |             5 | dept - 5
-     19 | emp - 19  |           9 |             7 | dept - 7
-     20 | emp - 20  |          10 |             4 | dept - 4
-     20 | emp - 20  |          10 |             2 | dept - 2
-     20 | emp - 20  |          10 |             9 | dept - 9
-     20 | emp - 20  |          10 |             7 | dept - 7
      20 | emp - 20  |          10 |             1 | dept - 1
-     20 | emp - 20  |          10 |             3 | dept - 3
-     20 | emp - 20  |          10 |             6 | dept - 6
-     20 | emp - 20  |          10 |             8 | dept - 8
-     20 | emp - 20  |          10 |            10 | dept - 10
-     20 | emp - 20  |          10 |             5 | dept - 5
-     21 | emp - 21  |           1 |             5 | dept - 5
-     21 | emp - 21  |           1 |             6 | dept - 6
-     21 | emp - 21  |           1 |             4 | dept - 4
+     20 | emp - 20  |          10 |             2 | dept - 2
      21 | emp - 21  |           1 |             1 | dept - 1
-     21 | emp - 21  |           1 |             9 | dept - 9
-     21 | emp - 21  |           1 |             3 | dept - 3
-     21 | emp - 21  |           1 |            10 | dept - 10
-     21 | emp - 21  |           1 |             7 | dept - 7
      21 | emp - 21  |           1 |             2 | dept - 2
-     21 | emp - 21  |           1 |             8 | dept - 8
      22 | emp - 22  |           2 |             1 | dept - 1
-     22 | emp - 22  |           2 |             4 | dept - 4
-     22 | emp - 22  |           2 |             3 | dept - 3
-     22 | emp - 22  |           2 |             5 | dept - 5
-     22 | emp - 22  |           2 |             6 | dept - 6
-     22 | emp - 22  |           2 |             8 | dept - 8
-     22 | emp - 22  |           2 |            10 | dept - 10
-     22 | emp - 22  |           2 |             7 | dept - 7
-     22 | emp - 22  |           2 |             9 | dept - 9
      22 | emp - 22  |           2 |             2 | dept - 2
-     23 | emp - 23  |           3 |             5 | dept - 5
-     23 | emp - 23  |           3 |             9 | dept - 9
      23 | emp - 23  |           3 |             1 | dept - 1
-     23 | emp - 23  |           3 |             6 | dept - 6
-     23 | emp - 23  |           3 |             8 | dept - 8
-     23 | emp - 23  |           3 |             7 | dept - 7
-     23 | emp - 23  |           3 |            10 | dept - 10
-     23 | emp - 23  |           3 |             3 | dept - 3
      23 | emp - 23  |           3 |             2 | dept - 2
-     23 | emp - 23  |           3 |             4 | dept - 4
-     24 | emp - 24  |           4 |             4 | dept - 4
-     24 | emp - 24  |           4 |             9 | dept - 9
-     24 | emp - 24  |           4 |             7 | dept - 7
-     24 | emp - 24  |           4 |             5 | dept - 5
-     24 | emp - 24  |           4 |             2 | dept - 2
-     24 | emp - 24  |           4 |             8 | dept - 8
-     24 | emp - 24  |           4 |             3 | dept - 3
      24 | emp - 24  |           4 |             1 | dept - 1
-     24 | emp - 24  |           4 |             6 | dept - 6
-     24 | emp - 24  |           4 |            10 | dept - 10
-     25 | emp - 25  |           5 |             5 | dept - 5
-     25 | emp - 25  |           5 |            10 | dept - 10
-     25 | emp - 25  |           5 |             8 | dept - 8
-     25 | emp - 25  |           5 |             7 | dept - 7
-     25 | emp - 25  |           5 |             3 | dept - 3
-     25 | emp - 25  |           5 |             6 | dept - 6
-     25 | emp - 25  |           5 |             2 | dept - 2
-     25 | emp - 25  |           5 |             9 | dept - 9
+     24 | emp - 24  |           4 |             2 | dept - 2
      25 | emp - 25  |           5 |             1 | dept - 1
-     25 | emp - 25  |           5 |             4 | dept - 4
-     26 | emp - 26  |           6 |             8 | dept - 8
-     26 | emp - 26  |           6 |            10 | dept - 10
-     26 | emp - 26  |           6 |             6 | dept - 6
-     26 | emp - 26  |           6 |             4 | dept - 4
-     26 | emp - 26  |           6 |             7 | dept - 7
-     26 | emp - 26  |           6 |             5 | dept - 5
-     26 | emp - 26  |           6 |             3 | dept - 3
+     25 | emp - 25  |           5 |             2 | dept - 2
      26 | emp - 26  |           6 |             1 | dept - 1
-     26 | emp - 26  |           6 |             9 | dept - 9
      26 | emp - 26  |           6 |             2 | dept - 2
-     27 | emp - 27  |           7 |             4 | dept - 4
-     27 | emp - 27  |           7 |             7 | dept - 7
-     27 | emp - 27  |           7 |             2 | dept - 2
-     27 | emp - 27  |           7 |             6 | dept - 6
-     27 | emp - 27  |           7 |             8 | dept - 8
-     27 | emp - 27  |           7 |             3 | dept - 3
      27 | emp - 27  |           7 |             1 | dept - 1
-     27 | emp - 27  |           7 |            10 | dept - 10
-     27 | emp - 27  |           7 |             9 | dept - 9
-     27 | emp - 27  |           7 |             5 | dept - 5
-     28 | emp - 28  |           8 |             5 | dept - 5
-     28 | emp - 28  |           8 |             2 | dept - 2
-     28 | emp - 28  |           8 |             9 | dept - 9
-     28 | emp - 28  |           8 |             4 | dept - 4
-     28 | emp - 28  |           8 |             7 | dept - 7
-     28 | emp - 28  |           8 |             3 | dept - 3
+     27 | emp - 27  |           7 |             2 | dept - 2
      28 | emp - 28  |           8 |             1 | dept - 1
-     28 | emp - 28  |           8 |             8 | dept - 8
-     28 | emp - 28  |           8 |             6 | dept - 6
-     28 | emp - 28  |           8 |            10 | dept - 10
-     29 | emp - 29  |           9 |            10 | dept - 10
-     29 | emp - 29  |           9 |             9 | dept - 9
-     29 | emp - 29  |           9 |             6 | dept - 6
-     29 | emp - 29  |           9 |             4 | dept - 4
-     29 | emp - 29  |           9 |             3 | dept - 3
-     29 | emp - 29  |           9 |             8 | dept - 8
-     29 | emp - 29  |           9 |             5 | dept - 5
-     29 | emp - 29  |           9 |             7 | dept - 7
-     29 | emp - 29  |           9 |             2 | dept - 2
+     28 | emp - 28  |           8 |             2 | dept - 2
      29 | emp - 29  |           9 |             1 | dept - 1
-     30 | emp - 30  |          10 |             3 | dept - 3
-     30 | emp - 30  |          10 |             9 | dept - 9
+     29 | emp - 29  |           9 |             2 | dept - 2
      30 | emp - 30  |          10 |             1 | dept - 1
-     30 | emp - 30  |          10 |             6 | dept - 6
-     30 | emp - 30  |          10 |             5 | dept - 5
-     30 | emp - 30  |          10 |            10 | dept - 10
-     30 | emp - 30  |          10 |             8 | dept - 8
-     30 | emp - 30  |          10 |             7 | dept - 7
-     30 | emp - 30  |          10 |             4 | dept - 4
      30 | emp - 30  |          10 |             2 | dept - 2
      31 | emp - 31  |           1 |             1 | dept - 1
      31 | emp - 31  |           1 |             2 | dept - 2
-     31 | emp - 31  |           1 |             8 | dept - 8
-     31 | emp - 31  |           1 |             5 | dept - 5
-     31 | emp - 31  |           1 |             6 | dept - 6
-     31 | emp - 31  |           1 |            10 | dept - 10
-     31 | emp - 31  |           1 |             3 | dept - 3
-     31 | emp - 31  |           1 |             7 | dept - 7
-     31 | emp - 31  |           1 |             9 | dept - 9
-     31 | emp - 31  |           1 |             4 | dept - 4
-     32 | emp - 32  |           2 |            10 | dept - 10
-     32 | emp - 32  |           2 |             9 | dept - 9
-     32 | emp - 32  |           2 |             8 | dept - 8
-     32 | emp - 32  |           2 |             2 | dept - 2
-     32 | emp - 32  |           2 |             6 | dept - 6
      32 | emp - 32  |           2 |             1 | dept - 1
-     32 | emp - 32  |           2 |             7 | dept - 7
-     32 | emp - 32  |           2 |             3 | dept - 3
-     32 | emp - 32  |           2 |             5 | dept - 5
-     32 | emp - 32  |           2 |             4 | dept - 4
-     33 | emp - 33  |           3 |            10 | dept - 10
-     33 | emp - 33  |           3 |             5 | dept - 5
-     33 | emp - 33  |           3 |             8 | dept - 8
-     33 | emp - 33  |           3 |             3 | dept - 3
-     33 | emp - 33  |           3 |             6 | dept - 6
-     33 | emp - 33  |           3 |             7 | dept - 7
-     33 | emp - 33  |           3 |             2 | dept - 2
+     32 | emp - 32  |           2 |             2 | dept - 2
      33 | emp - 33  |           3 |             1 | dept - 1
-     33 | emp - 33  |           3 |             4 | dept - 4
-     33 | emp - 33  |           3 |             9 | dept - 9
-     34 | emp - 34  |           4 |             9 | dept - 9
-     34 | emp - 34  |           4 |             6 | dept - 6
-     34 | emp - 34  |           4 |             8 | dept - 8
-     34 | emp - 34  |           4 |             4 | dept - 4
-     34 | emp - 34  |           4 |             3 | dept - 3
-     34 | emp - 34  |           4 |             5 | dept - 5
-     34 | emp - 34  |           4 |            10 | dept - 10
-     34 | emp - 34  |           4 |             7 | dept - 7
+     33 | emp - 33  |           3 |             2 | dept - 2
      34 | emp - 34  |           4 |             1 | dept - 1
      34 | emp - 34  |           4 |             2 | dept - 2
-     35 | emp - 35  |           5 |             4 | dept - 4
-     35 | emp - 35  |           5 |             9 | dept - 9
-     35 | emp - 35  |           5 |             5 | dept - 5
-     35 | emp - 35  |           5 |             2 | dept - 2
-     35 | emp - 35  |           5 |             3 | dept - 3
-     35 | emp - 35  |           5 |             7 | dept - 7
-     35 | emp - 35  |           5 |             8 | dept - 8
-     35 | emp - 35  |           5 |            10 | dept - 10
-     35 | emp - 35  |           5 |             6 | dept - 6
      35 | emp - 35  |           5 |             1 | dept - 1
-     36 | emp - 36  |           6 |             7 | dept - 7
-     36 | emp - 36  |           6 |             3 | dept - 3
-     36 | emp - 36  |           6 |             8 | dept - 8
+     35 | emp - 35  |           5 |             2 | dept - 2
      36 | emp - 36  |           6 |             1 | dept - 1
-     36 | emp - 36  |           6 |             6 | dept - 6
-     36 | emp - 36  |           6 |            10 | dept - 10
-     36 | emp - 36  |           6 |             4 | dept - 4
-     36 | emp - 36  |           6 |             9 | dept - 9
      36 | emp - 36  |           6 |             2 | dept - 2
-     36 | emp - 36  |           6 |             5 | dept - 5
-     37 | emp - 37  |           7 |             2 | dept - 2
-     37 | emp - 37  |           7 |             4 | dept - 4
-     37 | emp - 37  |           7 |            10 | dept - 10
-     37 | emp - 37  |           7 |             7 | dept - 7
-     37 | emp - 37  |           7 |             6 | dept - 6
-     37 | emp - 37  |           7 |             9 | dept - 9
-     37 | emp - 37  |           7 |             3 | dept - 3
-     37 | emp - 37  |           7 |             8 | dept - 8
-     37 | emp - 37  |           7 |             5 | dept - 5
      37 | emp - 37  |           7 |             1 | dept - 1
+     37 | emp - 37  |           7 |             2 | dept - 2
      38 | emp - 38  |           8 |             1 | dept - 1
-     38 | emp - 38  |           8 |             8 | dept - 8
-     38 | emp - 38  |           8 |             4 | dept - 4
-     38 | emp - 38  |           8 |             3 | dept - 3
-     38 | emp - 38  |           8 |             6 | dept - 6
-     38 | emp - 38  |           8 |             7 | dept - 7
      38 | emp - 38  |           8 |             2 | dept - 2
-     38 | emp - 38  |           8 |             5 | dept - 5
-     38 | emp - 38  |           8 |             9 | dept - 9
-     38 | emp - 38  |           8 |            10 | dept - 10
-     39 | emp - 39  |           9 |             6 | dept - 6
      39 | emp - 39  |           9 |             1 | dept - 1
-     39 | emp - 39  |           9 |             5 | dept - 5
-     39 | emp - 39  |           9 |             7 | dept - 7
      39 | emp - 39  |           9 |             2 | dept - 2
-     39 | emp - 39  |           9 |             3 | dept - 3
-     39 | emp - 39  |           9 |             9 | dept - 9
-     39 | emp - 39  |           9 |             4 | dept - 4
-     39 | emp - 39  |           9 |            10 | dept - 10
-     39 | emp - 39  |           9 |             8 | dept - 8
-     40 | emp - 40  |          10 |             3 | dept - 3
-     40 | emp - 40  |          10 |             5 | dept - 5
      40 | emp - 40  |          10 |             1 | dept - 1
-     40 | emp - 40  |          10 |            10 | dept - 10
-     40 | emp - 40  |          10 |             4 | dept - 4
-     40 | emp - 40  |          10 |             9 | dept - 9
-     40 | emp - 40  |          10 |             7 | dept - 7
      40 | emp - 40  |          10 |             2 | dept - 2
-     40 | emp - 40  |          10 |             8 | dept - 8
-     40 | emp - 40  |          10 |             6 | dept - 6
-     41 | emp - 41  |           1 |             7 | dept - 7
-     41 | emp - 41  |           1 |             5 | dept - 5
-     41 | emp - 41  |           1 |             6 | dept - 6
-     41 | emp - 41  |           1 |            10 | dept - 10
      41 | emp - 41  |           1 |             1 | dept - 1
-     41 | emp - 41  |           1 |             8 | dept - 8
-     41 | emp - 41  |           1 |             3 | dept - 3
-     41 | emp - 41  |           1 |             4 | dept - 4
-     41 | emp - 41  |           1 |             9 | dept - 9
      41 | emp - 41  |           1 |             2 | dept - 2
-     42 | emp - 42  |           2 |            10 | dept - 10
-     42 | emp - 42  |           2 |             4 | dept - 4
-     42 | emp - 42  |           2 |             7 | dept - 7
      42 | emp - 42  |           2 |             1 | dept - 1
-     42 | emp - 42  |           2 |             3 | dept - 3
-     42 | emp - 42  |           2 |             8 | dept - 8
-     42 | emp - 42  |           2 |             5 | dept - 5
      42 | emp - 42  |           2 |             2 | dept - 2
-     42 | emp - 42  |           2 |             9 | dept - 9
-     42 | emp - 42  |           2 |             6 | dept - 6
-     43 | emp - 43  |           3 |             9 | dept - 9
-     43 | emp - 43  |           3 |             3 | dept - 3
-     43 | emp - 43  |           3 |             4 | dept - 4
-     43 | emp - 43  |           3 |             2 | dept - 2
-     43 | emp - 43  |           3 |            10 | dept - 10
      43 | emp - 43  |           3 |             1 | dept - 1
-     43 | emp - 43  |           3 |             7 | dept - 7
-     43 | emp - 43  |           3 |             8 | dept - 8
-     43 | emp - 43  |           3 |             6 | dept - 6
-     43 | emp - 43  |           3 |             5 | dept - 5
-     44 | emp - 44  |           4 |             3 | dept - 3
-     44 | emp - 44  |           4 |             9 | dept - 9
-     44 | emp - 44  |           4 |             5 | dept - 5
-     44 | emp - 44  |           4 |            10 | dept - 10
-     44 | emp - 44  |           4 |             6 | dept - 6
-     44 | emp - 44  |           4 |             8 | dept - 8
-     44 | emp - 44  |           4 |             7 | dept - 7
-     44 | emp - 44  |           4 |             4 | dept - 4
-     44 | emp - 44  |           4 |             2 | dept - 2
+     43 | emp - 43  |           3 |             2 | dept - 2
      44 | emp - 44  |           4 |             1 | dept - 1
-     45 | emp - 45  |           5 |             9 | dept - 9
-     45 | emp - 45  |           5 |             3 | dept - 3
-     45 | emp - 45  |           5 |             7 | dept - 7
+     44 | emp - 44  |           4 |             2 | dept - 2
      45 | emp - 45  |           5 |             1 | dept - 1
-     45 | emp - 45  |           5 |             5 | dept - 5
      45 | emp - 45  |           5 |             2 | dept - 2
-     45 | emp - 45  |           5 |            10 | dept - 10
-     45 | emp - 45  |           5 |             6 | dept - 6
-     45 | emp - 45  |           5 |             8 | dept - 8
-     45 | emp - 45  |           5 |             4 | dept - 4
-     46 | emp - 46  |           6 |             3 | dept - 3
-     46 | emp - 46  |           6 |             4 | dept - 4
-     46 | emp - 46  |           6 |             6 | dept - 6
-     46 | emp - 46  |           6 |             2 | dept - 2
      46 | emp - 46  |           6 |             1 | dept - 1
-     46 | emp - 46  |           6 |             7 | dept - 7
-     46 | emp - 46  |           6 |             8 | dept - 8
-     46 | emp - 46  |           6 |             9 | dept - 9
-     46 | emp - 46  |           6 |             5 | dept - 5
-     46 | emp - 46  |           6 |            10 | dept - 10
-     47 | emp - 47  |           7 |             8 | dept - 8
-     47 | emp - 47  |           7 |            10 | dept - 10
-     47 | emp - 47  |           7 |             5 | dept - 5
-     47 | emp - 47  |           7 |             7 | dept - 7
-     47 | emp - 47  |           7 |             9 | dept - 9
-     47 | emp - 47  |           7 |             2 | dept - 2
+     46 | emp - 46  |           6 |             2 | dept - 2
      47 | emp - 47  |           7 |             1 | dept - 1
-     47 | emp - 47  |           7 |             6 | dept - 6
-     47 | emp - 47  |           7 |             4 | dept - 4
-     47 | emp - 47  |           7 |             3 | dept - 3
+     47 | emp - 47  |           7 |             2 | dept - 2
      48 | emp - 48  |           8 |             1 | dept - 1
-     48 | emp - 48  |           8 |             6 | dept - 6
-     48 | emp - 48  |           8 |            10 | dept - 10
-     48 | emp - 48  |           8 |             8 | dept - 8
-     48 | emp - 48  |           8 |             3 | dept - 3
-     48 | emp - 48  |           8 |             5 | dept - 5
-     48 | emp - 48  |           8 |             9 | dept - 9
-     48 | emp - 48  |           8 |             4 | dept - 4
-     48 | emp - 48  |           8 |             7 | dept - 7
      48 | emp - 48  |           8 |             2 | dept - 2
-     49 | emp - 49  |           9 |             7 | dept - 7
-     49 | emp - 49  |           9 |             6 | dept - 6
-     49 | emp - 49  |           9 |             9 | dept - 9
-     49 | emp - 49  |           9 |            10 | dept - 10
-     49 | emp - 49  |           9 |             3 | dept - 3
-     49 | emp - 49  |           9 |             4 | dept - 4
-     49 | emp - 49  |           9 |             2 | dept - 2
-     49 | emp - 49  |           9 |             8 | dept - 8
      49 | emp - 49  |           9 |             1 | dept - 1
-     49 | emp - 49  |           9 |             5 | dept - 5
+     49 | emp - 49  |           9 |             2 | dept - 2
      50 | emp - 50  |          10 |             1 | dept - 1
-     50 | emp - 50  |          10 |             3 | dept - 3
-     50 | emp - 50  |          10 |             8 | dept - 8
-     50 | emp - 50  |          10 |             7 | dept - 7
-     50 | emp - 50  |          10 |             6 | dept - 6
-     50 | emp - 50  |          10 |             4 | dept - 4
-     50 | emp - 50  |          10 |            10 | dept - 10
-     50 | emp - 50  |          10 |             5 | dept - 5
-     50 | emp - 50  |          10 |             9 | dept - 9
      50 | emp - 50  |          10 |             2 | dept - 2
      51 | emp - 51  |           1 |             1 | dept - 1
-     51 | emp - 51  |           1 |             5 | dept - 5
-     51 | emp - 51  |           1 |             8 | dept - 8
-     51 | emp - 51  |           1 |             3 | dept - 3
-     51 | emp - 51  |           1 |             7 | dept - 7
-     51 | emp - 51  |           1 |             9 | dept - 9
-     51 | emp - 51  |           1 |             6 | dept - 6
-     51 | emp - 51  |           1 |            10 | dept - 10
      51 | emp - 51  |           1 |             2 | dept - 2
-     51 | emp - 51  |           1 |             4 | dept - 4
-     52 | emp - 52  |           2 |             9 | dept - 9
-     52 | emp - 52  |           2 |             3 | dept - 3
-     52 | emp - 52  |           2 |             8 | dept - 8
-     52 | emp - 52  |           2 |             4 | dept - 4
-     52 | emp - 52  |           2 |             2 | dept - 2
-     52 | emp - 52  |           2 |             7 | dept - 7
      52 | emp - 52  |           2 |             1 | dept - 1
-     52 | emp - 52  |           2 |             5 | dept - 5
-     52 | emp - 52  |           2 |            10 | dept - 10
-     52 | emp - 52  |           2 |             6 | dept - 6
-     53 | emp - 53  |           3 |             6 | dept - 6
-     53 | emp - 53  |           3 |             5 | dept - 5
-     53 | emp - 53  |           3 |             9 | dept - 9
-     53 | emp - 53  |           3 |             8 | dept - 8
+     52 | emp - 52  |           2 |             2 | dept - 2
      53 | emp - 53  |           3 |             1 | dept - 1
-     53 | emp - 53  |           3 |            10 | dept - 10
-     53 | emp - 53  |           3 |             3 | dept - 3
-     53 | emp - 53  |           3 |             4 | dept - 4
      53 | emp - 53  |           3 |             2 | dept - 2
-     53 | emp - 53  |           3 |             7 | dept - 7
-     54 | emp - 54  |           4 |             7 | dept - 7
-     54 | emp - 54  |           4 |             3 | dept - 3
-     54 | emp - 54  |           4 |             8 | dept - 8
-     54 | emp - 54  |           4 |             2 | dept - 2
-     54 | emp - 54  |           4 |             4 | dept - 4
-     54 | emp - 54  |           4 |             5 | dept - 5
-     54 | emp - 54  |           4 |             9 | dept - 9
      54 | emp - 54  |           4 |             1 | dept - 1
-     54 | emp - 54  |           4 |            10 | dept - 10
-     54 | emp - 54  |           4 |             6 | dept - 6
+     54 | emp - 54  |           4 |             2 | dept - 2
      55 | emp - 55  |           5 |             1 | dept - 1
-     55 | emp - 55  |           5 |             4 | dept - 4
-     55 | emp - 55  |           5 |             3 | dept - 3
-     55 | emp - 55  |           5 |            10 | dept - 10
-     55 | emp - 55  |           5 |             6 | dept - 6
-     55 | emp - 55  |           5 |             7 | dept - 7
      55 | emp - 55  |           5 |             2 | dept - 2
-     55 | emp - 55  |           5 |             8 | dept - 8
-     55 | emp - 55  |           5 |             5 | dept - 5
-     55 | emp - 55  |           5 |             9 | dept - 9
-     56 | emp - 56  |           6 |            10 | dept - 10
-     56 | emp - 56  |           6 |             2 | dept - 2
-     56 | emp - 56  |           6 |             9 | dept - 9
-     56 | emp - 56  |           6 |             4 | dept - 4
-     56 | emp - 56  |           6 |             3 | dept - 3
-     56 | emp - 56  |           6 |             6 | dept - 6
      56 | emp - 56  |           6 |             1 | dept - 1
-     56 | emp - 56  |           6 |             8 | dept - 8
-     56 | emp - 56  |           6 |             5 | dept - 5
-     56 | emp - 56  |           6 |             7 | dept - 7
-     57 | emp - 57  |           7 |             6 | dept - 6
-     57 | emp - 57  |           7 |             9 | dept - 9
-     57 | emp - 57  |           7 |             3 | dept - 3
+     56 | emp - 56  |           6 |             2 | dept - 2
      57 | emp - 57  |           7 |             1 | dept - 1
-     57 | emp - 57  |           7 |            10 | dept - 10
-     57 | emp - 57  |           7 |             5 | dept - 5
      57 | emp - 57  |           7 |             2 | dept - 2
-     57 | emp - 57  |           7 |             4 | dept - 4
-     57 | emp - 57  |           7 |             7 | dept - 7
-     57 | emp - 57  |           7 |             8 | dept - 8
-     58 | emp - 58  |           8 |             9 | dept - 9
-     58 | emp - 58  |           8 |             4 | dept - 4
-     58 | emp - 58  |           8 |             8 | dept - 8
-     58 | emp - 58  |           8 |             3 | dept - 3
-     58 | emp - 58  |           8 |             6 | dept - 6
-     58 | emp - 58  |           8 |             7 | dept - 7
-     58 | emp - 58  |           8 |             5 | dept - 5
-     58 | emp - 58  |           8 |             2 | dept - 2
-     58 | emp - 58  |           8 |            10 | dept - 10
      58 | emp - 58  |           8 |             1 | dept - 1
+     58 | emp - 58  |           8 |             2 | dept - 2
      59 | emp - 59  |           9 |             1 | dept - 1
-     59 | emp - 59  |           9 |             4 | dept - 4
-     59 | emp - 59  |           9 |             5 | dept - 5
-     59 | emp - 59  |           9 |             6 | dept - 6
-     59 | emp - 59  |           9 |            10 | dept - 10
-     59 | emp - 59  |           9 |             9 | dept - 9
-     59 | emp - 59  |           9 |             7 | dept - 7
-     59 | emp - 59  |           9 |             8 | dept - 8
      59 | emp - 59  |           9 |             2 | dept - 2
-     59 | emp - 59  |           9 |             3 | dept - 3
-     60 | emp - 60  |          10 |            10 | dept - 10
-     60 | emp - 60  |          10 |             6 | dept - 6
      60 | emp - 60  |          10 |             1 | dept - 1
-     60 | emp - 60  |          10 |             9 | dept - 9
-     60 | emp - 60  |          10 |             4 | dept - 4
-     60 | emp - 60  |          10 |             8 | dept - 8
      60 | emp - 60  |          10 |             2 | dept - 2
-     60 | emp - 60  |          10 |             5 | dept - 5
-     60 | emp - 60  |          10 |             7 | dept - 7
-     60 | emp - 60  |          10 |             3 | dept - 3
      61 | emp - 61  |           1 |             1 | dept - 1
-     61 | emp - 61  |           1 |             4 | dept - 4
-     61 | emp - 61  |           1 |             7 | dept - 7
-     61 | emp - 61  |           1 |             3 | dept - 3
-     61 | emp - 61  |           1 |             6 | dept - 6
-     61 | emp - 61  |           1 |            10 | dept - 10
-     61 | emp - 61  |           1 |             8 | dept - 8
      61 | emp - 61  |           1 |             2 | dept - 2
-     61 | emp - 61  |           1 |             5 | dept - 5
-     61 | emp - 61  |           1 |             9 | dept - 9
-     62 | emp - 62  |           2 |             5 | dept - 5
      62 | emp - 62  |           2 |             1 | dept - 1
-     62 | emp - 62  |           2 |             4 | dept - 4
-     62 | emp - 62  |           2 |            10 | dept - 10
-     62 | emp - 62  |           2 |             3 | dept - 3
-     62 | emp - 62  |           2 |             9 | dept - 9
-     62 | emp - 62  |           2 |             7 | dept - 7
-     62 | emp - 62  |           2 |             6 | dept - 6
-     62 | emp - 62  |           2 |             8 | dept - 8
      62 | emp - 62  |           2 |             2 | dept - 2
-     63 | emp - 63  |           3 |             4 | dept - 4
-     63 | emp - 63  |           3 |             6 | dept - 6
-     63 | emp - 63  |           3 |             5 | dept - 5
-     63 | emp - 63  |           3 |             8 | dept - 8
      63 | emp - 63  |           3 |             1 | dept - 1
      63 | emp - 63  |           3 |             2 | dept - 2
-     63 | emp - 63  |           3 |             9 | dept - 9
-     63 | emp - 63  |           3 |             3 | dept - 3
-     63 | emp - 63  |           3 |             7 | dept - 7
-     63 | emp - 63  |           3 |            10 | dept - 10
-     64 | emp - 64  |           4 |             4 | dept - 4
-     64 | emp - 64  |           4 |             9 | dept - 9
      64 | emp - 64  |           4 |             1 | dept - 1
      64 | emp - 64  |           4 |             2 | dept - 2
-     64 | emp - 64  |           4 |             8 | dept - 8
-     64 | emp - 64  |           4 |             6 | dept - 6
-     64 | emp - 64  |           4 |             7 | dept - 7
-     64 | emp - 64  |           4 |             3 | dept - 3
-     64 | emp - 64  |           4 |             5 | dept - 5
-     64 | emp - 64  |           4 |            10 | dept - 10
-     65 | emp - 65  |           5 |             9 | dept - 9
-     65 | emp - 65  |           5 |            10 | dept - 10
-     65 | emp - 65  |           5 |             7 | dept - 7
      65 | emp - 65  |           5 |             1 | dept - 1
      65 | emp - 65  |           5 |             2 | dept - 2
-     65 | emp - 65  |           5 |             6 | dept - 6
-     65 | emp - 65  |           5 |             5 | dept - 5
-     65 | emp - 65  |           5 |             8 | dept - 8
-     65 | emp - 65  |           5 |             3 | dept - 3
-     65 | emp - 65  |           5 |             4 | dept - 4
-     66 | emp - 66  |           6 |             4 | dept - 4
-     66 | emp - 66  |           6 |             8 | dept - 8
-     66 | emp - 66  |           6 |             7 | dept - 7
-     66 | emp - 66  |           6 |             9 | dept - 9
-     66 | emp - 66  |           6 |             6 | dept - 6
      66 | emp - 66  |           6 |             1 | dept - 1
-     66 | emp - 66  |           6 |             3 | dept - 3
-     66 | emp - 66  |           6 |            10 | dept - 10
-     66 | emp - 66  |           6 |             5 | dept - 5
      66 | emp - 66  |           6 |             2 | dept - 2
-     67 | emp - 67  |           7 |             7 | dept - 7
-     67 | emp - 67  |           7 |             3 | dept - 3
-     67 | emp - 67  |           7 |             2 | dept - 2
-     67 | emp - 67  |           7 |            10 | dept - 10
-     67 | emp - 67  |           7 |             8 | dept - 8
-     67 | emp - 67  |           7 |             5 | dept - 5
-     67 | emp - 67  |           7 |             9 | dept - 9
      67 | emp - 67  |           7 |             1 | dept - 1
-     67 | emp - 67  |           7 |             6 | dept - 6
-     67 | emp - 67  |           7 |             4 | dept - 4
-     68 | emp - 68  |           8 |             2 | dept - 2
+     67 | emp - 67  |           7 |             2 | dept - 2
      68 | emp - 68  |           8 |             1 | dept - 1
-     68 | emp - 68  |           8 |             5 | dept - 5
-     68 | emp - 68  |           8 |             3 | dept - 3
-     68 | emp - 68  |           8 |            10 | dept - 10
-     68 | emp - 68  |           8 |             6 | dept - 6
-     68 | emp - 68  |           8 |             4 | dept - 4
-     68 | emp - 68  |           8 |             9 | dept - 9
-     68 | emp - 68  |           8 |             8 | dept - 8
-     68 | emp - 68  |           8 |             7 | dept - 7
-     69 | emp - 69  |           9 |             6 | dept - 6
-     69 | emp - 69  |           9 |             5 | dept - 5
-     69 | emp - 69  |           9 |             9 | dept - 9
-     69 | emp - 69  |           9 |             4 | dept - 4
-     69 | emp - 69  |           9 |             8 | dept - 8
+     68 | emp - 68  |           8 |             2 | dept - 2
      69 | emp - 69  |           9 |             1 | dept - 1
-     69 | emp - 69  |           9 |            10 | dept - 10
      69 | emp - 69  |           9 |             2 | dept - 2
-     69 | emp - 69  |           9 |             3 | dept - 3
-     69 | emp - 69  |           9 |             7 | dept - 7
-     70 | emp - 70  |          10 |            10 | dept - 10
-     70 | emp - 70  |          10 |             3 | dept - 3
-     70 | emp - 70  |          10 |             9 | dept - 9
-     70 | emp - 70  |          10 |             4 | dept - 4
-     70 | emp - 70  |          10 |             6 | dept - 6
-     70 | emp - 70  |          10 |             8 | dept - 8
-     70 | emp - 70  |          10 |             5 | dept - 5
-     70 | emp - 70  |          10 |             7 | dept - 7
      70 | emp - 70  |          10 |             1 | dept - 1
      70 | emp - 70  |          10 |             2 | dept - 2
-     71 | emp - 71  |           1 |            10 | dept - 10
-     71 | emp - 71  |           1 |             8 | dept - 8
-     71 | emp - 71  |           1 |             6 | dept - 6
-     71 | emp - 71  |           1 |             2 | dept - 2
-     71 | emp - 71  |           1 |             4 | dept - 4
-     71 | emp - 71  |           1 |             9 | dept - 9
-     71 | emp - 71  |           1 |             3 | dept - 3
-     71 | emp - 71  |           1 |             5 | dept - 5
      71 | emp - 71  |           1 |             1 | dept - 1
-     71 | emp - 71  |           1 |             7 | dept - 7
-     72 | emp - 72  |           2 |             2 | dept - 2
-     72 | emp - 72  |           2 |            10 | dept - 10
+     71 | emp - 71  |           1 |             2 | dept - 2
      72 | emp - 72  |           2 |             1 | dept - 1
-     72 | emp - 72  |           2 |             8 | dept - 8
-     72 | emp - 72  |           2 |             6 | dept - 6
-     72 | emp - 72  |           2 |             4 | dept - 4
-     72 | emp - 72  |           2 |             9 | dept - 9
-     72 | emp - 72  |           2 |             7 | dept - 7
-     72 | emp - 72  |           2 |             3 | dept - 3
-     72 | emp - 72  |           2 |             5 | dept - 5
-     73 | emp - 73  |           3 |             5 | dept - 5
-     73 | emp - 73  |           3 |             2 | dept - 2
+     72 | emp - 72  |           2 |             2 | dept - 2
      73 | emp - 73  |           3 |             1 | dept - 1
-     73 | emp - 73  |           3 |             9 | dept - 9
-     73 | emp - 73  |           3 |             8 | dept - 8
-     73 | emp - 73  |           3 |             6 | dept - 6
-     73 | emp - 73  |           3 |            10 | dept - 10
-     73 | emp - 73  |           3 |             3 | dept - 3
-     73 | emp - 73  |           3 |             4 | dept - 4
-     73 | emp - 73  |           3 |             7 | dept - 7
-     74 | emp - 74  |           4 |             3 | dept - 3
-     74 | emp - 74  |           4 |             6 | dept - 6
-     74 | emp - 74  |           4 |             5 | dept - 5
-     74 | emp - 74  |           4 |             2 | dept - 2
-     74 | emp - 74  |           4 |            10 | dept - 10
+     73 | emp - 73  |           3 |             2 | dept - 2
      74 | emp - 74  |           4 |             1 | dept - 1
-     74 | emp - 74  |           4 |             9 | dept - 9
-     74 | emp - 74  |           4 |             7 | dept - 7
-     74 | emp - 74  |           4 |             4 | dept - 4
-     74 | emp - 74  |           4 |             8 | dept - 8
-     75 | emp - 75  |           5 |             8 | dept - 8
-     75 | emp - 75  |           5 |            10 | dept - 10
-     75 | emp - 75  |           5 |             4 | dept - 4
-     75 | emp - 75  |           5 |             3 | dept - 3
-     75 | emp - 75  |           5 |             5 | dept - 5
-     75 | emp - 75  |           5 |             6 | dept - 6
-     75 | emp - 75  |           5 |             7 | dept - 7
-     75 | emp - 75  |           5 |             2 | dept - 2
+     74 | emp - 74  |           4 |             2 | dept - 2
      75 | emp - 75  |           5 |             1 | dept - 1
-     75 | emp - 75  |           5 |             9 | dept - 9
-     76 | emp - 76  |           6 |            10 | dept - 10
-     76 | emp - 76  |           6 |             2 | dept - 2
-     76 | emp - 76  |           6 |             8 | dept - 8
-     76 | emp - 76  |           6 |             3 | dept - 3
-     76 | emp - 76  |           6 |             4 | dept - 4
-     76 | emp - 76  |           6 |             5 | dept - 5
-     76 | emp - 76  |           6 |             7 | dept - 7
+     75 | emp - 75  |           5 |             2 | dept - 2
      76 | emp - 76  |           6 |             1 | dept - 1
-     76 | emp - 76  |           6 |             6 | dept - 6
-     76 | emp - 76  |           6 |             9 | dept - 9
-     77 | emp - 77  |           7 |             7 | dept - 7
-     77 | emp - 77  |           7 |             5 | dept - 5
-     77 | emp - 77  |           7 |             8 | dept - 8
-     77 | emp - 77  |           7 |             6 | dept - 6
-     77 | emp - 77  |           7 |            10 | dept - 10
-     77 | emp - 77  |           7 |             3 | dept - 3
-     77 | emp - 77  |           7 |             9 | dept - 9
-     77 | emp - 77  |           7 |             4 | dept - 4
+     76 | emp - 76  |           6 |             2 | dept - 2
      77 | emp - 77  |           7 |             1 | dept - 1
      77 | emp - 77  |           7 |             2 | dept - 2
-     78 | emp - 78  |           8 |             2 | dept - 2
-     78 | emp - 78  |           8 |             5 | dept - 5
      78 | emp - 78  |           8 |             1 | dept - 1
-     78 | emp - 78  |           8 |             8 | dept - 8
-     78 | emp - 78  |           8 |             3 | dept - 3
-     78 | emp - 78  |           8 |             7 | dept - 7
-     78 | emp - 78  |           8 |             4 | dept - 4
-     78 | emp - 78  |           8 |            10 | dept - 10
-     78 | emp - 78  |           8 |             9 | dept - 9
-     78 | emp - 78  |           8 |             6 | dept - 6
-     79 | emp - 79  |           9 |             9 | dept - 9
-     79 | emp - 79  |           9 |             3 | dept - 3
-     79 | emp - 79  |           9 |             4 | dept - 4
-     79 | emp - 79  |           9 |             5 | dept - 5
-     79 | emp - 79  |           9 |             8 | dept - 8
-     79 | emp - 79  |           9 |             6 | dept - 6
-     79 | emp - 79  |           9 |             2 | dept - 2
+     78 | emp - 78  |           8 |             2 | dept - 2
      79 | emp - 79  |           9 |             1 | dept - 1
-     79 | emp - 79  |           9 |            10 | dept - 10
-     79 | emp - 79  |           9 |             7 | dept - 7
-     80 | emp - 80  |          10 |            10 | dept - 10
+     79 | emp - 79  |           9 |             2 | dept - 2
      80 | emp - 80  |          10 |             1 | dept - 1
-     80 | emp - 80  |          10 |             8 | dept - 8
-     80 | emp - 80  |          10 |             3 | dept - 3
      80 | emp - 80  |          10 |             2 | dept - 2
-     80 | emp - 80  |          10 |             9 | dept - 9
-     80 | emp - 80  |          10 |             5 | dept - 5
-     80 | emp - 80  |          10 |             7 | dept - 7
-     80 | emp - 80  |          10 |             4 | dept - 4
-     80 | emp - 80  |          10 |             6 | dept - 6
-     81 | emp - 81  |           1 |             4 | dept - 4
-     81 | emp - 81  |           1 |             9 | dept - 9
-     81 | emp - 81  |           1 |             2 | dept - 2
      81 | emp - 81  |           1 |             1 | dept - 1
-     81 | emp - 81  |           1 |             3 | dept - 3
-     81 | emp - 81  |           1 |             8 | dept - 8
-     81 | emp - 81  |           1 |             7 | dept - 7
-     81 | emp - 81  |           1 |             5 | dept - 5
-     81 | emp - 81  |           1 |            10 | dept - 10
-     81 | emp - 81  |           1 |             6 | dept - 6
-     82 | emp - 82  |           2 |             5 | dept - 5
-     82 | emp - 82  |           2 |             8 | dept - 8
-     82 | emp - 82  |           2 |             9 | dept - 9
-     82 | emp - 82  |           2 |             6 | dept - 6
-     82 | emp - 82  |           2 |            10 | dept - 10
-     82 | emp - 82  |           2 |             2 | dept - 2
-     82 | emp - 82  |           2 |             4 | dept - 4
+     81 | emp - 81  |           1 |             2 | dept - 2
      82 | emp - 82  |           2 |             1 | dept - 1
-     82 | emp - 82  |           2 |             3 | dept - 3
-     82 | emp - 82  |           2 |             7 | dept - 7
-     83 | emp - 83  |           3 |             2 | dept - 2
-     83 | emp - 83  |           3 |             4 | dept - 4
-     83 | emp - 83  |           3 |             6 | dept - 6
-     83 | emp - 83  |           3 |            10 | dept - 10
-     83 | emp - 83  |           3 |             5 | dept - 5
-     83 | emp - 83  |           3 |             8 | dept - 8
+     82 | emp - 82  |           2 |             2 | dept - 2
      83 | emp - 83  |           3 |             1 | dept - 1
-     83 | emp - 83  |           3 |             9 | dept - 9
-     83 | emp - 83  |           3 |             7 | dept - 7
-     83 | emp - 83  |           3 |             3 | dept - 3
-     84 | emp - 84  |           4 |             7 | dept - 7
-     84 | emp - 84  |           4 |             5 | dept - 5
-     84 | emp - 84  |           4 |            10 | dept - 10
-     84 | emp - 84  |           4 |             2 | dept - 2
-     84 | emp - 84  |           4 |             9 | dept - 9
-     84 | emp - 84  |           4 |             6 | dept - 6
-     84 | emp - 84  |           4 |             3 | dept - 3
-     84 | emp - 84  |           4 |             4 | dept - 4
+     83 | emp - 83  |           3 |             2 | dept - 2
      84 | emp - 84  |           4 |             1 | dept - 1
-     84 | emp - 84  |           4 |             8 | dept - 8
-     85 | emp - 85  |           5 |             6 | dept - 6
-     85 | emp - 85  |           5 |            10 | dept - 10
-     85 | emp - 85  |           5 |             2 | dept - 2
-     85 | emp - 85  |           5 |             4 | dept - 4
+     84 | emp - 84  |           4 |             2 | dept - 2
      85 | emp - 85  |           5 |             1 | dept - 1
-     85 | emp - 85  |           5 |             7 | dept - 7
-     85 | emp - 85  |           5 |             5 | dept - 5
-     85 | emp - 85  |           5 |             3 | dept - 3
-     85 | emp - 85  |           5 |             9 | dept - 9
-     85 | emp - 85  |           5 |             8 | dept - 8
-     86 | emp - 86  |           6 |             6 | dept - 6
-     86 | emp - 86  |           6 |             8 | dept - 8
-     86 | emp - 86  |           6 |             7 | dept - 7
-     86 | emp - 86  |           6 |             5 | dept - 5
-     86 | emp - 86  |           6 |             3 | dept - 3
-     86 | emp - 86  |           6 |             4 | dept - 4
+     85 | emp - 85  |           5 |             2 | dept - 2
      86 | emp - 86  |           6 |             1 | dept - 1
      86 | emp - 86  |           6 |             2 | dept - 2
-     86 | emp - 86  |           6 |            10 | dept - 10
-     86 | emp - 86  |           6 |             9 | dept - 9
-     87 | emp - 87  |           7 |             2 | dept - 2
-     87 | emp - 87  |           7 |             6 | dept - 6
-     87 | emp - 87  |           7 |             7 | dept - 7
-     87 | emp - 87  |           7 |             8 | dept - 8
-     87 | emp - 87  |           7 |             4 | dept - 4
-     87 | emp - 87  |           7 |             5 | dept - 5
      87 | emp - 87  |           7 |             1 | dept - 1
-     87 | emp - 87  |           7 |             3 | dept - 3
-     87 | emp - 87  |           7 |             9 | dept - 9
-     87 | emp - 87  |           7 |            10 | dept - 10
-     88 | emp - 88  |           8 |             4 | dept - 4
-     88 | emp - 88  |           8 |            10 | dept - 10
-     88 | emp - 88  |           8 |             6 | dept - 6
-     88 | emp - 88  |           8 |             9 | dept - 9
+     87 | emp - 87  |           7 |             2 | dept - 2
      88 | emp - 88  |           8 |             1 | dept - 1
-     88 | emp - 88  |           8 |             7 | dept - 7
      88 | emp - 88  |           8 |             2 | dept - 2
-     88 | emp - 88  |           8 |             5 | dept - 5
-     88 | emp - 88  |           8 |             8 | dept - 8
-     88 | emp - 88  |           8 |             3 | dept - 3
-     89 | emp - 89  |           9 |             8 | dept - 8
-     89 | emp - 89  |           9 |             7 | dept - 7
-     89 | emp - 89  |           9 |             9 | dept - 9
-     89 | emp - 89  |           9 |             3 | dept - 3
-     89 | emp - 89  |           9 |             6 | dept - 6
-     89 | emp - 89  |           9 |            10 | dept - 10
-     89 | emp - 89  |           9 |             4 | dept - 4
-     89 | emp - 89  |           9 |             5 | dept - 5
      89 | emp - 89  |           9 |             1 | dept - 1
      89 | emp - 89  |           9 |             2 | dept - 2
-     90 | emp - 90  |          10 |             9 | dept - 9
-     90 | emp - 90  |          10 |             3 | dept - 3
      90 | emp - 90  |          10 |             1 | dept - 1
-     90 | emp - 90  |          10 |             5 | dept - 5
-     90 | emp - 90  |          10 |             8 | dept - 8
-     90 | emp - 90  |          10 |             7 | dept - 7
-     90 | emp - 90  |          10 |            10 | dept - 10
-     90 | emp - 90  |          10 |             4 | dept - 4
      90 | emp - 90  |          10 |             2 | dept - 2
-     90 | emp - 90  |          10 |             6 | dept - 6
-     91 | emp - 91  |           1 |            10 | dept - 10
-     91 | emp - 91  |           1 |             2 | dept - 2
-     91 | emp - 91  |           1 |             9 | dept - 9
-     91 | emp - 91  |           1 |             4 | dept - 4
-     91 | emp - 91  |           1 |             5 | dept - 5
-     91 | emp - 91  |           1 |             3 | dept - 3
-     91 | emp - 91  |           1 |             7 | dept - 7
-     91 | emp - 91  |           1 |             8 | dept - 8
      91 | emp - 91  |           1 |             1 | dept - 1
-     91 | emp - 91  |           1 |             6 | dept - 6
-     92 | emp - 92  |           2 |             6 | dept - 6
-     92 | emp - 92  |           2 |             4 | dept - 4
-     92 | emp - 92  |           2 |            10 | dept - 10
+     91 | emp - 91  |           1 |             2 | dept - 2
      92 | emp - 92  |           2 |             1 | dept - 1
-     92 | emp - 92  |           2 |             8 | dept - 8
-     92 | emp - 92  |           2 |             5 | dept - 5
-     92 | emp - 92  |           2 |             7 | dept - 7
      92 | emp - 92  |           2 |             2 | dept - 2
-     92 | emp - 92  |           2 |             9 | dept - 9
-     92 | emp - 92  |           2 |             3 | dept - 3
-     93 | emp - 93  |           3 |             4 | dept - 4
-     93 | emp - 93  |           3 |             3 | dept - 3
-     93 | emp - 93  |           3 |             8 | dept - 8
      93 | emp - 93  |           3 |             1 | dept - 1
      93 | emp - 93  |           3 |             2 | dept - 2
-     93 | emp - 93  |           3 |            10 | dept - 10
-     93 | emp - 93  |           3 |             6 | dept - 6
-     93 | emp - 93  |           3 |             5 | dept - 5
-     93 | emp - 93  |           3 |             9 | dept - 9
-     93 | emp - 93  |           3 |             7 | dept - 7
-     94 | emp - 94  |           4 |             4 | dept - 4
-     94 | emp - 94  |           4 |             8 | dept - 8
-     94 | emp - 94  |           4 |             9 | dept - 9
-     94 | emp - 94  |           4 |             7 | dept - 7
-     94 | emp - 94  |           4 |            10 | dept - 10
-     94 | emp - 94  |           4 |             3 | dept - 3
-     94 | emp - 94  |           4 |             2 | dept - 2
-     94 | emp - 94  |           4 |             6 | dept - 6
      94 | emp - 94  |           4 |             1 | dept - 1
-     94 | emp - 94  |           4 |             5 | dept - 5
-     95 | emp - 95  |           5 |             7 | dept - 7
-     95 | emp - 95  |           5 |             6 | dept - 6
-     95 | emp - 95  |           5 |             2 | dept - 2
-     95 | emp - 95  |           5 |             8 | dept - 8
-     95 | emp - 95  |           5 |             9 | dept - 9
-     95 | emp - 95  |           5 |             4 | dept - 4
+     94 | emp - 94  |           4 |             2 | dept - 2
      95 | emp - 95  |           5 |             1 | dept - 1
-     95 | emp - 95  |           5 |             5 | dept - 5
-     95 | emp - 95  |           5 |            10 | dept - 10
-     95 | emp - 95  |           5 |             3 | dept - 3
-     96 | emp - 96  |           6 |             2 | dept - 2
-     96 | emp - 96  |           6 |             4 | dept - 4
-     96 | emp - 96  |           6 |             6 | dept - 6
-     96 | emp - 96  |           6 |             7 | dept - 7
-     96 | emp - 96  |           6 |            10 | dept - 10
-     96 | emp - 96  |           6 |             8 | dept - 8
+     95 | emp - 95  |           5 |             2 | dept - 2
      96 | emp - 96  |           6 |             1 | dept - 1
-     96 | emp - 96  |           6 |             9 | dept - 9
-     96 | emp - 96  |           6 |             5 | dept - 5
-     96 | emp - 96  |           6 |             3 | dept - 3
+     96 | emp - 96  |           6 |             2 | dept - 2
      97 | emp - 97  |           7 |             1 | dept - 1
      97 | emp - 97  |           7 |             2 | dept - 2
-     97 | emp - 97  |           7 |             4 | dept - 4
-     97 | emp - 97  |           7 |             7 | dept - 7
-     97 | emp - 97  |           7 |            10 | dept - 10
-     97 | emp - 97  |           7 |             6 | dept - 6
-     97 | emp - 97  |           7 |             8 | dept - 8
-     97 | emp - 97  |           7 |             5 | dept - 5
-     97 | emp - 97  |           7 |             9 | dept - 9
-     97 | emp - 97  |           7 |             3 | dept - 3
-     98 | emp - 98  |           8 |             2 | dept - 2
-     98 | emp - 98  |           8 |             5 | dept - 5
-     98 | emp - 98  |           8 |             8 | dept - 8
-     98 | emp - 98  |           8 |             9 | dept - 9
-     98 | emp - 98  |           8 |            10 | dept - 10
-     98 | emp - 98  |           8 |             7 | dept - 7
-     98 | emp - 98  |           8 |             3 | dept - 3
-     98 | emp - 98  |           8 |             6 | dept - 6
-     98 | emp - 98  |           8 |             4 | dept - 4
      98 | emp - 98  |           8 |             1 | dept - 1
-     99 | emp - 99  |           9 |            10 | dept - 10
-     99 | emp - 99  |           9 |             8 | dept - 8
-     99 | emp - 99  |           9 |             3 | dept - 3
-     99 | emp - 99  |           9 |             4 | dept - 4
+     98 | emp - 98  |           8 |             2 | dept - 2
      99 | emp - 99  |           9 |             1 | dept - 1
-     99 | emp - 99  |           9 |             9 | dept - 9
-     99 | emp - 99  |           9 |             5 | dept - 5
      99 | emp - 99  |           9 |             2 | dept - 2
-     99 | emp - 99  |           9 |             7 | dept - 7
-     99 | emp - 99  |           9 |             6 | dept - 6
-    100 | emp - 100 |          10 |             5 | dept - 5
-    100 | emp - 100 |          10 |             8 | dept - 8
-    100 | emp - 100 |          10 |             6 | dept - 6
-    100 | emp - 100 |          10 |             3 | dept - 3
-    100 | emp - 100 |          10 |             9 | dept - 9
-    100 | emp - 100 |          10 |            10 | dept - 10
     100 | emp - 100 |          10 |             1 | dept - 1
     100 | emp - 100 |          10 |             2 | dept - 2
-    100 | emp - 100 |          10 |             4 | dept - 4
-    100 | emp - 100 |          10 |             7 | dept - 7
-(1000 rows)
+(200 rows)
 
 DELETE FROM employee WHERE emp_id = 10;
 UPDATE employee SET emp_name = 'Updated emp' WHERE emp_id = 20;
-SELECT emp_id, emp_name FROM employee WHERE emp_name like 'Updated emp';
+SELECT emp_id, emp_name FROM employee WHERE emp_name like 'Updated emp' ORDER BY emp_id;
  emp_id |  emp_name   
 --------+-------------
      20 | Updated emp
@@ -1367,7 +523,7 @@ population INTEGER,
 capital VARCHAR,
 hdi FLOAT
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM countries;
+SELECT * FROM countries ORDER BY _id;
            _id            |  name   | population | capital  |  hdi  
 --------------------------+---------+------------+----------+-------
  5381ccf9d6d81c8e8bf0434f | Ukraine |   45590000 | Kyiv     |  0.74
@@ -1382,7 +538,7 @@ _id NAME,
 "lastElections.type" VARCHAR,
 "lastElections.date" TIMESTAMP
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM country_elections;
+SELECT * FROM country_elections ORDER BY _id;
            _id            | lastElections.type |    lastElections.date    
 --------------------------+--------------------+--------------------------
  5381ccf9d6d81c8e8bf0434f | presedential       | Sun May 25 00:00:00 2014
@@ -1396,7 +552,7 @@ CREATE FOREIGN TABLE main_exports (
 _id NAME,
 "mainExports" TEXT[]
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM main_exports;
+SELECT * FROM main_exports ORDER BY _id;
            _id            |                                                                                         mainExports                                                                                         
 --------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  5381ccf9d6d81c8e8bf0434f | {"Semi-finished products of iron or non-alloy steel","Flat-rolled products of iron or non-alloy steel","Sunflower-seed, safflower or cotton-seed oil"}
@@ -1407,34 +563,34 @@ SELECT * FROM main_exports;
 -- __doc tests
 -- the collection warehouse must contain the following data
 -- use testdb;
--- db.warehouse.insert ({"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
--- db.warehouse.insert({"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
+-- db.warehouse.insert ({"_id" : ObjectId("58a1ebbaf543ec0b90545859"),"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
+-- db.warehouse.insert ({"_id" : ObjectId("58a1ebbaf543ec0b9054585a"),"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
 CREATE FOREIGN TABLE test_json(__doc json) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
 CREATE FOREIGN TABLE test_jsonb(__doc jsonb) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
 CREATE FOREIGN TABLE test_text(__doc text) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
 CREATE FOREIGN TABLE test_varchar(__doc varchar) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
-SELECT * FROM test_json;
+SELECT * FROM test_json ORDER BY __doc::text COLLATE "C";
                                                                           __doc                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
  { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
  { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
 (2 rows)
 
-SELECT * FROM test_jsonb;
+SELECT * FROM test_jsonb ORDER BY __doc::text COLLATE "C";
                                                                     __doc                                                                    
 ---------------------------------------------------------------------------------------------------------------------------------------------
  {"_id": {"$oid": "58a1ebbaf543ec0b90545859"}, "warehouse_id": 1, "warehouse_name": "UPS", "warehouse_created": {"$date": 1418368330000}}
  {"_id": {"$oid": "58a1ebbaf543ec0b9054585a"}, "warehouse_id": 2, "warehouse_name": "Laptop", "warehouse_created": {"$date": 1447229590000}}
 (2 rows)
 
-SELECT * FROM test_text;
+SELECT * FROM test_text ORDER BY __doc::text COLLATE "C";
                                                                           __doc                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
  { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }
  { "_id" : { "$oid" : "58a1ebbaf543ec0b9054585a" }, "warehouse_id" : 2, "warehouse_name" : "Laptop", "warehouse_created" : { "$date" : 1447229590000 } }
 (2 rows)
 
-SELECT * FROM test_varchar;
+SELECT * FROM test_varchar ORDER BY __doc::text COLLATE "C";
                                                                           __doc                                                                          
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
  { "_id" : { "$oid" : "58a1ebbaf543ec0b90545859" }, "warehouse_id" : 1, "warehouse_name" : "UPS", "warehouse_created" : { "$date" : 1418368330000 } }

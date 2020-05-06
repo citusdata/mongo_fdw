@@ -1,14 +1,14 @@
 \c postgres postgres
 CREATE EXTENSION mongo_fdw;
 CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw OPTIONS (address '127.0.0.1', port '27017');
-\! mongoimport --db mongo_fdw_regress --collection countries --jsonArray --drop --quiet < data/mongo_fixture.json
+\! mongoimport --db mongo_fdw_regress --collection countries --jsonArray --drop --maintainInsertionOrder --host='127.0.0.1' --port=27017 --quiet < data/mongo_fixture.json
 CREATE USER MAPPING FOR postgres SERVER mongo_server;
 
 CREATE FOREIGN TABLE department(_id NAME, department_id int, department_name text) SERVER mongo_server OPTIONS(database 'testdb', collection 'department');
 CREATE FOREIGN TABLE employee(_id NAME, emp_id int, emp_name text, emp_dept_id int) SERVER mongo_server OPTIONS(database 'testdb', collection 'employee');
 
-INSERT INTO department VALUES(0, generate_series(1,10), 'dept - ' || generate_series(1,10));
-INSERT INTO employee VALUES(0, generate_series(1,100), 'emp - ' || generate_series(1,100), generate_series(1,10));
+INSERT INTO department SELECT 0, i, 'dept - ' || i FROM generate_series(1,10) i;
+INSERT INTO employee SELECT 0, i, 'emp - ' || i, (i - 1)%10 + 1 FROM generate_series(1,100) i;
 
 SELECT count(*) FROM department;
 SELECT count(*) FROM employee;
@@ -17,13 +17,13 @@ EXPLAIN (COSTS FALSE) SELECT emp_id , emp_name , emp_dept_id, department_id , de
 
 EXPLAIN (COSTS FALSE) SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department) ORDER by emp_id;
 
-SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id = e.emp_dept_id ORDER by emp_id;
-SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department) ORDER by emp_id;
+SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id = e.emp_dept_id AND e.emp_dept_id > 5 ORDER by emp_id, department_id;
+SELECT emp_id , emp_name , emp_dept_id, department_id , department_name FROM department d, employee e WHERE d.department_id IN (SELECT department_id FROM department WHERE department_id < 3) ORDER by emp_id, department_id;
 
 DELETE FROM employee WHERE emp_id = 10;
 
 UPDATE employee SET emp_name = 'Updated emp' WHERE emp_id = 20;
-SELECT emp_id, emp_name FROM employee WHERE emp_name like 'Updated emp';
+SELECT emp_id, emp_name FROM employee WHERE emp_name like 'Updated emp' ORDER BY emp_id;
 
 SELECT emp_id , emp_name , emp_dept_id FROM employee ORDER by emp_id LIMIT 10;
 SELECT emp_id , emp_name , emp_dept_id FROM employee WHERE emp_id IN (1) ORDER by emp_id;
@@ -48,7 +48,7 @@ population INTEGER,
 capital VARCHAR,
 hdi FLOAT
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM countries;
+SELECT * FROM countries ORDER BY _id;
 -- 
 -- Subfields and dates
 CREATE FOREIGN TABLE country_elections (
@@ -56,21 +56,21 @@ _id NAME,
 "lastElections.type" VARCHAR,
 "lastElections.date" TIMESTAMP
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM country_elections;
+SELECT * FROM country_elections ORDER BY _id;
 -- 
 -- Arrays
 CREATE FOREIGN TABLE main_exports (
 _id NAME,
 "mainExports" TEXT[]
 ) SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'countries');
-SELECT * FROM main_exports;
+SELECT * FROM main_exports ORDER BY _id;
 
 -- __doc tests
 
 -- the collection warehouse must contain the following data
 -- use testdb;
--- db.warehouse.insert ({"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
--- db.warehouse.insert({"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
+-- db.warehouse.insert ({"_id" : ObjectId("58a1ebbaf543ec0b90545859"),"warehouse_id" : NumberInt(1),"warehouse_name" : "UPS","warehouse_created" : ISODate("2014-12-12T07:12:10Z")});
+-- db.warehouse.insert ({"_id" : ObjectId("58a1ebbaf543ec0b9054585a"),"warehouse_id" : NumberInt(2),"warehouse_name" : "Laptop","warehouse_created" : ISODate("2015-11-11T08:13:10Z")});
 
 
 CREATE FOREIGN TABLE test_json(__doc json) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
@@ -78,10 +78,10 @@ CREATE FOREIGN TABLE test_jsonb(__doc jsonb) SERVER mongo_server OPTIONS (databa
 CREATE FOREIGN TABLE test_text(__doc text) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
 CREATE FOREIGN TABLE test_varchar(__doc varchar) SERVER mongo_server OPTIONS (database 'testdb', collection 'warehouse');
 
-SELECT * FROM test_json;
-SELECT * FROM test_jsonb;
-SELECT * FROM test_text;
-SELECT * FROM test_varchar;
+SELECT * FROM test_json ORDER BY __doc::text COLLATE "C";
+SELECT * FROM test_jsonb ORDER BY __doc::text COLLATE "C";
+SELECT * FROM test_text ORDER BY __doc::text COLLATE "C";
+SELECT * FROM test_varchar ORDER BY __doc::text COLLATE "C";
 
 -- where clause push down test
 CREATE FOREIGN TABLE test_numbers(_id NAME, a int, b text) SERVER mongo_server OPTIONS (database 'testdb', collection 'test_numbers');
