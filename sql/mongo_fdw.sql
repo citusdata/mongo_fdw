@@ -131,6 +131,33 @@ execute test_where_pd(7);
 execute test_where_pd(8);
 execute test_where_pd(9);
 
+--
+-- fdw-108: After a change to a pg_foreign_server or pg_user_mapping catalog
+-- entry, connection should be invalidated.
+--
+
+-- Alter one of the SERVER option
+-- Set wrong address for mongo_server
+ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.5');
+-- Should fail with an error
+INSERT INTO test_numbers VALUES ('11', 11, 'Eleven');
+-- Set correct address for mongo_server
+ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.1');
+-- Should able to insert the data
+INSERT INTO test_numbers VALUES ('12', 12, 'Twelve');
+
+-- Change the user mapping options
+-- Set wrong username, password for postgres user
+DROP USER MAPPING FOR postgres SERVER mongo_server;
+CREATE USER MAPPING FOR postgres SERVER mongo_server OPTIONS (username 'wrong', password 'wrong');
+-- Should fail with an error
+INSERT INTO test_numbers VALUES ('13', 13, 'Thirteen');
+-- Set default username, password for postgres user
+DROP USER MAPPING FOR postgres SERVER mongo_server;
+CREATE USER MAPPING FOR postgres SERVER mongo_server;
+-- Should able to insert the data
+INSERT INTO test_numbers VALUES ('14', 14, 'Fourteen');
+
 DELETE FROM test_numbers;
 DROP FOREIGN TABLE test_numbers;
 
