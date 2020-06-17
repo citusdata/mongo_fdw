@@ -210,8 +210,7 @@ If you need commercial support, please contact the EnterpriseDB sales team, or c
 
 License
 -------
-Portions Copyright © 2004-2016, EnterpriseDB Corporation.
-
+Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
 Portions Copyright © 2012–2014 Citus Data, Inc.
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free
