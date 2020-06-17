@@ -20,9 +20,9 @@
 #include "bson.h"
 
 #ifdef META_DRIVER
-	#include "mongoc.h"
+#include "mongoc.h"
 #else
-	#include "mongo.h"
+#include "mongo.h"
 #endif
 #define json_object json_object_tmp
 
@@ -31,81 +31,81 @@
 #include <bits.h>
 
 #ifdef META_DRIVER
-MONGO_CONN* MongoConnect(const char* host, const unsigned short port, char *databaseName, char *user, char *password,
-    char *authenticationDatabase,char *replicaSet, char *readPreference,	bool ssl, char *pem_file, char *pem_pwd, char *ca_file,
-    char *ca_dir, char *crl_file, bool weak_cert_validation);
+MONGO_CONN *MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password,
+						 char *authenticationDatabase, char *replicaSet, char *readPreference, bool ssl, char *pem_file, char *pem_pwd, char *ca_file,
+						 char *ca_dir, char *crl_file, bool weak_cert_validation);
 #else
-MONGO_CONN* MongoConnect(const char* host, const unsigned short port, char *databaseName, char *user, char *password);
+MONGO_CONN *MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password);
 #endif
-void MongoDisconnect(MONGO_CONN* conn);
-bool MongoInsert(MONGO_CONN* conn, char* database, char *collection, BSON* b);
-bool MongoUpdate(MONGO_CONN* conn, char* database, char *collection, BSON* b, BSON* op);
-bool MongoDelete(MONGO_CONN* conn, char* database, char *collection, BSON* b);
-MONGO_CURSOR* MongoCursorCreate(MONGO_CONN* conn, char* database, char *collection, BSON* q);
-const BSON* MongoCursorBson(MONGO_CURSOR* c);
-bool MongoCursorNext(MONGO_CURSOR* c, BSON* b);
-void MongoCursorDestroy(MONGO_CURSOR* c);
-double MongoAggregateCount(MONGO_CONN* conn, const char* database, const char* collection, const BSON* b);
+void MongoDisconnect(MONGO_CONN *conn);
+bool MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b);
+bool MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b, BSON *op);
+bool MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b);
+MONGO_CURSOR *MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q);
+const BSON *MongoCursorBson(MONGO_CURSOR *c);
+bool MongoCursorNext(MONGO_CURSOR *c, BSON *b);
+void MongoCursorDestroy(MONGO_CURSOR *c);
+double MongoAggregateCount(MONGO_CONN *conn, const char *database, const char *collection, const BSON *b);
 
-BSON* BsonCreate(void);
+BSON *BsonCreate(void);
 void BsonDestroy(BSON *b);
 
 bool BsonIterInit(BSON_ITERATOR *it, BSON *b);
 bool BsonIterSubObject(BSON_ITERATOR *it, BSON *b);
-int32_t BsonIterInt32(BSON_ITERATOR *it);
-int64_t BsonIterInt64(BSON_ITERATOR *it);
+int32_t	BsonIterInt32(BSON_ITERATOR *it);
+int64_t	BsonIterInt64(BSON_ITERATOR *it);
 double BsonIterDouble(BSON_ITERATOR *it);
 bool BsonIterBool(BSON_ITERATOR *it);
-const char* BsonIterString(BSON_ITERATOR *it);
+const char *BsonIterString(BSON_ITERATOR *it);
 #ifdef META_DRIVER
-const char* BsonIterBinData(BSON_ITERATOR *it, uint32_t *len);
+const char *BsonIterBinData(BSON_ITERATOR *it, uint32_t *len);
 #else
-const char* BsonIterBinData(BSON_ITERATOR *it);
-int BsonIterBinLen(BSON_ITERATOR *it);
+const char *BsonIterBinData(BSON_ITERATOR *it);
+int	BsonIterBinLen(BSON_ITERATOR *it);
 #endif
 #ifdef META_DRIVER
 const bson_oid_t *BsonIterOid(BSON_ITERATOR *it);
 #else
-bson_oid_t * BsonIterOid(BSON_ITERATOR *it);
+bson_oid_t *BsonIterOid(BSON_ITERATOR *it);
 #endif
-time_t BsonIterDate(BSON_ITERATOR *it);
-int BsonIterType(BSON_ITERATOR *it);
-int BsonIterNext(BSON_ITERATOR *it);
-bool BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR* sub);
-void BsonOidFromString(bson_oid_t *o, char* str);
+time_t	BsonIterDate(BSON_ITERATOR *it);
+int	BsonIterType(BSON_ITERATOR *it);
+int	BsonIterNext(BSON_ITERATOR *it);
+bool BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub);
+void BsonOidFromString(bson_oid_t *o, char *str);
 void BsonOidToString(const bson_oid_t *o, char str[25]);
-const char* BsonIterCode(BSON_ITERATOR *i);
-const char* BsonIterRegex(BSON_ITERATOR *i);
-const char* BsonIterKey(BSON_ITERATOR *i);
+const char *BsonIterCode(BSON_ITERATOR *i);
+const char *BsonIterRegex(BSON_ITERATOR *i);
+const char *BsonIterKey(BSON_ITERATOR *i);
 #ifdef META_DRIVER
 const bson_value_t *BsonIterValue(BSON_ITERATOR *i);
 #else
-const char* BsonIterValue(BSON_ITERATOR *i);
+const char *BsonIterValue(BSON_ITERATOR *i);
 #endif
 
-void BsonIteratorFromBuffer(BSON_ITERATOR* i, const char * buffer);
+void BsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer);
 
 
 BSON *BsonCreate();
-bool BsonAppendOid(BSON *b, const char* key, bson_oid_t *v);
-bool BsonAppendBool(BSON *b, const char* key, bool v);
-bool BsonAppendNull(BSON *b, const char* key);
-bool BsonAppendInt32(BSON *b, const char* key, int v);
-bool BsonAppendInt64(BSON *b, const char* key, int64_t v);
-bool BsonAppendDouble(BSON *b, const char* key, double v);
-bool BsonAppendUTF8(BSON *b, const char* key, char *v);
-bool BsonAppendBinary(BSON *b, const char* key, char *v, size_t len);
-bool BsonAppendDate(BSON *b, const char* key, time_t v);
-bool BsonAppendStartArray(BSON *b, const char* key, BSON* c);
+bool BsonAppendOid(BSON *b, const char *key, bson_oid_t *v);
+bool BsonAppendBool(BSON *b, const char *key, bool v);
+bool BsonAppendNull(BSON *b, const char *key);
+bool BsonAppendInt32(BSON *b, const char *key, int v);
+bool BsonAppendInt64(BSON *b, const char *key, int64_t v);
+bool BsonAppendDouble(BSON *b, const char *key, double v);
+bool BsonAppendUTF8(BSON *b, const char *key, char *v);
+bool BsonAppendBinary(BSON *b, const char *key, char *v, size_t len);
+bool BsonAppendDate(BSON *b, const char *key, time_t v);
+bool BsonAppendStartArray(BSON *b, const char *key, BSON *c);
 bool BsonAppendFinishArray(BSON *b, BSON *c);
-bool BsonAppendStartObject(BSON* b, char *key, BSON *r);
-bool BsonAppendFinishObject(BSON* b, BSON* r);
-bool BsonAppendBson(BSON* b, char *key, BSON* c);
-bool BsonFinish(BSON* b);
-bool JsonToBsonAppendElement(BSON *bb , const char *k , struct json_object *v);
-json_object *JsonTokenerPrase(char * s);
+bool BsonAppendStartObject(BSON *b, char *key, BSON *r);
+bool BsonAppendFinishObject(BSON *b, BSON *r);
+bool BsonAppendBson(BSON *b, char *key, BSON *c);
+bool BsonFinish(BSON *b);
+bool JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v);
+json_object *JsonTokenerPrase(char *s);
 
-char* BsonAsJson(const BSON* bsonDocument);
+char *BsonAsJson(const BSON *bsonDocument);
 
 void BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray);
 void DumpJsonObject(StringInfo output, BSON_ITERATOR *iter);

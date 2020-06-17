@@ -17,9 +17,9 @@
 #include "mongo_wrapper.h"
 
 #ifdef META_DRIVER
-	#include "mongoc.h"
+#include "mongoc.h"
 #else
-	#include "mongo.h"
+#include "mongo.h"
 #endif
 
 #include <bson.h>
@@ -32,11 +32,11 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #if PG_VERSION_NUM < 120000
-	#include "nodes/relation.h"
-	#include "optimizer/var.h"
+#include "nodes/relation.h"
+#include "optimizer/var.h"
 #endif
 #if PG_VERSION_NUM >= 120000
-	#include "optimizer/optimizer.h"
+#include "optimizer/optimizer.h"
 #endif
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -46,15 +46,16 @@
 #include "utils/timestamp.h"
 
 /* Local functions forward declarations */
-static Expr * FindArgumentOfType(List *argumentList, NodeTag argumentType);
-static char * MongoOperatorName(const char *operatorName);
-static List * EqualityOperatorList(List *operatorList);
-static List * UniqueColumnList(List *operatorList);
-static List * ColumnOperatorList(Var *column, List *operatorList);
+static Expr *FindArgumentOfType(List *argumentList, NodeTag argumentType);
+static char *MongoOperatorName(const char *operatorName);
+static List *EqualityOperatorList(List *operatorList);
+static List *UniqueColumnList(List *operatorList);
+static List *ColumnOperatorList(Var *column, List *operatorList);
 static void AppendConstantValue(BSON *queryDocument, const char *keyName,
 								Const *constant);
 static void AppendParamValue(BSON *queryDocument, const char *keyName,
-				Param *paramNode, ForeignScanState *scanStateNode);
+							 Param *paramNode, ForeignScanState *scanStateNode);
+
 /*
  * ApplicableOpExpressionList walks over all filter clauses that relate to this
  * foreign table, and chooses applicable clauses that we know we can translate
@@ -65,25 +66,25 @@ static void AppendParamValue(BSON *queryDocument, const char *keyName,
 List *
 ApplicableOpExpressionList(RelOptInfo *baserel)
 {
-	List *opExpressionList = NIL;
-	List *restrictInfoList = baserel->baserestrictinfo;
-	ListCell *restrictInfoCell = NULL;
+	List	   *opExpressionList = NIL;
+	List	   *restrictInfoList = baserel->baserestrictinfo;
+	ListCell   *restrictInfoCell = NULL;
 
 	foreach(restrictInfoCell, restrictInfoList)
 	{
 		RestrictInfo *restrictInfo = (RestrictInfo *) lfirst(restrictInfoCell);
-		Expr *expression = restrictInfo->clause;
-		NodeTag expressionType = 0;
+		Expr	   *expression = restrictInfo->clause;
+		NodeTag		expressionType = 0;
 
-		OpExpr *opExpression = NULL;
-		char *operatorName = NULL;
-		char *mongoOperatorName = NULL;
-		List *argumentList = NIL;
-		Var *column = NULL;
-		Const *constant = NULL;
-		bool equalsOperator = false;
-		bool constantIsArray = false;
-		Param *paramNode = NULL;
+		OpExpr	   *opExpression = NULL;
+		char	   *operatorName = NULL;
+		char	   *mongoOperatorName = NULL;
+		List	   *argumentList = NIL;
+		Var		   *column = NULL;
+		Const	   *constant = NULL;
+		bool		equalsOperator = false;
+		bool		constantIsArray = false;
+		Param	   *paramNode = NULL;
 
 		/* we only support operator expressions */
 		expressionType = nodeTag(expression);
@@ -108,8 +109,9 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 		}
 
 		/*
-		 * We only support simple binary operators that compare a column against
-		 * a constant. If the expression is a tree, we don't recurse into it.
+		 * We only support simple binary operators that compare a column
+		 * against a constant. If the expression is a tree, we don't recurse
+		 * into it.
 		 */
 		argumentList = opExpression->args;
 		column = (Var *) FindArgumentOfType(argumentList, T_Var);
@@ -118,14 +120,16 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 
 		/*
 		 * We don't push down operators where the constant is an array, since
-		 * conditional operators for arrays in MongoDB aren't properly defined.
-		 * For example, {similar_products : [ "B0009S4IJW", "6301964144" ]}
-		 * finds results that are equal to the array, but {similar_products:
-		 * {$gte: [ "B0009S4IJW", "6301964144" ]}} returns an empty set.
+		 * conditional operators for arrays in MongoDB aren't properly
+		 * defined. For example, {similar_products : [ "B0009S4IJW",
+		 * "6301964144" ]} finds results that are equal to the array, but
+		 * {similar_products: {$gte: [ "B0009S4IJW", "6301964144" ]}} returns
+		 * an empty set.
 		 */
 		if (constant != NULL)
 		{
-			Oid constantArrayTypeId = get_element_type(constant->consttype);
+			Oid			constantArrayTypeId = get_element_type(constant->consttype);
+
 			if (constantArrayTypeId != InvalidOid)
 			{
 				constantIsArray = true;
@@ -154,12 +158,13 @@ ApplicableOpExpressionList(RelOptInfo *baserel)
 static Expr *
 FindArgumentOfType(List *argumentList, NodeTag argumentType)
 {
-	Expr *foundArgument = NULL;
-	ListCell *argumentCell = NULL;
+	Expr	   *foundArgument = NULL;
+	ListCell   *argumentCell = NULL;
 
 	foreach(argumentCell, argumentList)
 	{
-		Expr *argument = (Expr *) lfirst(argumentCell);
+		Expr	   *argument = (Expr *) lfirst(argumentCell);
+
 		if (nodeTag(argument) == argumentType)
 		{
 			foundArgument = argument;
@@ -182,14 +187,15 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
 BSON *
 QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStateNode)
 {
-	List *equalityOperatorList = NIL;
-	List *comparisonOperatorList = NIL;
-	List *columnList = NIL;
-	ListCell *equalityOperatorCell = NULL;
-	ListCell *columnCell = NULL;
-	BSON *queryDocument = NULL;
+	List	   *equalityOperatorList = NIL;
+	List	   *comparisonOperatorList = NIL;
+	List	   *columnList = NIL;
+	ListCell   *equalityOperatorCell = NULL;
+	ListCell   *columnCell = NULL;
+	BSON	   *queryDocument = NULL;
 
 	queryDocument = BsonCreate();
+
 	/*
 	 * We distinguish between equality expressions and others since we need to
 	 * insert the latter (<, >, <=, >=, <>) as separate sub-documents into the
@@ -201,14 +207,15 @@ QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStat
 	/* append equality expressions to the query */
 	foreach(equalityOperatorCell, equalityOperatorList)
 	{
-		OpExpr *equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
-		Oid columnId = InvalidOid;
-		char *columnName = NULL;
-		Const *constant = NULL;
-		Param *paramNode = NULL;
+		OpExpr	   *equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
+		Oid			columnId = InvalidOid;
+		char	   *columnName = NULL;
+		Const	   *constant = NULL;
+		Param	   *paramNode = NULL;
 
-		List *argumentList = equalityOperator->args;
-		Var *column = (Var *) FindArgumentOfType(argumentList, T_Var);
+		List	   *argumentList = equalityOperator->args;
+		Var		   *column = (Var *) FindArgumentOfType(argumentList, T_Var);
+
 		constant = (Const *) FindArgumentOfType(argumentList, T_Const);
 		paramNode = (Param *) FindArgumentOfType(argumentList, T_Param);
 
@@ -237,12 +244,12 @@ QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStat
 	/* append comparison expressions, grouped by columns, to the query */
 	foreach(columnCell, columnList)
 	{
-		Var *column = (Var *) lfirst(columnCell);
-		Oid columnId = InvalidOid;
-		char *columnName = NULL;
-		List *columnOperatorList = NIL;
-		ListCell *columnOperatorCell = NULL;
-		BSON r;
+		Var		   *column = (Var *) lfirst(columnCell);
+		Oid			columnId = InvalidOid;
+		char	   *columnName = NULL;
+		List	   *columnOperatorList = NIL;
+		ListCell   *columnOperatorCell = NULL;
+		BSON		r;
 
 		columnId = column->varattno;
 #if PG_VERSION_NUM < 110000
@@ -259,12 +266,12 @@ QueryDocument(Oid relationId, List *opExpressionList, ForeignScanState *scanStat
 
 		foreach(columnOperatorCell, columnOperatorList)
 		{
-			OpExpr *columnOperator = (OpExpr *) lfirst(columnOperatorCell);
-			char *operatorName = NULL;
-			char *mongoOperatorName = NULL;
+			OpExpr	   *columnOperator = (OpExpr *) lfirst(columnOperatorCell);
+			char	   *operatorName = NULL;
+			char	   *mongoOperatorName = NULL;
 
-			List *argumentList = columnOperator->args;
-			Const *constant = (Const *) FindArgumentOfType(argumentList, T_Const);
+			List	   *argumentList = columnOperator->args;
+			Const	   *constant = (Const *) FindArgumentOfType(argumentList, T_Const);
 
 			operatorName = get_opname(columnOperator->opno);
 			mongoOperatorName = MongoOperatorName(operatorName);
@@ -301,16 +308,18 @@ MongoOperatorName(const char *operatorName)
 {
 	const char *mongoOperatorName = NULL;
 	const int32 nameCount = 5;
-	static const char *nameMappings[][2] = { { "<", "$lt" },
-											 { ">", "$gt" },
-											 { "<=", "$lte" },
-											 { ">=", "$gte" },
-											 { "<>", "$ne" } };
+	static const char *nameMappings[][2] = {{"<", "$lt"},
+	{">", "$gt"},
+	{"<=", "$lte"},
+	{">=", "$gte"},
+	{"<>", "$ne"}};
 
-	int32 nameIndex = 0;
+	int32		nameIndex = 0;
+
 	for (nameIndex = 0; nameIndex < nameCount; nameIndex++)
 	{
 		const char *pgOperatorName = nameMappings[nameIndex][0];
+
 		if (strncmp(pgOperatorName, operatorName, NAMEDATALEN) == 0)
 		{
 			mongoOperatorName = nameMappings[nameIndex][1];
@@ -329,13 +338,13 @@ MongoOperatorName(const char *operatorName)
 static List *
 EqualityOperatorList(List *operatorList)
 {
-	List *equalityOperatorList = NIL;
-	ListCell *operatorCell = NULL;
+	List	   *equalityOperatorList = NIL;
+	ListCell   *operatorCell = NULL;
 
 	foreach(operatorCell, operatorList)
 	{
-		OpExpr *operator = (OpExpr *) lfirst(operatorCell);
-		char *operatorName = NULL;
+		OpExpr	   *operator = (OpExpr *) lfirst(operatorCell);
+		char	   *operatorName = NULL;
 
 		operatorName = get_opname(operator->opno);
 		if (strncmp(operatorName, EQUALITY_OPERATOR_NAME, NAMEDATALEN) == 0)
@@ -356,14 +365,14 @@ EqualityOperatorList(List *operatorList)
 static List *
 UniqueColumnList(List *operatorList)
 {
-	List *uniqueColumnList = NIL;
-	ListCell *operatorCell = NULL;
+	List	   *uniqueColumnList = NIL;
+	ListCell   *operatorCell = NULL;
 
 	foreach(operatorCell, operatorList)
 	{
-		OpExpr *operator = (OpExpr *) lfirst(operatorCell);
-		List *argumentList = operator->args;
-		Var *column = (Var *) FindArgumentOfType(argumentList, T_Var);
+		OpExpr	   *operator = (OpExpr *) lfirst(operatorCell);
+		List	   *argumentList = operator->args;
+		Var		   *column = (Var *) FindArgumentOfType(argumentList, T_Var);
 
 		/* list membership is determined via column's equal() function */
 		uniqueColumnList = list_append_unique(uniqueColumnList, column);
@@ -380,15 +389,16 @@ UniqueColumnList(List *operatorList)
 static List *
 ColumnOperatorList(Var *column, List *operatorList)
 {
-	List *columnOperatorList = NIL;
-	ListCell *operatorCell = NULL;
+	List	   *columnOperatorList = NIL;
+	ListCell   *operatorCell = NULL;
 
 	foreach(operatorCell, operatorList)
 	{
-		OpExpr *operator = (OpExpr *) lfirst(operatorCell);
-		List *argumentList = operator->args;
+		OpExpr	   *operator = (OpExpr *) lfirst(operatorCell);
+		List	   *argumentList = operator->args;
 
-		Var *foundColumn = (Var *) FindArgumentOfType(argumentList, T_Var);
+		Var		   *foundColumn = (Var *) FindArgumentOfType(argumentList, T_Var);
+
 		if (equal(column, foundColumn))
 		{
 			columnOperatorList = lappend(columnOperatorList, operator);
@@ -400,12 +410,12 @@ ColumnOperatorList(Var *column, List *operatorList)
 
 static void
 AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
-		ForeignScanState *scanStateNode)
+				 ForeignScanState *scanStateNode)
 {
-	ExprState	*param_expr;
+	ExprState  *param_expr;
 	Datum		param_value;
 	bool		isNull;
-	ExprContext	*econtext;
+	ExprContext *econtext;
 
 	if (scanStateNode == NULL)
 		return;
@@ -413,7 +423,7 @@ AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
 	econtext = scanStateNode->ss.ps.ps_ExprContext;
 
 	/* Prepare for parameter expression evaluation */
-	param_expr = ExecInitExpr((Expr *) paramNode, (PlanState *)scanStateNode);
+	param_expr = ExecInitExpr((Expr *) paramNode, (PlanState *) scanStateNode);
 
 	/* Evaluate the parameter expression */
 #if PG_VERSION_NUM >= 100000
@@ -424,7 +434,7 @@ AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
 
 
 	AppenMongoValue(queryDocument, keyName, param_value, isNull,
-				paramNode->paramtype);
+					paramNode->paramtype);
 }
 
 /*
@@ -446,239 +456,258 @@ AppendConstantValue(BSON *queryDocument, const char *keyName, Const *constant)
 bool
 AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnull, Oid id)
 {
-	bool status = false;
+	bool		status = false;
+
 	if (isnull)
 	{
 		status = BsonAppendNull(queryDocument, keyName);
 		return status;
 	}
 
-	switch(id)
+	switch (id)
 	{
 		case INT2OID:
-		{
-			int16 valueInt = DatumGetInt16(value);
-			status = BsonAppendInt32(queryDocument, keyName, (int) valueInt);
-			break;
-		}
+			{
+				int16		valueInt = DatumGetInt16(value);
+
+				status = BsonAppendInt32(queryDocument, keyName, (int) valueInt);
+				break;
+			}
 		case INT4OID:
-		{
-			int32 valueInt = DatumGetInt32(value);
-			status = BsonAppendInt32(queryDocument, keyName, valueInt);
-			break;
-		}
+			{
+				int32		valueInt = DatumGetInt32(value);
+
+				status = BsonAppendInt32(queryDocument, keyName, valueInt);
+				break;
+			}
 		case INT8OID:
-		{
-			int64 valueLong = DatumGetInt64(value);
-			status = BsonAppendInt64(queryDocument, keyName, valueLong);
-			break;
-		}
+			{
+				int64		valueLong = DatumGetInt64(value);
+
+				status = BsonAppendInt64(queryDocument, keyName, valueLong);
+				break;
+			}
 		case FLOAT4OID:
-		{
-			float4 valueFloat = DatumGetFloat4(value);
-			status = BsonAppendDouble(queryDocument, keyName, (double) valueFloat);
-			break;
-		}
+			{
+				float4		valueFloat = DatumGetFloat4(value);
+
+				status = BsonAppendDouble(queryDocument, keyName, (double) valueFloat);
+				break;
+			}
 		case FLOAT8OID:
-		{
-			float8 valueFloat = DatumGetFloat8(value);
-			status = BsonAppendDouble(queryDocument, keyName, valueFloat);
-			break;
-		}
+			{
+				float8		valueFloat = DatumGetFloat8(value);
+
+				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+				break;
+			}
 		case NUMERICOID:
-		{
-			Datum valueDatum = DirectFunctionCall1(numeric_float8, value);
-			float8 valueFloat = DatumGetFloat8(valueDatum);
-			status = BsonAppendDouble(queryDocument, keyName, valueFloat);
-			break;
-		}
+			{
+				Datum		valueDatum = DirectFunctionCall1(numeric_float8, value);
+				float8		valueFloat = DatumGetFloat8(valueDatum);
+
+				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+				break;
+			}
 		case BOOLOID:
-		{
-			bool valueBool = DatumGetBool(value);
-			status = BsonAppendBool(queryDocument, keyName, (int) valueBool);
-			break;
-		}
+			{
+				bool		valueBool = DatumGetBool(value);
+
+				status = BsonAppendBool(queryDocument, keyName, (int) valueBool);
+				break;
+			}
 		case BPCHAROID:
 		case VARCHAROID:
 		case TEXTOID:
-		{
-			char *outputString = NULL;
-			Oid outputFunctionId = InvalidOid;
-			bool typeVarLength = false;
-			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
-			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			status = BsonAppendUTF8(queryDocument, keyName, outputString);
-			break;
-		}
-		case BYTEAOID:
-		{
-			int len;
-			char *data;
-			char *result = DatumGetPointer(value);
-			if (VARATT_IS_1B(result)) {
-				len = VARSIZE_1B(result) - VARHDRSZ_SHORT;
-				data = VARDATA_1B(result);
-			} else {
-				len = VARSIZE_4B(result) - VARHDRSZ;
-				data = VARDATA_4B(result);
-			}
-#ifdef META_DRIVER
-                        if (strcmp(keyName, "_id") == 0)
-                        {
-                            bson_oid_t oid;
-                            bson_oid_init_from_data(&oid, (const uint8_t *)data);
-                            status = BsonAppendOid(queryDocument, keyName, &oid);
-                        }
-                        else
-                        {
-			    status = BsonAppendBinary(queryDocument, keyName, data, len);
-                        }
-#else
-			status = BsonAppendBinary(queryDocument, keyName, data, len);
-#endif
-			break;
-		}
-		case NAMEOID:
-		{
-			char *outputString = NULL;
-			Oid outputFunctionId = InvalidOid;
-			bool typeVarLength = false;
-			bson_oid_t bsonObjectId;
-			memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
-			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
-			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			BsonOidFromString(&bsonObjectId, outputString);
-			status = BsonAppendOid(queryDocument, keyName, &bsonObjectId);
-			break;
-		}
-		case DATEOID:
-		{
-			Datum valueDatum = DirectFunctionCall1(date_timestamp, value);
-			Timestamp valueTimestamp = DatumGetTimestamp(valueDatum);
-			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
-			int64 valueMilliSecs = valueMicroSecs / 1000;
-
-			status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
-			break;
-		}
-		case TIMESTAMPOID:
-		case TIMESTAMPTZOID:
-		{
-			Timestamp valueTimestamp = DatumGetTimestamp(value);
-			int64 valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
-			int64 valueMilliSecs = valueMicroSecs / 1000;
-
-			status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
-			break;
-		}
-		case NUMERICARRAY_OID:
-		{
-			ArrayType *array;
-			Oid elmtype;
-			int16 elmlen;
-			bool elmbyval;
-			char elmalign;
-			int num_elems;
-			Datum *elem_values;
-			bool *elem_nulls;
-			int i;
-			BSON t;
-
-			array = DatumGetArrayTypeP(value);
-			elmtype = ARR_ELEMTYPE(array);
-			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
-
-			deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
-
-			BsonAppendStartArray(queryDocument, keyName, &t);
-			for (i = 0; i < num_elems; i++)
 			{
-				Datum valueDatum;
-				float8 valueFloat;
-				if (elem_nulls[i])
-					continue;
+				char	   *outputString = NULL;
+				Oid			outputFunctionId = InvalidOid;
+				bool		typeVarLength = false;
 
-				valueDatum = DirectFunctionCall1(numeric_float8, elem_values[i]);
-				valueFloat = DatumGetFloat8(valueDatum);
-#ifdef META_DRIVER
-				status = BsonAppendDouble(&t, keyName, valueFloat);
-#else
-				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
-#endif
-			}
-			BsonAppendFinishArray(queryDocument, &t);
-			pfree(elem_values);
-			pfree(elem_nulls);
-			break;
-		}
-		case TEXTARRAYOID:
-		{
-			ArrayType *array;
-			Oid elmtype;
-			int16 elmlen;
-			bool elmbyval;
-			char elmalign;
-			int num_elems;
-			Datum *elem_values;
-			bool *elem_nulls;
-			int i;
-			BSON t;
-
-			array = DatumGetArrayTypeP(value);
-			elmtype = ARR_ELEMTYPE(array);
-			get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
-
-			deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
-
-			BsonAppendStartArray(queryDocument, keyName, &t);
-			for (i = 0; i < num_elems; i++)
-			{
-				char *valueString = NULL;
-				Oid outputFunctionId = InvalidOid;
-				bool typeVarLength = false;
-				if (elem_nulls[i])
-					continue;
-				getTypeOutputInfo(TEXTOID, &outputFunctionId, &typeVarLength);
-				valueString = OidOutputFunctionCall(outputFunctionId, elem_values[i]);
-				status = BsonAppendUTF8(queryDocument, keyName, valueString);
-			}
-			BsonAppendFinishArray(queryDocument, &t);
-			pfree(elem_values);
-			pfree(elem_nulls);
-			break;
-		}
-		case JSONOID:
-		{
-			char *outputString = NULL;
-			Oid outputFunctionId = InvalidOid;
-			struct json_object *o;
-			bool typeVarLength = false;
-			getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
-			outputString = OidOutputFunctionCall(outputFunctionId, value);
-			o = JsonTokenerPrase(outputString);
-
-			if (is_error(o))
-			{
-				elog(WARNING, "cannot parse the document");
-				status = 0;
+				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+				outputString = OidOutputFunctionCall(outputFunctionId, value);
+				status = BsonAppendUTF8(queryDocument, keyName, outputString);
 				break;
 			}
+		case BYTEAOID:
+			{
+				int			len;
+				char	   *data;
+				char	   *result = DatumGetPointer(value);
 
-			status = JsonToBsonAppendElement(queryDocument, keyName, o);
-			break;
-		}
+				if (VARATT_IS_1B(result))
+				{
+					len = VARSIZE_1B(result) - VARHDRSZ_SHORT;
+					data = VARDATA_1B(result);
+				}
+				else
+				{
+					len = VARSIZE_4B(result) - VARHDRSZ;
+					data = VARDATA_4B(result);
+				}
+#ifdef META_DRIVER
+				if (strcmp(keyName, "_id") == 0)
+				{
+					bson_oid_t	oid;
+
+					bson_oid_init_from_data(&oid, (const uint8_t *) data);
+					status = BsonAppendOid(queryDocument, keyName, &oid);
+				}
+				else
+				{
+					status = BsonAppendBinary(queryDocument, keyName, data, len);
+				}
+#else
+				status = BsonAppendBinary(queryDocument, keyName, data, len);
+#endif
+				break;
+			}
+		case NAMEOID:
+			{
+				char	   *outputString = NULL;
+				Oid			outputFunctionId = InvalidOid;
+				bool		typeVarLength = false;
+				bson_oid_t	bsonObjectId;
+
+				memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
+				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+				outputString = OidOutputFunctionCall(outputFunctionId, value);
+				BsonOidFromString(&bsonObjectId, outputString);
+				status = BsonAppendOid(queryDocument, keyName, &bsonObjectId);
+				break;
+			}
+		case DATEOID:
+			{
+				Datum		valueDatum = DirectFunctionCall1(date_timestamp, value);
+				Timestamp	valueTimestamp = DatumGetTimestamp(valueDatum);
+				int64		valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
+				int64		valueMilliSecs = valueMicroSecs / 1000;
+
+				status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
+				break;
+			}
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			{
+				Timestamp	valueTimestamp = DatumGetTimestamp(value);
+				int64		valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
+				int64		valueMilliSecs = valueMicroSecs / 1000;
+
+				status = BsonAppendDate(queryDocument, keyName, valueMilliSecs);
+				break;
+			}
+		case NUMERICARRAY_OID:
+			{
+				ArrayType  *array;
+				Oid			elmtype;
+				int16		elmlen;
+				bool		elmbyval;
+				char		elmalign;
+				int			num_elems;
+				Datum	   *elem_values;
+				bool	   *elem_nulls;
+				int			i;
+				BSON		t;
+
+				array = DatumGetArrayTypeP(value);
+				elmtype = ARR_ELEMTYPE(array);
+				get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
+
+				deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
+
+				BsonAppendStartArray(queryDocument, keyName, &t);
+				for (i = 0; i < num_elems; i++)
+				{
+					Datum		valueDatum;
+					float8		valueFloat;
+
+					if (elem_nulls[i])
+						continue;
+
+					valueDatum = DirectFunctionCall1(numeric_float8, elem_values[i]);
+					valueFloat = DatumGetFloat8(valueDatum);
+#ifdef META_DRIVER
+					status = BsonAppendDouble(&t, keyName, valueFloat);
+#else
+					status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+#endif
+				}
+				BsonAppendFinishArray(queryDocument, &t);
+				pfree(elem_values);
+				pfree(elem_nulls);
+				break;
+			}
+		case TEXTARRAYOID:
+			{
+				ArrayType  *array;
+				Oid			elmtype;
+				int16		elmlen;
+				bool		elmbyval;
+				char		elmalign;
+				int			num_elems;
+				Datum	   *elem_values;
+				bool	   *elem_nulls;
+				int			i;
+				BSON		t;
+
+				array = DatumGetArrayTypeP(value);
+				elmtype = ARR_ELEMTYPE(array);
+				get_typlenbyvalalign(elmtype, &elmlen, &elmbyval, &elmalign);
+
+				deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign, &elem_values, &elem_nulls, &num_elems);
+
+				BsonAppendStartArray(queryDocument, keyName, &t);
+				for (i = 0; i < num_elems; i++)
+				{
+					char	   *valueString = NULL;
+					Oid			outputFunctionId = InvalidOid;
+					bool		typeVarLength = false;
+
+					if (elem_nulls[i])
+						continue;
+					getTypeOutputInfo(TEXTOID, &outputFunctionId, &typeVarLength);
+					valueString = OidOutputFunctionCall(outputFunctionId, elem_values[i]);
+					status = BsonAppendUTF8(queryDocument, keyName, valueString);
+				}
+				BsonAppendFinishArray(queryDocument, &t);
+				pfree(elem_values);
+				pfree(elem_nulls);
+				break;
+			}
+		case JSONOID:
+			{
+				char	   *outputString = NULL;
+				Oid			outputFunctionId = InvalidOid;
+				struct json_object *o;
+				bool		typeVarLength = false;
+
+				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
+				outputString = OidOutputFunctionCall(outputFunctionId, value);
+				o = JsonTokenerPrase(outputString);
+
+				if (is_error(o))
+				{
+					elog(WARNING, "cannot parse the document");
+					status = 0;
+					break;
+				}
+
+				status = JsonToBsonAppendElement(queryDocument, keyName, o);
+				break;
+			}
 		default:
-		{
-			/*
-			 * We currently error out on other data types. Some types such as
-			 * byte arrays are easy to add, but they need testing. Other types
-			 * such as money or inet, do not have equivalents in MongoDB.
-			 */
-			 ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
-					errmsg("cannot convert constant value to BSON value"),
-						errhint("Constant value data type: %u", id)));
-			break;
-		}
+			{
+				/*
+				 * We currently error out on other data types. Some types such
+				 * as byte arrays are easy to add, but they need testing.
+				 * Other types such as money or inet, do not have equivalents
+				 * in MongoDB.
+				 */
+				ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+								errmsg("cannot convert constant value to BSON value"),
+								errhint("Constant value data type: %u", id)));
+				break;
+			}
 	}
 	return status;
 }
@@ -693,18 +722,18 @@ AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnu
 List *
 ColumnList(RelOptInfo *baserel)
 {
-	List *columnList = NIL;
-	List *neededColumnList = NIL;
-	AttrNumber columnIndex = 1;
-	AttrNumber columnCount = baserel->max_attr;
+	List	   *columnList = NIL;
+	List	   *neededColumnList = NIL;
+	AttrNumber	columnIndex = 1;
+	AttrNumber	columnCount = baserel->max_attr;
 
 #if PG_VERSION_NUM >= 90600
-        List *targetColumnList = baserel->reltarget->exprs;
+	List	   *targetColumnList = baserel->reltarget->exprs;
 #else
-	List *targetColumnList = baserel->reltargetlist;
+	List	   *targetColumnList = baserel->reltargetlist;
 #endif
-	List *restrictInfoList = baserel->baserestrictinfo;
-	ListCell *restrictInfoCell = NULL;
+	List	   *restrictInfoList = baserel->baserestrictinfo;
+	ListCell   *restrictInfoCell = NULL;
 
 	/* first add the columns used in joins and projections */
 	neededColumnList = list_copy(targetColumnList);
@@ -713,15 +742,15 @@ ColumnList(RelOptInfo *baserel)
 	foreach(restrictInfoCell, restrictInfoList)
 	{
 		RestrictInfo *restrictInfo = (RestrictInfo *) lfirst(restrictInfoCell);
-		Node *restrictClause = (Node *) restrictInfo->clause;
-		List *clauseColumnList = NIL;
+		Node	   *restrictClause = (Node *) restrictInfo->clause;
+		List	   *clauseColumnList = NIL;
 
 		/* recursively pull up any columns used in the restriction clause */
 		clauseColumnList = pull_var_clause(restrictClause,
 #if PG_VERSION_NUM < 90600
-							PVC_RECURSE_AGGREGATES,
+										   PVC_RECURSE_AGGREGATES,
 #endif
-							PVC_RECURSE_PLACEHOLDERS);
+										   PVC_RECURSE_PLACEHOLDERS);
 
 		neededColumnList = list_union(neededColumnList, clauseColumnList);
 	}
@@ -729,13 +758,14 @@ ColumnList(RelOptInfo *baserel)
 	/* walk over all column definitions, and de-duplicate column list */
 	for (columnIndex = 1; columnIndex <= columnCount; columnIndex++)
 	{
-		ListCell *neededColumnCell = NULL;
-		Var *column = NULL;
+		ListCell   *neededColumnCell = NULL;
+		Var		   *column = NULL;
 
 		/* look for this column in the needed column list */
 		foreach(neededColumnCell, neededColumnList)
 		{
-			Var *neededColumn = (Var *) lfirst(neededColumnCell);
+			Var		   *neededColumn = (Var *) lfirst(neededColumnCell);
+
 			if (neededColumn->varattno == columnIndex)
 			{
 				column = neededColumn;

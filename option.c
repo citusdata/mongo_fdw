@@ -39,7 +39,7 @@
 #include "utils/memutils.h"
 #include "miscadmin.h"
 
-static char * mongo_get_option_value(Oid foreignTableId, const char *optionName);
+static char *mongo_get_option_value(Oid foreignTableId, const char *optionName);
 
 /*
  * Validate the generic options given to a FOREIGN DATA WRAPPER, SERVER,
@@ -59,21 +59,22 @@ PG_FUNCTION_INFO_V1(mongo_fdw_validator);
 Datum
 mongo_fdw_validator(PG_FUNCTION_ARGS)
 {
-	Datum    optionArray = PG_GETARG_DATUM(0);
-	Oid      optionContextId = PG_GETARG_OID(1);
-	List     *optionList = untransformRelOptions(optionArray);
-	ListCell *optionCell = NULL;
+	Datum		optionArray = PG_GETARG_DATUM(0);
+	Oid			optionContextId = PG_GETARG_OID(1);
+	List	   *optionList = untransformRelOptions(optionArray);
+	ListCell   *optionCell = NULL;
 
 	foreach(optionCell, optionList)
 	{
-		DefElem *optionDef = (DefElem *) lfirst(optionCell);
-		char *optionName = optionDef->defname;
-		bool optionValid = false;
+		DefElem    *optionDef = (DefElem *) lfirst(optionCell);
+		char	   *optionName = optionDef->defname;
+		bool		optionValid = false;
 
-		int32 optionIndex = 0;
+		int32		optionIndex = 0;
+
 		for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
 		{
-			const MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
+			const		MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
 
 			if ((optionContextId == validOption->optionContextId) &&
 				(strncmp(optionName, validOption->optionName, NAMEDATALEN) == 0))
@@ -86,7 +87,7 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 		/* if invalid option, display an informative error message */
 		if (!optionValid)
 		{
-			StringInfo optionNamesString = mongo_option_names_string(optionContextId);
+			StringInfo	optionNamesString = mongo_option_names_string(optionContextId);
 
 			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 							errmsg("invalid option \"%s\"", optionName),
@@ -97,8 +98,9 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 		/* if port option is given, error out if its value isn't an integer */
 		if (strncmp(optionName, OPTION_NAME_PORT, NAMEDATALEN) == 0)
 		{
-			char *optionValue = defGetString(optionDef);
-			int32 portNumber = pg_atoi(optionValue, sizeof(int32), 0);
+			char	   *optionValue = defGetString(optionDef);
+			int32		portNumber = pg_atoi(optionValue, sizeof(int32), 0);
+
 			(void) portNumber;
 		}
 	}
@@ -112,13 +114,14 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 StringInfo
 mongo_option_names_string(Oid currentContextId)
 {
-	StringInfo  optionNamesString = makeStringInfo();
-	bool        firstOptionPrinted = false;
+	StringInfo	optionNamesString = makeStringInfo();
+	bool		firstOptionPrinted = false;
 
-	int32 optionIndex = 0;
+	int32		optionIndex = 0;
+
 	for (optionIndex = 0; optionIndex < ValidOptionCount; optionIndex++)
 	{
-		const MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
+		const		MongoValidOption *validOption = &(ValidOptionArray[optionIndex]);
 
 		/* if option belongs to current context, append option name */
 		if (currentContextId == validOption->optionContextId)
@@ -142,25 +145,25 @@ mongo_option_names_string(Oid currentContextId)
 MongoFdwOptions *
 mongo_get_options(Oid foreignTableId)
 {
-	MongoFdwOptions         *options = NULL;
-	char                    *addressName = NULL;
-	char                    *portName = NULL;
-	int32                   portNumber = 0;
-	char                    *svr_database = NULL;
-	char                    *collectionName = NULL;
-	char                    *svr_username= NULL;
-	char                    *svr_password= NULL;
+	MongoFdwOptions *options = NULL;
+	char	   *addressName = NULL;
+	char	   *portName = NULL;
+	int32		portNumber = 0;
+	char	   *svr_database = NULL;
+	char	   *collectionName = NULL;
+	char	   *svr_username = NULL;
+	char	   *svr_password = NULL;
 #ifdef META_DRIVER
-	char                    *readPreference = NULL;
-	char                    *authenticationDatabase = NULL;
-	char                    *replicaSet = NULL;
- 	bool  									ssl = false;
-	char 										*pem_file = NULL;
- 	char 										*pem_pwd = NULL;
- 	char 										*ca_file = NULL;
- 	char 										*ca_dir = NULL;
- 	char 										*crl_file = NULL;
- 	bool 										weak_cert_validation = false;
+	char	   *readPreference = NULL;
+	char	   *authenticationDatabase = NULL;
+	char	   *replicaSet = NULL;
+	bool		ssl = false;
+	char	   *pem_file = NULL;
+	char	   *pem_pwd = NULL;
+	char	   *ca_file = NULL;
+	char	   *ca_dir = NULL;
+	char	   *crl_file = NULL;
+	bool		weak_cert_validation = false;
 
 	readPreference = mongo_get_option_value(foreignTableId, OPTION_NAME_READ_PREFERENCE);
 	authenticationDatabase = mongo_get_option_value(foreignTableId, OPTION_NAME_AUTHENTICATION_DATABASE);
@@ -239,12 +242,12 @@ mongo_free_options(MongoFdwOptions *options)
 static char *
 mongo_get_option_value(Oid foreignTableId, const char *optionName)
 {
-	ForeignTable           *foreignTable = NULL;
-	ForeignServer          *foreignServer = NULL;
-	List                   *optionList = NIL;
-	ListCell               *optionCell = NULL;
-	UserMapping            *mapping= NULL;
-	char                   *optionValue = NULL;
+	ForeignTable *foreignTable = NULL;
+	ForeignServer *foreignServer = NULL;
+	List	   *optionList = NIL;
+	ListCell   *optionCell = NULL;
+	UserMapping *mapping = NULL;
+	char	   *optionValue = NULL;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
@@ -256,8 +259,8 @@ mongo_get_option_value(Oid foreignTableId, const char *optionName)
 
 	foreach(optionCell, optionList)
 	{
-		DefElem *optionDef = (DefElem *) lfirst(optionCell);
-		char *optionDefName = optionDef->defname;
+		DefElem    *optionDef = (DefElem *) lfirst(optionCell);
+		char	   *optionDefName = optionDef->defname;
 
 		if (strncmp(optionDefName, optionName, NAMEDATALEN) == 0)
 		{

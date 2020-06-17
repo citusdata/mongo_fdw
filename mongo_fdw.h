@@ -21,9 +21,9 @@
 #include "bson.h"
 
 #ifdef META_DRIVER
-	#include "mongoc.h"
+#include "mongoc.h"
 #else
-	#include "mongo.h"
+#include "mongo.h"
 #endif
 
 #include "fmgr.h"
@@ -32,7 +32,7 @@
 #include "utils/datetime.h"
 #include "nodes/pg_list.h"
 #if PG_VERSION_NUM < 120000
-	#include "nodes/relation.h"
+#include "nodes/relation.h"
 #endif
 #include "utils/timestamp.h"
 #include "access/reloptions.h"
@@ -58,87 +58,87 @@
 #include "catalog/pg_user_mapping.h"
 
 #ifdef META_DRIVER
-	#define BSON bson_t
-	#define BSON_TYPE bson_type_t
-	#define BSON_ITERATOR bson_iter_t
-	#define MONGO_CONN mongoc_client_t
-	#define MONGO_CURSOR mongoc_cursor_t
-	#define BSON_TYPE_DOCUMENT BSON_TYPE_DOCUMENT
-	#define BSON_TYPE_NULL BSON_TYPE_NULL
-	#define BSON_TYPE_ARRAY BSON_TYPE_ARRAY
-	#define BSON_TYPE_INT32 BSON_TYPE_INT32
-	#define BSON_TYPE_INT64 BSON_TYPE_INT64
-	#define BSON_TYPE_DOUBLE BSON_TYPE_DOUBLE
-	#define BSON_TYPE_BINDATA BSON_TYPE_BINARY
-	#define BSON_TYPE_BOOL BSON_TYPE_BOOL
-	#define BSON_TYPE_UTF8 BSON_TYPE_UTF8
-	#define BSON_TYPE_OID BSON_TYPE_OID
-	#define BSON_TYPE_DATE_TIME BSON_TYPE_DATE_TIME
-	#define BSON_TYPE_SYMBOL BSON_TYPE_SYMBOL
-	#define BSON_TYPE_UNDEFINED BSON_TYPE_UNDEFINED
-	#define BSON_TYPE_REGEX BSON_TYPE_REGEX
-	#define BSON_TYPE_CODE BSON_TYPE_CODE
-	#define BSON_TYPE_CODEWSCOPE BSON_TYPE_CODEWSCOPE
-	#define BSON_TYPE_TIMESTAMP BSON_TYPE_TIMESTAMP
+#define BSON bson_t
+#define BSON_TYPE bson_type_t
+#define BSON_ITERATOR bson_iter_t
+#define MONGO_CONN mongoc_client_t
+#define MONGO_CURSOR mongoc_cursor_t
+#define BSON_TYPE_DOCUMENT BSON_TYPE_DOCUMENT
+#define BSON_TYPE_NULL BSON_TYPE_NULL
+#define BSON_TYPE_ARRAY BSON_TYPE_ARRAY
+#define BSON_TYPE_INT32 BSON_TYPE_INT32
+#define BSON_TYPE_INT64 BSON_TYPE_INT64
+#define BSON_TYPE_DOUBLE BSON_TYPE_DOUBLE
+#define BSON_TYPE_BINDATA BSON_TYPE_BINARY
+#define BSON_TYPE_BOOL BSON_TYPE_BOOL
+#define BSON_TYPE_UTF8 BSON_TYPE_UTF8
+#define BSON_TYPE_OID BSON_TYPE_OID
+#define BSON_TYPE_DATE_TIME BSON_TYPE_DATE_TIME
+#define BSON_TYPE_SYMBOL BSON_TYPE_SYMBOL
+#define BSON_TYPE_UNDEFINED BSON_TYPE_UNDEFINED
+#define BSON_TYPE_REGEX BSON_TYPE_REGEX
+#define BSON_TYPE_CODE BSON_TYPE_CODE
+#define BSON_TYPE_CODEWSCOPE BSON_TYPE_CODEWSCOPE
+#define BSON_TYPE_TIMESTAMP BSON_TYPE_TIMESTAMP
 
-	#define PREF_READ_PRIMARY_NAME "readPrimary"
-	#define PREF_READ_SECONDARY_NAME "readSecondary"
-	#define PREF_READ_PRIMARY_PREFERRED_NAME "readPrimaryPreferred"
-	#define PREF_READ_SECONDARY_PREFERRED_NAME "readSecondaryPreferred"
-	#define PREF_READ_NEAREST_NAME "readNearest"
+#define PREF_READ_PRIMARY_NAME "readPrimary"
+#define PREF_READ_SECONDARY_NAME "readSecondary"
+#define PREF_READ_PRIMARY_PREFERRED_NAME "readPrimaryPreferred"
+#define PREF_READ_SECONDARY_PREFERRED_NAME "readSecondaryPreferred"
+#define PREF_READ_NEAREST_NAME "readNearest"
 
-	#define BSON_ITER_BOOL bson_iter_bool
-	#define BSON_ITER_DOUBLE bson_iter_double
-	#define BSON_ITER_INT32 bson_iter_int32
-	#define BSON_ITER_INT64 bson_iter_int64
-	#define BSON_ITER_OID bson_iter_oid
-	#define BSON_ITER_UTF8 bson_iter_utf8
-	#define BSON_ITER_REGEX bson_iter_regex
-	#define BSON_ITER_DATE_TIME bson_iter_date_time
-	#define BSON_ITER_CODE bson_iter_code
-	#define BSON_ITER_VALUE bson_iter_value
-	#define BSON_ITER_KEY bson_iter_key
-	#define BSON_ITER_NEXT bson_iter_next
-	#define BSON_ITER_TYPE bson_iter_type
-	#define BSON_ITER_BINARY bson_iter_binary
+#define BSON_ITER_BOOL bson_iter_bool
+#define BSON_ITER_DOUBLE bson_iter_double
+#define BSON_ITER_INT32 bson_iter_int32
+#define BSON_ITER_INT64 bson_iter_int64
+#define BSON_ITER_OID bson_iter_oid
+#define BSON_ITER_UTF8 bson_iter_utf8
+#define BSON_ITER_REGEX bson_iter_regex
+#define BSON_ITER_DATE_TIME bson_iter_date_time
+#define BSON_ITER_CODE bson_iter_code
+#define BSON_ITER_VALUE bson_iter_value
+#define BSON_ITER_KEY bson_iter_key
+#define BSON_ITER_NEXT bson_iter_next
+#define BSON_ITER_TYPE bson_iter_type
+#define BSON_ITER_BINARY bson_iter_binary
 #else
-	#define BSON bson
-	#define BSON_TYPE bson_type
-	#define BSON_ITERATOR bson_iterator
-	#define MONGO_CONN mongo
-	#define MONGO_CURSOR mongo_cursor
-	#define BSON_TYPE_DOCUMENT BSON_OBJECT
-	#define BSON_TYPE_NULL BSON_NULL
-	#define BSON_TYPE_ARRAY BSON_ARRAY
-	#define BSON_TYPE_INT32 BSON_INT
-	#define BSON_TYPE_INT64 BSON_LONG
-	#define BSON_TYPE_DOUBLE BSON_DOUBLE
-	#define BSON_TYPE_BINDATA BSON_BINDATA
-	#define BSON_TYPE_BOOL BSON_BOOL
-	#define BSON_TYPE_UTF8 BSON_STRING
-	#define BSON_TYPE_OID BSON_OID
-	#define BSON_TYPE_DATE_TIME BSON_DATE
-	#define BSON_TYPE_SYMBOL BSON_SYMBOL
-	#define BSON_TYPE_UNDEFINED BSON_UNDEFINED
-	#define BSON_TYPE_REGEX BSON_REGEX
-	#define BSON_TYPE_CODE BSON_CODE
-	#define BSON_TYPE_CODEWSCOPE BSON_CODEWSCOPE
-	#define BSON_TYPE_TIMESTAMP BSON_TIMESTAMP
+#define BSON bson
+#define BSON_TYPE bson_type
+#define BSON_ITERATOR bson_iterator
+#define MONGO_CONN mongo
+#define MONGO_CURSOR mongo_cursor
+#define BSON_TYPE_DOCUMENT BSON_OBJECT
+#define BSON_TYPE_NULL BSON_NULL
+#define BSON_TYPE_ARRAY BSON_ARRAY
+#define BSON_TYPE_INT32 BSON_INT
+#define BSON_TYPE_INT64 BSON_LONG
+#define BSON_TYPE_DOUBLE BSON_DOUBLE
+#define BSON_TYPE_BINDATA BSON_BINDATA
+#define BSON_TYPE_BOOL BSON_BOOL
+#define BSON_TYPE_UTF8 BSON_STRING
+#define BSON_TYPE_OID BSON_OID
+#define BSON_TYPE_DATE_TIME BSON_DATE
+#define BSON_TYPE_SYMBOL BSON_SYMBOL
+#define BSON_TYPE_UNDEFINED BSON_UNDEFINED
+#define BSON_TYPE_REGEX BSON_REGEX
+#define BSON_TYPE_CODE BSON_CODE
+#define BSON_TYPE_CODEWSCOPE BSON_CODEWSCOPE
+#define BSON_TYPE_TIMESTAMP BSON_TIMESTAMP
 
-	#define BSON_ITER_BOOL bson_iterator_bool
-	#define BSON_ITER_DOUBLE bson_iterator_double
-	#define BSON_ITER_INT32 bson_iterator_int
-	#define BSON_ITER_INT64 bson_iterator_long
-	#define BSON_ITER_OID bson_iterator_oid
-	#define BSON_ITER_UTF8 bson_iterator_string
-	#define BSON_ITER_REGEX bson_iterator_regex
-	#define BSON_ITER_DATE_TIME bson_iterator_date
-	#define BSON_ITER_CODE bson_iterator_code
-	#define BSON_ITER_VALUE bson_iterator_value
-	#define BSON_ITER_KEY bson_iterator_key
-	#define BSON_ITER_NEXT bson_iterator_next
-	#define BSON_ITER_TYPE bson_iterator_type
-	#define BSON_ITER_BINARY bson_iterator_bin_data
+#define BSON_ITER_BOOL bson_iterator_bool
+#define BSON_ITER_DOUBLE bson_iterator_double
+#define BSON_ITER_INT32 bson_iterator_int
+#define BSON_ITER_INT64 bson_iterator_long
+#define BSON_ITER_OID bson_iterator_oid
+#define BSON_ITER_UTF8 bson_iterator_string
+#define BSON_ITER_REGEX bson_iterator_regex
+#define BSON_ITER_DATE_TIME bson_iterator_date
+#define BSON_ITER_CODE bson_iterator_code
+#define BSON_ITER_VALUE bson_iterator_value
+#define BSON_ITER_KEY bson_iterator_key
+#define BSON_ITER_NEXT bson_iterator_next
+#define BSON_ITER_TYPE bson_iterator_type
+#define BSON_ITER_BINARY bson_iterator_bin_data
 #endif
 
 /* Defines for valid option names */
@@ -183,7 +183,7 @@
 typedef struct MongoValidOption
 {
 	const char *optionName;
-	Oid optionContextId;
+	Oid			optionContextId;
 
 } MongoValidOption;
 
@@ -197,29 +197,29 @@ static const uint32 ValidOptionCount = 6;
 static const MongoValidOption ValidOptionArray[] =
 {
 	/* foreign server options */
-	{ OPTION_NAME_ADDRESS, ForeignServerRelationId },
-	{ OPTION_NAME_PORT, ForeignServerRelationId },
+	{OPTION_NAME_ADDRESS, ForeignServerRelationId},
+	{OPTION_NAME_PORT, ForeignServerRelationId},
 
 #ifdef META_DRIVER
-	{ OPTION_NAME_READ_PREFERENCE, ForeignServerRelationId },
-	{ OPTION_NAME_AUTHENTICATION_DATABASE, ForeignServerRelationId },
-	{ OPTION_NAME_REPLICA_SET, ForeignServerRelationId },
-	{ OPTION_NAME_SSL, ForeignServerRelationId },
-	{ OPTION_NAME_PEM_FILE, ForeignServerRelationId },
-	{ OPTION_NAME_PEM_PWD, ForeignServerRelationId },
-	{ OPTION_NAME_CA_FILE, ForeignServerRelationId },
-	{ OPTION_NAME_CA_DIR, ForeignServerRelationId },
-	{ OPTION_NAME_CRL_FILE, ForeignServerRelationId },
-	{ OPTION_NAME_WEAK_CERT, ForeignServerRelationId },
+	{OPTION_NAME_READ_PREFERENCE, ForeignServerRelationId},
+	{OPTION_NAME_AUTHENTICATION_DATABASE, ForeignServerRelationId},
+	{OPTION_NAME_REPLICA_SET, ForeignServerRelationId},
+	{OPTION_NAME_SSL, ForeignServerRelationId},
+	{OPTION_NAME_PEM_FILE, ForeignServerRelationId},
+	{OPTION_NAME_PEM_PWD, ForeignServerRelationId},
+	{OPTION_NAME_CA_FILE, ForeignServerRelationId},
+	{OPTION_NAME_CA_DIR, ForeignServerRelationId},
+	{OPTION_NAME_CRL_FILE, ForeignServerRelationId},
+	{OPTION_NAME_WEAK_CERT, ForeignServerRelationId},
 #endif
 
 	/* foreign table options */
-	{ OPTION_NAME_DATABASE, ForeignTableRelationId },
-	{ OPTION_NAME_COLLECTION, ForeignTableRelationId },
+	{OPTION_NAME_DATABASE, ForeignTableRelationId},
+	{OPTION_NAME_COLLECTION, ForeignTableRelationId},
 
 	/* User mapping options */
-	{ OPTION_NAME_USERNAME, UserMappingRelationId },
-	{ OPTION_NAME_PASSWORD, UserMappingRelationId }
+	{OPTION_NAME_USERNAME, UserMappingRelationId},
+	{OPTION_NAME_PASSWORD, UserMappingRelationId}
 
 };
 
@@ -231,23 +231,23 @@ static const MongoValidOption ValidOptionArray[] =
  */
 typedef struct MongoFdwOptions
 {
-	char *svr_address;
-	int32 svr_port;
-	char *svr_database;
-	char *collectionName;
-	char *svr_username;
-	char *svr_password;
+	char	   *svr_address;
+	int32		svr_port;
+	char	   *svr_database;
+	char	   *collectionName;
+	char	   *svr_username;
+	char	   *svr_password;
 #ifdef META_DRIVER
-	char *readPreference;
-	char *authenticationDatabase;
-	char *replicaSet;
- 	bool ssl;
-	char *pem_file;
- 	char *pem_pwd;
- 	char *ca_file;
- 	char *ca_dir;
- 	char *crl_file;
- 	bool weak_cert_validation;
+	char	   *readPreference;
+	char	   *authenticationDatabase;
+	char	   *replicaSet;
+	bool		ssl;
+	char	   *pem_file;
+	char	   *pem_pwd;
+	char	   *ca_file;
+	char	   *ca_dir;
+	char	   *crl_file;
+	bool		weak_cert_validation;
 #endif
 } MongoFdwOptions;
 
@@ -261,23 +261,23 @@ typedef struct MongoFdwOptions
  */
 typedef struct MongoFdwModifyState
 {
-	Relation		rel;				/* relcache entry for the foreign table */
-	List			*target_attrs;		/* list of target attribute numbers */
+	Relation	rel;			/* relcache entry for the foreign table */
+	List	   *target_attrs;	/* list of target attribute numbers */
 
 	/* info about parameters for prepared statement */
-	int				p_nums;				/* number of parameters to transmit */
-	FmgrInfo		*p_flinfo;			/* output conversion functions for them */
+	int			p_nums;			/* number of parameters to transmit */
+	FmgrInfo   *p_flinfo;		/* output conversion functions for them */
 
-	struct HTAB		*columnMappingHash;
+	struct HTAB *columnMappingHash;
 
-	MONGO_CONN		*mongoConnection;	/* MongoDB connection */
-	MONGO_CURSOR	*mongoCursor;		/* MongoDB cursor */
-	BSON			*queryDocument;		/* Bson Document */
+	MONGO_CONN *mongoConnection;	/* MongoDB connection */
+	MONGO_CURSOR *mongoCursor;	/* MongoDB cursor */
+	BSON	   *queryDocument;	/* Bson Document */
 
-	MongoFdwOptions	*options;
+	MongoFdwOptions *options;
 
 	/* working memory context */
-	MemoryContext	temp_cxt;			/* context for per-tuple temporary data */
+	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 } MongoFdwModifyState;
 
 
@@ -289,33 +289,33 @@ typedef struct MongoFdwModifyState
  */
 typedef struct ColumnMapping
 {
-	char columnName[NAMEDATALEN];
-	uint32 columnIndex;
-	Oid columnTypeId;
-	int32 columnTypeMod;
-	Oid columnArrayTypeId;
+	char		columnName[NAMEDATALEN];
+	uint32		columnIndex;
+	Oid			columnTypeId;
+	int32		columnTypeMod;
+	Oid			columnArrayTypeId;
 } ColumnMapping;
 
 /* options.c */
-extern MongoFdwOptions * mongo_get_options(Oid foreignTableId);
+extern MongoFdwOptions *mongo_get_options(Oid foreignTableId);
 extern void mongo_free_options(MongoFdwOptions *options);
 extern StringInfo mongo_option_names_string(Oid currentContextId);
 
 /* connection.c */
-MONGO_CONN* mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt);
+MONGO_CONN *mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt);
 
 extern void mongo_cleanup_connection(void);
-extern void mongo_release_connection(MONGO_CONN* conn);
+extern void mongo_release_connection(MONGO_CONN *conn);
 
 /* Function declarations related to creating the mongo query */
-extern List * ApplicableOpExpressionList(RelOptInfo *baserel);
-extern BSON * QueryDocument(Oid relationId, List *opExpressionList,
-				ForeignScanState *scanStateNode);
-extern List * ColumnList(RelOptInfo *baserel);
+extern List *ApplicableOpExpressionList(RelOptInfo *baserel);
+extern BSON *QueryDocument(Oid relationId, List *opExpressionList,
+						   ForeignScanState *scanStateNode);
+extern List *ColumnList(RelOptInfo *baserel);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
 
 
-#endif   /* MONGO_FDW_H */
+#endif							/* MONGO_FDW_H */

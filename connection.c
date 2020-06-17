@@ -49,8 +49,8 @@ typedef struct ConnCacheKey
 
 typedef struct ConnCacheEntry
 {
-	ConnCacheKey key;		/* hash key (must be first) */
-	MONGO_CONN *conn;		/* connection to foreign server, or NULL */
+	ConnCacheKey key;			/* hash key (must be first) */
+	MONGO_CONN *conn;			/* connection to foreign server, or NULL */
 	bool		invalidated;	/* true if reconnect is pending */
 	uint32		server_hashvalue;	/* hash value of foreign server OID */
 	uint32		mapping_hashvalue;  /* hash value of user mapping OID */
@@ -69,17 +69,18 @@ static void mongo_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
  * the remote Mongo server with the user's authorization. A new connection
  * is established if we don't already have a suitable one.
  */
-MONGO_CONN*
+MONGO_CONN *
 mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt)
 {
-	bool            found;
-	ConnCacheEntry  *entry;
-	ConnCacheKey    key;
+	bool		found;
+	ConnCacheEntry *entry;
+	ConnCacheKey key;
 
 	/* First time through, initialize connection cache hashtable */
 	if (ConnectionHash == NULL)
 	{
-		HASHCTL	ctl;
+		HASHCTL		ctl;
+
 		MemSet(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(ConnCacheKey);
 		ctl.entrysize = sizeof(ConnCacheEntry);
@@ -87,8 +88,8 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 		/* allocate ConnectionHash in the cache context */
 		ctl.hcxt = CacheMemoryContext;
 		ConnectionHash = hash_create("mongo_fdw connections", 8,
-							&ctl,
-							HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									 &ctl,
+									 HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
 		/*
 		 * Register some callback functions that manage connection cleanup.
@@ -131,8 +132,8 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 
 #ifdef META_DRIVER
 		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password,
-		opt->authenticationDatabase, opt->replicaSet, opt->readPreference,
-			opt->ssl, opt->pem_file, opt->pem_pwd, opt->ca_file, opt->ca_dir, opt->crl_file, opt->weak_cert_validation);
+								   opt->authenticationDatabase, opt->replicaSet, opt->readPreference,
+								   opt->ssl, opt->pem_file, opt->pem_pwd, opt->ca_file, opt->ca_dir, opt->crl_file, opt->weak_cert_validation);
 #else
 		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password);
 #endif
@@ -179,7 +180,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 void
 mongo_cleanup_connection()
 {
-	HASH_SEQ_STATUS	scan;
+	HASH_SEQ_STATUS scan;
 	ConnCacheEntry *entry;
 
 	if (ConnectionHash == NULL)
