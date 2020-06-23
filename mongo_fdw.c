@@ -46,6 +46,7 @@
 #else
 #include "utils/jsonfuncs.h"
 #endif
+#include "utils/rel.h"
 
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -2040,7 +2041,7 @@ MongoAcquireSampleRows(Relation relation,
 	HTAB	   *columnMappingHash;
 	MONGO_CURSOR *mongoCursor;
 	BSON	   *queryDocument;
-	List	   *columnList;
+	List	   *columnList = NIL;
 	ForeignScanState *scanState;
 	List	   *foreignPrivateList;
 	ForeignScan *foreignScan;
