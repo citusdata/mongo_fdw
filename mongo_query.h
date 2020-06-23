@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_query.h
- * 		Foreign-data wrapper for remote MongoDB servers
+ * 		FDW query handling for mongo_fdw
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
@@ -12,13 +12,15 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #ifndef MONGO_QUERY_H
 #define MONGO_QUERY_H
 
-
 #define NUMERICARRAY_OID 1231
 
-bool		AppenMongoValue(BSON *queryDocument, const char *keyName, Datum value, bool isnull, Oid id);
+bool AppendMongoValue(BSON *queryDocument,
+					  const char *keyName,
+					  Datum value,
+					  bool isnull,
+					  Oid id);
 
 #endif							/* MONGO_QUERY_H */

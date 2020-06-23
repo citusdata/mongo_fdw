@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * connection.c
- * 		Foreign-data wrapper for remote MongoDB servers
+ * 		Connection management functions for mongo_fdw
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
@@ -12,23 +12,14 @@
  *
  *-------------------------------------------------------------------------
  */
-#include <sys/types.h>
-
-
 #include "postgres.h"
-#include "mongo_wrapper.h"
-#include "mongo_fdw.h"
 
 #include "access/xact.h"
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
 #endif
-#include "mb/pg_wchar.h"
-#include "miscadmin.h"
-#include "utils/hsearch.h"
+#include "mongo_wrapper.h"
 #include "utils/inval.h"
-#include "utils/memutils.h"
-#include "utils/resowner.h"
 #include "utils/syscache.h"
 
 /* Length of host */
@@ -38,7 +29,7 @@
  * Connection cache hash table entry
  *
  * The lookup key in this hash table is the foreign server OID plus the user
- * mapping OID.  (We use just one connection per user per foreign server,
+ * mapping OID. (We use just one connection per user per foreign server,
  * so that we can ensure all scans use the same snapshot during a query.)
  */
 typedef struct ConnCacheKey
@@ -64,13 +55,14 @@ static HTAB *ConnectionHash = NULL;
 static void mongo_inval_callback(Datum arg, int cacheid, uint32 hashvalue);
 
 /*
- * mongo_get_connection:
- * 			Get a mong connection which can be used to execute queries on
- * the remote Mongo server with the user's authorization. A new connection
- * is established if we don't already have a suitable one.
+ * mongo_get_connection
+ *		Get a mongo connection which can be used to execute queries on the
+ *		remote Mongo server with the user's authorization.  A new connection is
+ *		established if we don't already have a suitable one.
  */
 MONGO_CONN *
-mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *opt)
+mongo_get_connection(ForeignServer *server, UserMapping *user,
+					 MongoFdwOptions *opt)
 {
 	bool		found;
 	ConnCacheEntry *entry;
@@ -85,7 +77,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 		ctl.keysize = sizeof(ConnCacheKey);
 		ctl.entrysize = sizeof(ConnCacheEntry);
 		ctl.hash = tag_hash;
-		/* allocate ConnectionHash in the cache context */
+		/* Allocate ConnectionHash in the cache context */
 		ctl.hcxt = CacheMemoryContext;
 		ConnectionHash = hash_create("mongo_fdw connections", 8,
 									 &ctl,
@@ -111,7 +103,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 	entry = hash_search(ConnectionHash, &key, HASH_ENTER, &found);
 	if (!found)
 	{
-		/* initialize new hashtable entry (key is already filled in) */
+		/* Initialize new hashtable entry (key is already filled in) */
 		entry->conn = NULL;
 	}
 
@@ -130,13 +122,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 		Oid			umoid;
 #endif
 
-#ifdef META_DRIVER
-		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password,
-								   opt->authenticationDatabase, opt->replicaSet, opt->readPreference,
-								   opt->ssl, opt->pem_file, opt->pem_pwd, opt->ca_file, opt->ca_dir, opt->crl_file, opt->weak_cert_validation);
-#else
-		entry->conn = MongoConnect(opt->svr_address, opt->svr_port, opt->svr_database, opt->svr_username, opt->svr_password);
-#endif
+		entry->conn = MongoConnect(opt);
 		elog(DEBUG3, "new mongo_fdw connection %p for server \"%s:%d\"",
 			 entry->conn, opt->svr_address, opt->svr_port);
 
@@ -174,8 +160,8 @@ mongo_get_connection(ForeignServer *server, UserMapping *user, MongoFdwOptions *
 }
 
 /*
- * mongo_cleanup_connection:
- * Delete all the cache entries on backend exists.
+ * mongo_cleanup_connection
+ *		Delete all the cache entries on backend exits.
  */
 void
 mongo_cleanup_connection()
@@ -199,19 +185,21 @@ mongo_cleanup_connection()
 }
 
 /*
- * Release connection created by calling mongo_get_connection.
+ * mongo_release_connection
+ *		Release connection created by calling mongo_get_connection.
  */
 void
 mongo_release_connection(MONGO_CONN *conn)
 {
 	/*
-	 * We don't close the connection indvisually  here, will do all connection
+	 * We don't close the connection individually here, will do all connection
 	 * cleanup on the backend exit.
 	 */
 }
 
 /*
- * Connection invalidation callback function for mongo.
+ * mongo_inval_callback
+ *		Connection invalidation callback function for mongo.
  *
  * After a change to a pg_foreign_server or pg_user_mapping catalog entry,
  * mark connections depending on that entry as needing to be remade. This

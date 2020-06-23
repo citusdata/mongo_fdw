@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_wrapper_meta.c
- * 		Foreign-data wrapper for remote MongoDB servers
+ * 		Wrapper functions for remote MongoDB servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
@@ -12,66 +12,133 @@
  *
  *-------------------------------------------------------------------------
  */
-
-
 #include "postgres.h"
+
 #include <mongoc.h>
 #include "mongo_wrapper.h"
 
 /*
- * Connect to MongoDB server using Host/ip and Port number.
+ * MongoConnect
+ *		Connect to MongoDB server using Host/ip and Port number.
  */
 MONGO_CONN *
-MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password,
-			 char *authenticationDatabase, char *replicaSet, char *readPreference, bool ssl, char *pem_file,
-			 char *pem_pwd, char *ca_file, char *ca_dir, char *crl_file, bool weak_cert_validation)
+MongoConnect(MongoFdwOptions *opt)
 {
-	MONGO_CONN *client = NULL;
-	char	   *uri = NULL;
+	MONGO_CONN *client;
+	char	   *uri;
 
-	if (user && password)
-		if (authenticationDatabase)
-			if (replicaSet)
-				if (readPreference)
-					uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s&replicaSet=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false", authenticationDatabase, replicaSet);
+	if (opt->svr_username && opt->svr_password)
+	{
+		if (opt->authenticationDatabase)
+		{
+			if (opt->replicaSet)
+			{
+				if (opt->readPreference)
+					uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s&replicaSet=%s",
+											 opt->svr_username,
+											 opt->svr_password,
+											 opt->svr_address, opt->svr_port,
+											 opt->svr_database,
+											 opt->readPreference,
+											 opt->ssl ? "true" : "false",
+											 opt->authenticationDatabase,
+											 opt->replicaSet);
 				else
-					uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s&replicaSet=%s", user, password, host, port, databaseName, ssl ? "true" : "false", authenticationDatabase, replicaSet);
-			else if (readPreference)
-				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false", authenticationDatabase);
+					uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s&replicaSet=%s",
+											 opt->svr_username,
+											 opt->svr_password,
+											 opt->svr_address, opt->svr_port,
+											 opt->svr_database,
+											 opt->ssl ? "true" : "false",
+											 opt->authenticationDatabase,
+											 opt->replicaSet);
+			}
+			else if (opt->readPreference)
+				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&authSource=%s",
+										 opt->svr_username, opt->svr_password,
+										 opt->svr_address, opt->svr_port,
+										 opt->svr_database,
+										 opt->readPreference,
+										 opt->ssl ? "true" : "false",
+										 opt->authenticationDatabase);
 			else
-				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s", user, password, host, port, databaseName, ssl ? "true" : "false", authenticationDatabase);
-		else if (replicaSet)
-			if (readPreference)
-				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false", replicaSet);
+				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&authSource=%s",
+										 opt->svr_username, opt->svr_password,
+										 opt->svr_address, opt->svr_port,
+										 opt->svr_database,
+										 opt->ssl ? "true" : "false",
+										 opt->authenticationDatabase);
+		}
+		else if (opt->replicaSet)
+		{
+			if (opt->readPreference)
+				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s",
+										 opt->svr_username, opt->svr_password,
+										 opt->svr_address, opt->svr_port,
+										 opt->svr_database,
+										 opt->readPreference,
+										 opt->ssl ? "true" : "false",
+										 opt->replicaSet);
 			else
-				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&replicaSet=%s", user, password, host, port, databaseName, ssl ? "true" : "false", replicaSet);
-		else if (readPreference)
-			uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s", user, password, host, port, databaseName, readPreference, ssl ? "true" : "false");
+				uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s&replicaSet=%s",
+										 opt->svr_username, opt->svr_password,
+										 opt->svr_address, opt->svr_port,
+										 opt->svr_database,
+										 opt->ssl ? "true" : "false",
+										 opt->replicaSet);
+		}
+		else if (opt->readPreference)
+			uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?readPreference=%s&ssl=%s",
+									 opt->svr_username, opt->svr_password,
+									 opt->svr_address, opt->svr_port,
+									 opt->svr_database, opt->readPreference,
+									 opt->ssl ? "true" : "false");
 		else
-			uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s", user, password, host, port, databaseName, ssl ? "true" : "false");
-	else if (replicaSet)
-		if (readPreference)
-			uri = bson_strdup_printf("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s", host, port, databaseName, readPreference, ssl ? "true" : "false", replicaSet);
+			uri = bson_strdup_printf("mongodb://%s:%s@%s:%hu/%s?ssl=%s",
+									 opt->svr_username, opt->svr_password,
+									 opt->svr_address,
+									 opt->svr_port, opt->svr_database,
+									 opt->ssl ? "true" : "false");
+	}
+	else if (opt->replicaSet)
+	{
+		if (opt->readPreference)
+			uri = bson_strdup_printf("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s&replicaSet=%s",
+									 opt->svr_address, opt->svr_port,
+									 opt->svr_database, opt->readPreference,
+									 opt->ssl ? "true" : "false",
+									 opt->replicaSet);
 		else
-			uri = bson_strdup_printf("mongodb://%s:%hu/%s?ssl=%s&replicaSet=%s", host, port, databaseName, ssl ? "true" : "false", replicaSet);
-	else if (readPreference)
-		uri = bson_strdup_printf("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s", host, port, databaseName, readPreference, ssl ? "true" : "false");
+			uri = bson_strdup_printf("mongodb://%s:%hu/%s?ssl=%s&replicaSet=%s",
+									 opt->svr_address, opt->svr_port,
+									 opt->svr_database,
+									 opt->ssl ? "true" : "false",
+									 opt->replicaSet);
+	}
+	else if (opt->readPreference)
+		uri = bson_strdup_printf("mongodb://%s:%hu/%s?readPreference=%s&ssl=%s",
+								 opt->svr_address, opt->svr_port,
+								 opt->svr_database, opt->readPreference,
+								 opt->ssl ? "true" : "false");
 	else
-		uri = bson_strdup_printf("mongodb://%s:%hu/%s?ssl=%s", host, port, databaseName, ssl ? "true" : "false");
+		uri = bson_strdup_printf("mongodb://%s:%hu/%s?ssl=%s",
+								 opt->svr_address, opt->svr_port,
+								 opt->svr_database,
+								 opt->ssl ? "true" : "false");
 
 
 	client = mongoc_client_new(uri);
 
-	if (ssl)
+	if (opt->ssl)
 	{
 		mongoc_ssl_opt_t *ssl_opts = (mongoc_ssl_opt_t *) malloc(sizeof(mongoc_ssl_opt_t));
 
-		ssl_opts->pem_file = pem_file;
-		ssl_opts->pem_pwd = pem_pwd;
-		ssl_opts->ca_file = ca_file;
-		ssl_opts->ca_dir = ca_dir;
-		ssl_opts->crl_file = crl_file;
-		ssl_opts->weak_cert_validation = weak_cert_validation;
+		ssl_opts->pem_file = opt->pem_file;
+		ssl_opts->pem_pwd = opt->pem_pwd;
+		ssl_opts->ca_file = opt->ca_file;
+		ssl_opts->ca_dir = opt->ca_dir;
+		ssl_opts->crl_file = opt->crl_file;
+		ssl_opts->weak_cert_validation = opt->weak_cert_validation;
 		mongoc_client_set_ssl_opts(client, ssl_opts);
 		free(ssl_opts);
 	}
@@ -79,13 +146,17 @@ MongoConnect(const char *host, const unsigned short port, char *databaseName, ch
 	bson_free(uri);
 
 	if (client == NULL)
-		ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
-						errhint("Mongo driver connection error")));
+		ereport(ERROR,
+				(errmsg("could not connect to %s:%d", opt->svr_address,
+						opt->svr_port),
+				 errhint("Mongo driver connection error.")));
+
 	return client;
 }
 
 /*
- * Disconnect from MongoDB server.
+ * MongoDisconnect
+ *		Disconnect from MongoDB server.
  */
 void
 MongoDisconnect(MONGO_CONN *conn)
@@ -94,14 +165,14 @@ MongoDisconnect(MONGO_CONN *conn)
 		mongoc_client_destroy(conn);
 }
 
-
 /*
- * Insert a document 'b' into MongoDB.
+ * MongoInsert
+ *		Insert a document 'b' into MongoDB.
  */
 bool
 MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 {
-	mongoc_collection_t *c = NULL;
+	mongoc_collection_t *c;
 	bson_error_t error;
 	bool		r = false;
 
@@ -110,19 +181,22 @@ MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 	r = mongoc_collection_insert(c, MONGOC_INSERT_NONE, b, NULL, &error);
 	mongoc_collection_destroy(c);
 	if (!r)
-		ereport(ERROR, (errmsg("failed to insert row"),
-						errhint("Mongo error: \"%s\"", error.message)));
+		ereport(ERROR,
+				(errmsg("failed to insert row"),
+				 errhint("Mongo error: \"%s\"", error.message)));
+
 	return true;
 }
 
-
 /*
- * Update a document 'b' into MongoDB.
+ * MongoUpdate
+ *		Update a document 'b' into MongoDB.
  */
 bool
-MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b, BSON *op)
+MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
+			BSON *op)
 {
-	mongoc_collection_t *c = NULL;
+	mongoc_collection_t *c;
 	bson_error_t error;
 	bool		r = false;
 
@@ -131,57 +205,65 @@ MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b, BSON *o
 	r = mongoc_collection_update(c, MONGOC_UPDATE_NONE, b, op, NULL, &error);
 	mongoc_collection_destroy(c);
 	if (!r)
-		ereport(ERROR, (errmsg("failed to update row"),
-						errhint("Mongo error: \"%s\"", error.message)));
+		ereport(ERROR,
+				(errmsg("failed to update row"),
+				 errhint("Mongo error: \"%s\"", error.message)));
+
 	return true;
 }
 
-
 /*
- * Delete MongoDB's document.
+ * MongoDelete
+ *		Delete MongoDB's document.
  */
 bool
 MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 {
-	mongoc_collection_t *c = NULL;
+	mongoc_collection_t *c;
 	bson_error_t error;
 	bool		r = false;
 
 	c = mongoc_client_get_collection(conn, database, collection);
 
-	r = mongoc_collection_remove(c, MONGOC_DELETE_SINGLE_REMOVE, b, NULL, &error);
+	r = mongoc_collection_remove(c, MONGOC_DELETE_SINGLE_REMOVE, b, NULL,
+								 &error);
 	mongoc_collection_destroy(c);
 	if (!r)
-		ereport(ERROR, (errmsg("failed to delete row"),
-						errhint("Mongo error: \"%s\"", error.message)));
+		ereport(ERROR,
+				(errmsg("failed to delete row"),
+				 errhint("Mongo error: \"%s\"", error.message)));
+
 	return true;
 }
 
 /*
- * Performs a query against the configured MongoDB server and return
- * cursor which can be destroyed by calling mongoc_cursor_current.
+ * MongoCursorCreate
+ *		Performs a query against the configured MongoDB server and return
+ *		cursor which can be destroyed by calling mongoc_cursor_current.
  */
 MONGO_CURSOR *
 MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 {
-	mongoc_collection_t *c = NULL;
-	MONGO_CURSOR *cur = NULL;
+	mongoc_collection_t *c;
+	MONGO_CURSOR *cur;
 	bson_error_t error;
 
 	c = mongoc_client_get_collection(conn, database, collection);
 	cur = mongoc_collection_find_with_opts(c, q, NULL, NULL);
 	mongoc_cursor_error(cur, &error);
 	if (!cur)
-		ereport(ERROR, (errmsg("failed to create cursor"),
-						errhint("Mongo error: \"%s\"", error.message)));
+		ereport(ERROR,
+				(errmsg("failed to create cursor"),
+				 errhint("Mongo error: \"%s\"", error.message)));
 
 	mongoc_collection_destroy(c);
+
 	return cur;
 }
 
-
 /*
- * Destroy cursor created by calling MongoCursorCreate function.
+ * MongoCursorDestroy
+ *		Destroy cursor created by calling MongoCursorCreate function.
  */
 void
 MongoCursorDestroy(MONGO_CURSOR *c)
@@ -191,7 +273,8 @@ MongoCursorDestroy(MONGO_CURSOR *c)
 
 
 /*
- * Get the current document from cursor.
+ * MongoCursorNext
+ *		Get the current document from cursor.
  */
 const BSON *
 MongoCursorBson(MONGO_CURSOR *c)
@@ -200,7 +283,8 @@ MongoCursorBson(MONGO_CURSOR *c)
 }
 
 /*
- * Get the next document from the cursor.
+ * MongoCursorNext
+ *		Get the next document from the cursor.
  */
 bool
 MongoCursorNext(MONGO_CURSOR *c, BSON *b)
@@ -208,25 +292,27 @@ MongoCursorNext(MONGO_CURSOR *c, BSON *b)
 	return mongoc_cursor_next(c, (const BSON **) &b);
 }
 
-
 /*
- * Allocates a new bson_t structure, and also initialize the bson
- * object. After that point objects can be appended to that bson
- * object and can be iterated. A newly allocated bson_t that should
- * be freed with bson_destroy().
+ * BsonCreate
+ *		Allocates a new bson_t structure, and also initialize the bson object.
+ *
+ * After that point objects can be appended to that bson object and can be
+ * iterated. A newly allocated bson_t that should be freed with bson_destroy().
  */
 BSON *
 BsonCreate(void)
 {
-	BSON	   *b = NULL;
+	BSON	   *doc;
 
-	b = bson_new();
-	bson_init(b);
-	return b;
+	doc = bson_new();
+	bson_init(doc);
+
+	return doc;
 }
 
 /*
- * Destroy Bson objected created by BsonCreate function.
+ * BsonDestroy
+ *		Destroy Bson object created by BsonCreate function.
  */
 void
 BsonDestroy(BSON *b)
@@ -234,16 +320,15 @@ BsonDestroy(BSON *b)
 	bson_destroy(b);
 }
 
-
 /*
- * Initialize the bson Iterator.
+ * BsonIterInit
+ *		Initialize the bson Iterator.
  */
 bool
 BsonIterInit(BSON_ITERATOR *it, BSON *b)
 {
 	return bson_iter_init(it, b);
 }
-
 
 bool
 BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
@@ -253,6 +338,7 @@ BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 
 	bson_iter_document(it, &len, &buffer);
 	bson_init_static(b, buffer, len);
+
 	return true;
 }
 
@@ -262,13 +348,11 @@ BsonIterInt32(BSON_ITERATOR *it)
 	return bson_iter_int32(it);
 }
 
-
 int64_t
 BsonIterInt64(BSON_ITERATOR *it)
 {
 	return bson_iter_int64(it);
 }
-
 
 double
 BsonIterDouble(BSON_ITERATOR *it)
@@ -276,13 +360,11 @@ BsonIterDouble(BSON_ITERATOR *it)
 	return bson_iter_double(it);
 }
 
-
 bool
 BsonIterBool(BSON_ITERATOR *it)
 {
 	return bson_iter_bool(it);
 }
-
 
 const char *
 BsonIterString(BSON_ITERATOR *it)
@@ -299,6 +381,7 @@ BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 	bson_subtype_t subtype = BSON_SUBTYPE_BINARY;
 
 	bson_iter_binary(it, &subtype, len, &binary);
+
 	return (char *) binary;
 }
 
@@ -308,13 +391,11 @@ BsonIterOid(BSON_ITERATOR *it)
 	return bson_iter_oid(it);
 }
 
-
 time_t
 BsonIterDate(BSON_ITERATOR *it)
 {
 	return bson_iter_date_time(it);
 }
-
 
 const char *
 BsonIterKey(BSON_ITERATOR *it)
@@ -334,20 +415,17 @@ BsonIterNext(BSON_ITERATOR *it)
 	return bson_iter_next(it);
 }
 
-
 bool
 BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
 {
 	return bson_iter_recurse(it, sub);
 }
 
-
 void
 BsonOidFromString(bson_oid_t *o, char *str)
 {
 	bson_oid_init_from_string(o, str);
 }
-
 
 bool
 BsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
@@ -367,13 +445,11 @@ BsonAppendStartObject(BSON *b, char *key, BSON *r)
 	return bson_append_document_begin(b, key, strlen(key), r);
 }
 
-
 bool
 BsonAppendFinishObject(BSON *b, BSON *r)
 {
 	return bson_append_document_end(b, r);
 }
-
 
 bool
 BsonAppendNull(BSON *b, const char *key)
@@ -381,13 +457,11 @@ BsonAppendNull(BSON *b, const char *key)
 	return bson_append_null(b, key, strlen(key));
 }
 
-
 bool
 BsonAppendInt32(BSON *b, const char *key, int v)
 {
 	return bson_append_int32(b, key, strlen(key), v);
 }
-
 
 bool
 BsonAppendInt64(BSON *b, const char *key, int64_t v)
@@ -411,7 +485,8 @@ BsonAppendUTF8(BSON *b, const char *key, char *v)
 bool
 BsonAppendBinary(BSON *b, const char *key, char *v, size_t len)
 {
-	return bson_append_binary(b, key, (int) strlen(key), BSON_SUBTYPE_BINARY, (const uint8_t *) v, len);
+	return bson_append_binary(b, key, (int) strlen(key), BSON_SUBTYPE_BINARY,
+							  (const uint8_t *) v, len);
 }
 
 bool
@@ -419,7 +494,6 @@ BsonAppendDate(BSON *b, const char *key, time_t v)
 {
 	return bson_append_date_time(b, key, strlen(key), v);
 }
-
 
 bool
 BsonAppendBson(BSON *b, char *key, BSON *c)
@@ -433,20 +507,18 @@ BsonAppendStartArray(BSON *b, const char *key, BSON *c)
 	return bson_append_array_begin(b, key, -1, c);
 }
 
-
 bool
 BsonAppendFinishArray(BSON *b, BSON *c)
 {
 	return bson_append_array_end(b, c);
 }
 
-
 bool
 BsonFinish(BSON *b)
 {
 	/*
-	 * There is no need for bson_finish in Meta Driver. We are doing nothing,
-	 * just because of compatiblity with legacy driver.
+	 * There is no need for bson_finish in Meta Driver.  We are doing nothing,
+	 * just because of compatibility with legacy driver.
 	 */
 	return true;
 }
@@ -454,9 +526,8 @@ BsonFinish(BSON *b)
 bool
 JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 {
-	bool		status;
+	bool		status = true;
 
-	status = true;
 	if (!v)
 	{
 		BsonAppendNull(bb, k);
@@ -468,23 +539,19 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 		case json_type_int:
 			BsonAppendInt32(bb, k, json_object_get_int(v));
 			break;
-
 		case json_type_boolean:
 			BsonAppendBool(bb, k, json_object_get_boolean(v));
 			break;
-
 		case json_type_double:
 			BsonAppendDouble(bb, k, json_object_get_double(v));
 			break;
-
 		case json_type_string:
 			BsonAppendUTF8(bb, k, (char *) json_object_get_string(v));
 			break;
-
 		case json_type_object:
 			{
 				BSON		t;
-				struct json_object *joj = NULL;
+				struct json_object *joj;
 
 				joj = json_object_object_get(v, "$oid");
 
@@ -507,13 +574,11 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 
 				{
 					json_object_object_foreach(v, kk, vv)
-					{
 						JsonToBsonAppendElement(&t, kk, vv);
-					}
 				}
 				BsonAppendFinishObject(bb, &t);
-				break;
 			}
+			break;
 		case json_type_array:
 			{
 				int			i;
@@ -527,12 +592,15 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 					JsonToBsonAppendElement(&t, buf, json_object_array_get_idx(v, i));
 				}
 				BsonAppendFinishObject(bb, &t);
-				break;
 			}
+			break;
 		default:
-			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
-							errmsg("can't handle type for : %s", json_object_to_json_string(v))));
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+					 errmsg("can't handle type for : %s",
+							json_object_to_json_string(v))));
 	}
+
 	return status;
 }
 
@@ -543,29 +611,33 @@ JsonTokenerPrase(char *s)
 }
 
 /*
- * Count the number of documents.
+ * MongoAggregateCount
+ *		Count the number of documents.
  */
 double
-MongoAggregateCount(MONGO_CONN *conn, const char *database, const char *collection, const BSON *b)
+MongoAggregateCount(MONGO_CONN *conn, const char *database,
+					const char *collection, const BSON *b)
 {
-	BSON	   *command = NULL;
-	BSON	   *reply = NULL;
-	BSON	   *doc = NULL;
+	BSON	   *command;
+	BSON	   *reply;
 	double		count = 0;
-	mongoc_cursor_t *cursor = NULL;
-	bool		ret = false;
+	mongoc_cursor_t *cursor;
 
 	command = BsonCreate();
 	reply = BsonCreate();
 	BsonAppendUTF8(command, "count", (char *) collection);
-	if (b)						/* not empty */
+	if (b)						/* Not empty */
 		BsonAppendBson(command, "query", (BSON *) b);
 
 	BsonFinish(command);
 
-	cursor = mongoc_client_command(conn, database, MONGOC_QUERY_SLAVE_OK, 0, 1, 0, command, NULL, NULL);
+	cursor = mongoc_client_command(conn, database, MONGOC_QUERY_SLAVE_OK, 0, 1,
+								   0, command, NULL, NULL);
 	if (cursor)
 	{
+		BSON	   *doc;
+		bool		ret;
+
 		ret = mongoc_cursor_next(cursor, (const BSON **) &doc);
 		if (ret)
 		{
@@ -579,13 +651,8 @@ MongoAggregateCount(MONGO_CONN *conn, const char *database, const char *collecti
 	}
 	BsonDestroy(reply);
 	BsonDestroy(command);
+
 	return count;
-}
-
-void
-BsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer)
-{
-
 }
 
 void
@@ -622,7 +689,9 @@ BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
 }
 
 /*
- * DumpJson converts BSON document to a JSON string.
+ * DumpJsonObject
+ *		Converts BSON document to a JSON string.
+ *
  * isArray signifies if bsonData is contents of array or object.
  * [Some of] special BSON datatypes are converted to JSON using
  * "Strict MongoDB Extended JSON" [1].
@@ -632,15 +701,15 @@ BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
 void
 DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
 {
-	char	   *json;
 	uint32_t	len;
-	const uint8_t *data = NULL;
-	BSON bson;
+	const uint8_t *data;
+	BSON 		bson;
 
 	bson_iter_document(iter, &len, &data);
 	if (bson_init_static(&bson, data, len))
 	{
-		json = bson_as_json(&bson, NULL);
+		char	   *json = bson_as_json(&bson, NULL);
+
 		if (json != NULL)
 		{
 			appendStringInfoString(output, json);
@@ -652,14 +721,15 @@ DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
 void
 DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
 {
-	char	   *json;
 	uint32_t	len;
 	const uint8_t *data;
-	BSON bson;
+	BSON 		bson;
 
 	bson_iter_array(iter, &len, &data);
 	if (bson_init_static(&bson, data, len))
 	{
+		char	   *json;
+
 		if ((json = bson_array_as_json(&bson, NULL)))
 		{
 			appendStringInfoString(output, json);

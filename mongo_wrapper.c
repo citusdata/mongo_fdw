@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_wrapper.c
- * 		Foreign-data wrapper for remote MongoDB servers
+ * 		Wrapper functions for remote MongoDB servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
@@ -12,53 +12,52 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres.h"
-#include "mongo_wrapper.h"
 
 #ifdef META_DRIVER
 #include "mongoc.h"
 #else
 #include "mongo.h"
 #endif
-
-#include <bson.h>
-#include <json.h>
-#include <bits.h>
-
-#include "mongo_fdw.h"
+#include "mongo_wrapper.h"
 
 #define QUAL_STRING_LEN 512
 
 MONGO_CONN *
-MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password)
+MongoConnect(MongoFdwOptions *opt)
 {
 	MONGO_CONN *conn;
 
 	conn = mongo_alloc();
 	mongo_init(conn);
 
-	if (mongo_connect(conn, host, port) != MONGO_OK)
+	if (mongo_connect(conn, opt->svr_address, opt->svr_port) != MONGO_OK)
 	{
 		int			err = conn->err;
 
 		mongo_destroy(conn);
 		mongo_dealloc(conn);
-		ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
-						errhint("Mongo driver connection error: %d", err)));
+		ereport(ERROR,
+				(errmsg("could not connect to %s:%d", opt->svr_address,
+						opt->svr_port),
+				 errhint("Mongo driver connection error: %d.", err)));
 	}
-	if (user && password)
+	if (opt->svr_username && opt->svr_password)
 	{
-		if (mongo_cmd_authenticate(conn, databaseName, user, password) != MONGO_OK)
+		if (mongo_cmd_authenticate(conn, opt->svr_database, opt->svr_username,
+								   opt->svr_password) != MONGO_OK)
 		{
 			char	   *str = pstrdup(conn->errstr);
 
 			mongo_destroy(conn);
 			mongo_dealloc(conn);
-			ereport(ERROR, (errmsg("could not connect to %s:%d", host, port),
-							errhint("Mongo driver connection error: %s", str)));
+			ereport(ERROR,
+					(errmsg("could not connect to %s:%d", opt->svr_address,
+							opt->svr_port),
+					 errhint("Mongo driver connection error: %s", str)));
 		}
 	}
+
 	return conn;
 }
 
@@ -76,24 +75,27 @@ MongoInsert(MONGO_CONN *conn, char *database, char *collection, bson *b)
 
 	snprintf(qual, QUAL_STRING_LEN, "%s.%s", database, collection);
 	if (mongo_insert(conn, qual, b, NULL) != MONGO_OK)
-		ereport(ERROR, (errmsg("failed to insert row"),
-						errhint("Mongo driver insert error: %d", conn->err)));
+		ereport(ERROR,
+				(errmsg("failed to insert row"),
+				 errhint("Mongo driver insert error: %d.", conn->err)));
+
 	return true;
 }
 
-
 bool
-MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b, BSON *op)
+MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
+			BSON *op)
 {
 	char		qual[QUAL_STRING_LEN];
 
 	snprintf(qual, QUAL_STRING_LEN, "%s.%s", database, collection);
 	if (mongo_update(conn, qual, b, op, MONGO_UPDATE_BASIC, 0) != MONGO_OK)
-		ereport(ERROR, (errmsg("failed to update row"),
-						errhint("Mongo driver update error: %d", conn->err)));
+		ereport(ERROR,
+				(errmsg("failed to update row"),
+				 errhint("Mongo driver update error: %d.", conn->err)));
+
 	return true;
 }
-
 
 bool
 MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
@@ -102,12 +104,12 @@ MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 
 	snprintf(qual, QUAL_STRING_LEN, "%s.%s", database, collection);
 	if (mongo_remove(conn, qual, b, NULL) != MONGO_OK)
-		ereport(ERROR, (errmsg("failed to delete row"),
-						errhint("Mongo driver delete error: %d", conn->err)));
+		ereport(ERROR,
+				(errmsg("failed to delete row"),
+				 errhint("Mongo driver delete error: %d.", conn->err)));
 
 	return true;
 }
-
 
 MONGO_CURSOR *
 MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
@@ -119,16 +121,15 @@ MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 	c = mongo_cursor_alloc();
 	mongo_cursor_init(c, conn, qual);
 	mongo_cursor_set_query(c, q);
+
 	return c;
 }
-
 
 const bson *
 MongoCursorBson(MONGO_CURSOR *c)
 {
 	return mongo_cursor_bson(c);
 }
-
 
 bool
 MongoCursorNext(MONGO_CURSOR *c, BSON *b)
@@ -146,11 +147,12 @@ MongoCursorDestroy(MONGO_CURSOR *c)
 BSON *
 BsonCreate()
 {
-	BSON	   *b = NULL;
+	BSON	   *doc = NULL;
 
-	b = bson_alloc();
-	bson_init(b);
-	return b;
+	doc = bson_alloc();
+	bson_init(doc);
+
+	return doc;
 }
 
 void
@@ -164,6 +166,7 @@ bool
 BsonIterInit(BSON_ITERATOR *it, BSON *b)
 {
 	bson_iterator_init(it, b);
+
 	return true;
 }
 
@@ -171,6 +174,7 @@ bool
 BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 {
 	bson_iterator_subobject_init(it, b, 0);
+
 	return true;
 }
 
@@ -180,13 +184,11 @@ BsonIterInt32(BSON_ITERATOR *it)
 	return bson_iterator_int(it);
 }
 
-
 int64_t
 BsonIterInt64(BSON_ITERATOR *it)
 {
 	return bson_iterator_long(it);
 }
-
 
 double
 BsonIterDouble(BSON_ITERATOR *it)
@@ -194,13 +196,11 @@ BsonIterDouble(BSON_ITERATOR *it)
 	return bson_iterator_double(it);
 }
 
-
 bool
 BsonIterBool(BSON_ITERATOR *it)
 {
 	return bson_iterator_bool(it);
 }
-
 
 const char *
 BsonIterString(BSON_ITERATOR *it)
@@ -220,20 +220,17 @@ BsonIterBinLen(BSON_ITERATOR *it)
 	return bson_iterator_bin_len(it);
 }
 
-
 bson_oid_t *
 BsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iterator_oid(it);
 }
 
-
 time_t
 BsonIterDate(BSON_ITERATOR *it)
 {
 	return bson_iterator_date(it);
 }
-
 
 int
 BsonIterType(BSON_ITERATOR *it)
@@ -247,21 +244,19 @@ BsonIterNext(BSON_ITERATOR *it)
 	return bson_iterator_next(it);
 }
 
-
 bool
 BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
 {
 	bson_iterator_subiterator(it, sub);
+
 	return true;
 }
-
 
 void
 BsonOidFromString(bson_oid_t *o, char *str)
 {
 	bson_oid_from_string(o, str);
 }
-
 
 bool
 BsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
@@ -281,13 +276,11 @@ BsonAppendNull(BSON *b, const char *key)
 	return (bson_append_null(b, key) == MONGO_OK);
 }
 
-
 bool
 BsonAppendInt32(BSON *b, const char *key, int v)
 {
 	return (bson_append_int(b, key, v) == MONGO_OK);
 }
-
 
 bool
 BsonAppendInt64(BSON *b, const char *key, int64_t v)
@@ -318,13 +311,11 @@ BsonAppendDate(BSON *b, const char *key, time_t v)
 	return (bson_append_date(b, key, v) == MONGO_OK);
 }
 
-
 bool
 BsonAppendStartArray(BSON *b, const char *key, BSON *c)
 {
 	return (bson_append_start_array(b, key) == MONGO_OK);
 }
-
 
 bool
 BsonAppendFinishArray(BSON *b, BSON *c)
@@ -344,15 +335,11 @@ BsonAppendFinishObject(BSON *b, BSON *r)
 	return (bson_append_finish_object(b) == MONGO_OK);
 }
 
-
 bool
 BsonAppendBson(BSON *b, char *key, BSON *c)
 {
 	return (bson_append_bson(b, key, c) == MONGO_OK);
 }
-
-
-
 
 bool
 BsonFinish(BSON *b)
@@ -369,9 +356,8 @@ JsonTokenerPrase(char *s)
 bool
 JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 {
-	bool		status;
+	bool		status = true;
 
-	status = true;
 	if (!v)
 	{
 		bson_append_null(bb, k);
@@ -383,22 +369,18 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 		case json_type_int:
 			bson_append_int(bb, k, json_object_get_int(v));
 			break;
-
 		case json_type_boolean:
 			bson_append_bool(bb, k, json_object_get_boolean(v));
 			break;
-
 		case json_type_double:
 			bson_append_double(bb, k, json_object_get_double(v));
 			break;
-
 		case json_type_string:
 			bson_append_string(bb, k, json_object_get_string(v));
 			break;
-
 		case json_type_object:
 			{
-				struct json_object *joj = NULL;
+				struct json_object *joj;
 
 				joj = json_object_object_get(v, "$oid");
 
@@ -423,13 +405,11 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 
 				{
 					json_object_object_foreach(v, kk, vv)
-					{
 						JsonToBsonAppendElement(bb, kk, vv);
-					}
 				}
 				bson_append_finish_object(bb);
-				break;
 			}
+			break;
 		case json_type_array:
 			{
 				int			i;
@@ -439,25 +419,28 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 				for (i = 0; i < json_object_array_length(v); i++)
 				{
 					sprintf(buf, "%d", i);
-					JsonToBsonAppendElement(bb, buf, json_object_array_get_idx(v, i));
+					JsonToBsonAppendElement(bb, buf,
+											json_object_array_get_idx(v, i));
 				}
 				bson_append_finish_object(bb);
-				break;
 			}
+			break;
 		default:
-			ereport(ERROR, (errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
-							errmsg("can't handle type for : %s", json_object_to_json_string(v))));
+			ereport(ERROR,
+					(errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+					 errmsg("can't handle type for : %s",
+							json_object_to_json_string(v))));
 	}
+
 	return status;
 }
 
-
 double
-MongoAggregateCount(MONGO_CONN *conn, const char *database, const char *collection, const BSON *b)
+MongoAggregateCount(MONGO_CONN *conn, const char *database,
+					const char *collection, const BSON *b)
 {
 	return mongo_count(conn, database, collection, b);
 }
-
 
 void
 BsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer)
@@ -495,29 +478,9 @@ BsonIterValue(BSON_ITERATOR *i)
 	return bson_iterator_value(i);
 }
 
-void
-BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
-{
-	if (isArray)
-		DumpJsonArray(output, iter);
-	else
-		DumpJsonObject(output, iter);
-}
-
-void
-DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
-{
-
-}
-
-void
-DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
-{
-
-}
-
 char *
 BsonAsJson(const BSON *bsonDocument)
 {
-	elog(ERROR, "Full document retrival only available in MongoC meta driver");
+	ereport(ERROR,
+			(errmsg("full document retrival only available in MongoC meta driver")));
 }

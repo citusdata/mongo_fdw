@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * mongo_wrapper.h
- * 		Foreign-data wrapper for remote MongoDB servers
+ * 		Wrapper functions for remote MongoDB servers
  *
  * Portions Copyright (c) 2012-2014, PostgreSQL Global Development Group
  * Portions Copyright (c) 2004-2020, EnterpriseDB Corporation.
@@ -15,9 +15,7 @@
 #ifndef MONGO_WRAPPER_H
 #define MONGO_WRAPPER_H
 
-
 #include "mongo_fdw.h"
-#include "bson.h"
 
 #ifdef META_DRIVER
 #include "mongoc.h"
@@ -26,26 +24,27 @@
 #endif
 #define json_object json_object_tmp
 
-#include <bson.h>
 #include <json.h>
 #include <bits.h>
 
 #ifdef META_DRIVER
-MONGO_CONN *MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password,
-						 char *authenticationDatabase, char *replicaSet, char *readPreference, bool ssl, char *pem_file, char *pem_pwd, char *ca_file,
-						 char *ca_dir, char *crl_file, bool weak_cert_validation);
+MONGO_CONN *MongoConnect(MongoFdwOptions *opt);
 #else
-MONGO_CONN *MongoConnect(const char *host, const unsigned short port, char *databaseName, char *user, char *password);
+MONGO_CONN *MongoConnect(MongoFdwOptions *opt);
 #endif
 void MongoDisconnect(MONGO_CONN *conn);
 bool MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b);
-bool MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b, BSON *op);
-bool MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b);
-MONGO_CURSOR *MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q);
+bool MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
+				 BSON *op);
+bool MongoDelete(MONGO_CONN *conn, char *database, char *collection,
+				 BSON *b);
+MONGO_CURSOR *MongoCursorCreate(MONGO_CONN *conn, char *database,
+								char *collection, BSON *q);
 const BSON *MongoCursorBson(MONGO_CURSOR *c);
 bool MongoCursorNext(MONGO_CURSOR *c, BSON *b);
 void MongoCursorDestroy(MONGO_CURSOR *c);
-double MongoAggregateCount(MONGO_CONN *conn, const char *database, const char *collection, const BSON *b);
+double MongoAggregateCount(MONGO_CONN *conn, const char *database,
+						   const char *collection, const BSON *b);
 
 BSON *BsonCreate(void);
 void BsonDestroy(BSON *b);
@@ -68,7 +67,7 @@ const bson_oid_t *BsonIterOid(BSON_ITERATOR *it);
 #else
 bson_oid_t *BsonIterOid(BSON_ITERATOR *it);
 #endif
-time_t	BsonIterDate(BSON_ITERATOR *it);
+time_t BsonIterDate(BSON_ITERATOR *it);
 int	BsonIterType(BSON_ITERATOR *it);
 int	BsonIterNext(BSON_ITERATOR *it);
 bool BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub);
@@ -84,7 +83,6 @@ const char *BsonIterValue(BSON_ITERATOR *i);
 #endif
 
 void BsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer);
-
 
 BSON *BsonCreate();
 bool BsonAppendOid(BSON *b, const char *key, bson_oid_t *v);
@@ -107,10 +105,10 @@ json_object *JsonTokenerPrase(char *s);
 
 char *BsonAsJson(const BSON *bsonDocument);
 
-void BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray);
+void BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter,
+						   bool isArray);
 void DumpJsonObject(StringInfo output, BSON_ITERATOR *iter);
 void DumpJsonArray(StringInfo output, BSON_ITERATOR *iter);
 
 
-
-#endif
+#endif					/* MONGO_QUERY_H */
