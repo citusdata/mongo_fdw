@@ -141,6 +141,9 @@ execute test_where_pd(9);
 ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.5');
 -- Should fail with an error
 INSERT INTO test_numbers VALUES ('11', 11, 'Eleven');
+UPDATE test_numbers SET a = 11 WHERE a = 10;
+DELETE FROM test_numbers WHERE a = 10;
+SELECT * FROM test_numbers;
 -- Set correct address for mongo_server
 ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.1');
 -- Should able to insert the data
@@ -152,6 +155,9 @@ DROP USER MAPPING FOR postgres SERVER mongo_server;
 CREATE USER MAPPING FOR postgres SERVER mongo_server OPTIONS (username 'wrong', password 'wrong');
 -- Should fail with an error
 INSERT INTO test_numbers VALUES ('13', 13, 'Thirteen');
+UPDATE test_numbers SET a = 11 WHERE a = 10;
+DELETE FROM test_numbers WHERE a = 10;
+SELECT * FROM test_numbers;
 -- Set default username, password for postgres user
 DROP USER MAPPING FOR postgres SERVER mongo_server;
 CREATE USER MAPPING FOR postgres SERVER mongo_server;

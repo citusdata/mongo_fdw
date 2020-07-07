@@ -156,6 +156,25 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 #endif
 	}
 
+#ifdef META_DRIVER
+	/* Check if the existing or new connection is reachable/active or not? */
+	if (entry->conn != NULL)
+	{
+		bson_error_t error;
+		bool 		retval;
+		bson_t 	   *command;
+
+		/* Ping the database using "ping" command */
+		command = BCON_NEW("ping", BCON_INT32 (1));
+		retval = mongoc_client_command_simple(entry->conn, opt->svr_database,
+											  command, NULL, NULL, &error);
+		if (!retval)
+			ereport(ERROR,
+					(errmsg("could not connect to server %s",
+							server->servername),
+					 errhint("Mongo error: \"%s\"", error.message)));
+	}
+#endif
 	return entry->conn;
 }
 

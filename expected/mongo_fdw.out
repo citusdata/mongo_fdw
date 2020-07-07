@@ -780,7 +780,16 @@ execute test_where_pd(9);
 ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.5');
 -- Should fail with an error
 INSERT INTO test_numbers VALUES ('11', 11, 'Eleven');
-ERROR:  failed to insert row
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+UPDATE test_numbers SET a = 11 WHERE a = 10;
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+DELETE FROM test_numbers WHERE a = 10;
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+SELECT * FROM test_numbers;
+ERROR:  could not connect to server mongo_server
 HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
 -- Set correct address for mongo_server
 ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.1');
@@ -792,7 +801,16 @@ DROP USER MAPPING FOR postgres SERVER mongo_server;
 CREATE USER MAPPING FOR postgres SERVER mongo_server OPTIONS (username 'wrong', password 'wrong');
 -- Should fail with an error
 INSERT INTO test_numbers VALUES ('13', 13, 'Thirteen');
-ERROR:  failed to insert row
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "Authentication failed."
+UPDATE test_numbers SET a = 11 WHERE a = 10;
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "Authentication failed."
+DELETE FROM test_numbers WHERE a = 10;
+ERROR:  could not connect to server mongo_server
+HINT:  Mongo error: "Authentication failed."
+SELECT * FROM test_numbers;
+ERROR:  could not connect to server mongo_server
 HINT:  Mongo error: "Authentication failed."
 -- Set default username, password for postgres user
 DROP USER MAPPING FOR postgres SERVER mongo_server;

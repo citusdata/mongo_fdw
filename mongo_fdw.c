@@ -733,6 +733,10 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 	bool		isvarlena = false;
 	ListCell   *lc;
 	Oid			foreignTableId;
+	Oid			userid;
+	ForeignServer *server;
+	UserMapping *user;
+	ForeignTable *table;
 
 	/*
 	 * Do nothing in EXPLAIN (no ANALYZE) case.  resultRelInfo->ri_FdwState
@@ -742,12 +746,25 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 		return;
 
 	foreignTableId = RelationGetRelid(rel);
+	userid = GetUserId();
+
+	/* Get info about foreign table. */
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(userid, server->serverid);
 
 	/* Begin constructing MongoFdwModifyState. */
 	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 
 	fmstate->rel = rel;
 	fmstate->options = mongo_get_options(foreignTableId);
+
+	/*
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
+	 */
+	fmstate->mongoConnection = mongo_get_connection(server, user,
+													fmstate->options);
 
 	fmstate->target_attrs = (List *) list_nth(fdw_private, 0);
 
@@ -787,39 +804,17 @@ MongoExecForeignInsert(EState *estate,
 					   TupleTableSlot *slot,
 					   TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options;
-	MONGO_CONN *mongoConnection;
-	Oid			foreignTableId = InvalidOid;
 	BSON	   *bsonDoc;
 	Oid			typoid;
 	Datum		value;
 	bool		isnull = false;
-	Oid			userid;
-	ForeignServer *server;
-	UserMapping *user;
-	ForeignTable *table;
 	MongoFdwModifyState *fmstate;
 
 	fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
-	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-
-	userid = GetUserId();
-
-	/* Get info about foreign table. */
-	table = GetForeignTable(RelationGetRelid(fmstate->rel));
-	server = GetForeignServer(table->serverid);
-	user = GetUserMapping(userid, server->serverid);
-
-	/*
-	 * Get connection to the foreign server.  Connection manager will
-	 * establish new connection if necessary.
-	 */
-	options = fmstate->options;
-	mongoConnection = mongo_get_connection(server, user, options);
 
 	bsonDoc = BsonCreate();
 
-	typoid = get_atttype(foreignTableId, 1);
+	typoid = get_atttype(RelationGetRelid(resultRelInfo->ri_RelationDesc), 1);
 
 	/* Get following parameters from slot */
 	if (slot != NULL && fmstate->target_attrs != NIL)
@@ -875,8 +870,8 @@ MongoExecForeignInsert(EState *estate,
 	BsonFinish(bsonDoc);
 
 	/* Now we are ready to insert tuple/document into MongoDB */
-	MongoInsert(mongoConnection, options->svr_database,
-				options->collectionName, bsonDoc);
+	MongoInsert(fmstate->mongoConnection, fmstate->options->svr_database,
+				fmstate->options->collectionName, bsonDoc);
 
 	BsonDestroy(bsonDoc);
 
@@ -934,8 +929,6 @@ MongoExecForeignUpdate(EState *estate,
 					   TupleTableSlot *slot,
 					   TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options;
-	MONGO_CONN *mongoConnection;
 	Datum		datum;
 	bool		isNull = false;
 	Oid			foreignTableId;
@@ -944,28 +937,10 @@ MongoExecForeignUpdate(EState *estate,
 	BSON	   *document;
 	BSON	   *op = NULL;
 	BSON		set;
-	Oid			userid = GetUserId();
-	ForeignServer *server;
-	UserMapping *user;
-	ForeignTable *table;
 	MongoFdwModifyState *fmstate;
 
 	fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-
-	/* Resolve foreign table options; and connect to mongo server */
-	options = fmstate->options;
-
-	/* Get info about foreign table. */
-	table = GetForeignTable(foreignTableId);
-	server = GetForeignServer(table->serverid);
-	user = GetUserMapping(userid, server->serverid);
-
-	/*
-	 * Get connection to the foreign server.  Connection manager will
-	 * establish new connection if necessary.
-	 */
-	mongoConnection = mongo_get_connection(server, user, options);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -1026,8 +1001,8 @@ MongoExecForeignUpdate(EState *estate,
 	BsonFinish(op);
 
 	/* We are ready to update the row into MongoDB */
-	MongoUpdate(mongoConnection, options->svr_database,
-				options->collectionName, op, document);
+	MongoUpdate(fmstate->mongoConnection, fmstate->options->svr_database,
+				fmstate->options->collectionName, op, document);
 
 	BsonDestroy(op);
 	BsonDestroy(document);
@@ -1046,37 +1021,17 @@ MongoExecForeignDelete(EState *estate,
 					   TupleTableSlot *slot,
 					   TupleTableSlot *planSlot)
 {
-	MongoFdwOptions *options;
-	MONGO_CONN *mongoConnection;
 	Datum		datum;
 	bool		isNull = false;
 	Oid			foreignTableId;
 	char	   *columnName = NULL;
 	Oid			typoid;
 	BSON	   *document;
-	Oid			userid = GetUserId();
-	ForeignServer *server;
-	UserMapping *user;
-	ForeignTable *table;
 	MongoFdwModifyState *fmstate;
 
 	fmstate = (MongoFdwModifyState *) resultRelInfo->ri_FdwState;
 
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
-
-	/* Resolve foreign table options; and connect to mongo server */
-	options = fmstate->options;
-
-	/* Get info about foreign table. */
-	table = GetForeignTable(foreignTableId);
-	server = GetForeignServer(table->serverid);
-	user = GetUserMapping(userid, server->serverid);
-
-	/*
-	 * Get connection to the foreign server.  Connection manager will
-	 * establish new connection if necessary.
-	 */
-	mongoConnection = mongo_get_connection(server, user, options);
 
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
@@ -1098,8 +1053,8 @@ MongoExecForeignDelete(EState *estate,
 	BsonFinish(document);
 
 	/* Now we are ready to delete a single document from MongoDB */
-	MongoDelete(mongoConnection, options->svr_database,
-				options->collectionName, document);
+	MongoDelete(fmstate->mongoConnection, fmstate->options->svr_database,
+				fmstate->options->collectionName, document);
 
 	BsonDestroy(document);
 
