@@ -164,6 +164,14 @@ CREATE USER MAPPING FOR postgres SERVER mongo_server;
 -- Should able to insert the data
 INSERT INTO test_numbers VALUES ('14', 14, 'Fourteen');
 
+-- FDW-158: Fix server crash when analyzing a foreign table.
+SELECT reltuples FROM pg_class WHERE relname = 'test_numbers';
+ANALYZE test_numbers;
+-- Should give correct number of rows now.
+SELECT reltuples FROM pg_class WHERE relname = 'test_numbers';
+-- Check with this...
+SELECT count(*) FROM test_numbers;
+
 DELETE FROM test_numbers;
 DROP FOREIGN TABLE test_numbers;
 

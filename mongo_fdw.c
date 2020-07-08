@@ -1983,6 +1983,7 @@ MongoAcquireSampleRows(Relation relation,
 					   double *totalRowCount,
 					   double *totalDeadRowCount)
 {
+	MONGO_CONN *mongoConnection;
 	int			sampleRowCount = 0;
 	double		rowCount = 0;
 	double		rowCountToSkip = -1;	/* -1 means not set yet */
@@ -1997,14 +1998,13 @@ MongoAcquireSampleRows(Relation relation,
 	MONGO_CURSOR *mongoCursor;
 	BSON	   *queryDocument;
 	List	   *columnList = NIL;
-	ForeignScanState *scanState;
-	List	   *foreignPrivateList;
-	ForeignScan *foreignScan;
-	MongoFdwModifyState *fmstate;
 	char	   *relationName;
-	int			executorFlags = 0;
 	MemoryContext oldContext = CurrentMemoryContext;
 	MemoryContext tupleContext;
+	MongoFdwOptions *options;
+	ForeignServer *server;
+	UserMapping *user;
+	ForeignTable *table;
 
 	/* Create list of columns in the relation */
 	tupleDescriptor = RelationGetDescr(relation);
@@ -2029,27 +2029,23 @@ MongoAcquireSampleRows(Relation relation,
 		columnList = lappend(columnList, column);
 	}
 
-	/* Create state structure */
-	scanState = makeNode(ForeignScanState);
-	scanState->ss.ss_currentRelation = relation;
-
 	foreignTableId = RelationGetRelid(relation);
+	table = GetForeignTable(foreignTableId);
+	server = GetForeignServer(table->serverid);
+	user = GetUserMapping(GetUserId(), server->serverid);
+	options = mongo_get_options(foreignTableId);
+
+	/*
+	 * Get connection to the foreign server.  Connection manager will establish
+	 * new connection if necessary.
+	 */
+	mongoConnection = mongo_get_connection(server, user, options);
+
 	queryDocument = QueryDocument(foreignTableId, NIL, NULL);
-	foreignPrivateList = list_make2(columnList, NULL);
-
-	/* Only clean up the query struct, but not its data */
-	BsonDestroy(queryDocument);
-
-	foreignScan = makeNode(ForeignScan);
-	foreignScan->fdw_private = foreignPrivateList;
-
-	scanState->ss.ps.plan = (Plan *) foreignScan;
-
-	MongoBeginForeignScan(scanState, executorFlags);
-
-	fmstate = (MongoFdwModifyState *) scanState->fdw_state;
-	mongoCursor = fmstate->mongoCursor;
-	columnMappingHash = fmstate->columnMappingHash;
+	/* Create cursor for collection name and set query */
+	mongoCursor = MongoCursorCreate(mongoConnection, options->svr_database,
+									options->collectionName, queryDocument);
+	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
 
 	/*
 	 * Use per-tuple memory context to prevent leak of memory used to read
@@ -2102,23 +2098,17 @@ MongoAcquireSampleRows(Relation relation,
 			bson_error_t error;
 
 			if (mongoc_cursor_error(mongoCursor, &error))
-			{
-				MongoFreeScanState(fmstate);
 				ereport(ERROR,
 						(errmsg("could not iterate over mongo collection"),
 						 errhint("Mongo driver error: %s", error.message)));
-			}
 #else
 			mongo_cursor_error_t errorCode = mongoCursor->err;
 
 			if (errorCode != MONGO_CURSOR_EXHAUSTED)
-			{
-				MongoFreeScanState(fmstate);
 				ereport(ERROR,
 						(errmsg("could not iterate over mongo collection"),
 						 errhint("Mongo driver cursor error code: %d",
 								 errorCode)));
-			}
 #endif
 			break;
 		}
@@ -2167,9 +2157,11 @@ MongoAcquireSampleRows(Relation relation,
 		rowCount += 1;
 	}
 
+	/* Only clean up the query struct, but not its data */
+	BsonDestroy(queryDocument);
+
 	/* Clean up */
 	MemoryContextDelete(tupleContext);
-	MongoFreeScanState(fmstate);
 
 	pfree(columnValues);
 	pfree(columnNulls);
