@@ -1,0 +1,326 @@
+\set MONGO_HOST			'\'localhost\''
+\set MONGO_PORT			'\'27017\''
+\set MONGO_USER_NAME	'\'edb\''
+\set MONGO_PASS			'\'edb\''
+-- Before running this file User must create database mongo_fdw_regress and
+-- mongo_fdw_regress1 databases on MongoDB with all permission for 'edb' user
+-- with 'edb' password and ran mongodb_init.sh file to load collections.
+\c contrib_regression
+CREATE EXTENSION IF NOT EXISTS mongo_fdw;
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
+  OPTIONS (address :MONGO_HOST, port :MONGO_PORT);
+CREATE USER MAPPING FOR public SERVER mongo_server;
+-- Create foreign tables
+CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
+CREATE FOREIGN TABLE f_test_tbl1 (_id name, c1 INTEGER, c2 VARCHAR(10), c3 CHAR(9), c4 INTEGER, c5 pg_catalog.Date, c6 DECIMAL, c7 INTEGER, c8 INTEGER)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
+CREATE FOREIGN TABLE f_test_tbl2 (_id name, c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl2');
+SET datestyle TO ISO;
+-- Sample data
+SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM f_test_tbl1 ORDER BY c1;
+  c1  |  c2   |    c3     |  c4  |     c5     |   c6    |  c7  | c8 
+------+-------+-----------+------+------------+---------+------+----
+  100 | EMP1  | ADMIN     | 1300 | 1980-12-17 |   800.3 |    0 | 20
+  200 | EMP2  | SALESMAN  |  600 | 1981-02-20 |    1600 |  300 | 30
+  300 | EMP3  | SALESMAN  |  600 | 1981-02-22 |    1250 |  500 | 30
+  400 | EMP4  | MANAGER   |  900 | 1981-04-02 |    2975 |    0 | 20
+  500 | EMP5  | SALESMAN  |  600 | 1981-09-28 | 1250.23 | 1400 | 30
+  600 | EMP6  | MANAGER   |  900 | 1981-05-01 |    2850 |    0 | 30
+  700 | EMP7  | MANAGER   |  900 | 1981-06-09 | 2450.34 |    0 | 10
+  800 | EMP8  | FINANCE   |  400 | 1987-04-19 |    3000 |    0 | 20
+  900 | EMP9  | HEAD      |      | 1981-11-17 |    5000 |    0 | 10
+ 1000 | EMP10 | SALESMAN  |  600 | 1980-09-08 |    1500 |    0 | 30
+ 1100 | EMP11 | ADMIN     |  800 | 1987-05-23 |    1100 |    0 | 20
+ 1200 | EMP12 | ADMIN     |  600 | 1981-12-03 |     950 |    0 | 30
+ 1300 | EMP13 | FINANCE   |  400 | 1981-12-03 |    3000 |    0 | 20
+ 1400 | EMP14 | ADMIN     |  700 | 1982-01-23 |    1300 |    0 | 10
+(14 rows)
+
+-- WHERE clause pushdown
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
+  WHERE c6 IN (1600, 2450)
+  ORDER BY c1;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: (e.c6 = ANY ('{1600,2450}'::numeric[]))
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6 AS "salary", c8 FROM f_test_tbl1 e
+  WHERE c6 IN (1600, 2450)
+  ORDER BY c1;
+ c1  |  c2  | salary | c8 
+-----+------+--------+----
+ 200 | EMP2 |   1600 | 30
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6 FROM f_test_tbl1 e
+  WHERE c6 > 3000
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c6
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6
+         Filter: (e.c6 > '3000'::numeric)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6 FROM f_test_tbl1 e
+  WHERE c6 > 3000
+  ORDER BY c1;
+ c1  |  c2  |  c6  
+-----+------+------
+ 900 | EMP9 | 5000
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = 1500
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: (e.c6 = '1500'::numeric)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 = 1500
+  ORDER BY c1;
+  c1  |  c2   |  c6  | c8 
+------+-------+------+----
+ 1000 | EMP10 | 1500 | 30
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 BETWEEN 1000 AND 4000
+  ORDER BY c1;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: ((e.c6 >= '1000'::numeric) AND (e.c6 <= '4000'::numeric))
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c6 BETWEEN 1000 AND 4000
+  ORDER BY c1;
+  c1  |  c2   |   c6    | c8 
+------+-------+---------+----
+  200 | EMP2  |    1600 | 30
+  300 | EMP3  |    1250 | 30
+  400 | EMP4  |    2975 | 20
+  500 | EMP5  | 1250.23 | 30
+  600 | EMP6  |    2850 | 30
+  700 | EMP7  | 2450.34 | 10
+  800 | EMP8  |    3000 | 20
+ 1000 | EMP10 |    1500 | 30
+ 1100 | EMP11 |    1100 | 20
+ 1300 | EMP13 |    3000 | 20
+ 1400 | EMP14 |    1300 | 10
+(11 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 IS NOT NULL
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c4, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c4, c6, c8
+         Filter: (e.c4 IS NOT NULL)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c4, c6, c8 FROM f_test_tbl1 e
+  WHERE c4 IS NOT NULL
+  ORDER BY c1;
+  c1  |  c2   |  c4  |   c6    | c8 
+------+-------+------+---------+----
+  100 | EMP1  | 1300 |   800.3 | 20
+  200 | EMP2  |  600 |    1600 | 30
+  300 | EMP3  |  600 |    1250 | 30
+  400 | EMP4  |  900 |    2975 | 20
+  500 | EMP5  |  600 | 1250.23 | 30
+  600 | EMP6  |  900 |    2850 | 30
+  700 | EMP7  |  900 | 2450.34 | 10
+  800 | EMP8  |  400 |    3000 | 20
+ 1000 | EMP10 |  600 |    1500 | 30
+ 1100 | EMP11 |  800 |    1100 | 20
+ 1200 | EMP12 |  600 |     950 | 30
+ 1300 | EMP13 |  400 |    3000 | 20
+ 1400 | EMP14 |  700 |    1300 | 10
+(13 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17'
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c5
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c5
+         Filter: (e.c5 <= '1980-12-17'::date)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17'
+  ORDER BY c1;
+  c1  |  c2   |     c5     
+------+-------+------------
+  100 | EMP1  | 1980-12-17
+ 1000 | EMP10 | 1980-09-08
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
+  ORDER BY c1;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: ((e.c2)::text = ANY ('{EMP6,EMP12,EMP5}'::text[]))
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c2 IN ('EMP6', 'EMP12', 'EMP5')
+  ORDER BY c1;
+  c1  |  c2   |   c6    | c8 
+------+-------+---------+----
+  500 | EMP5  | 1250.23 | 30
+  600 | EMP6  |    2850 | 30
+ 1200 | EMP12 |     950 | 30
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c3 LIKE 'SALESMAN'
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: (e.c3 ~~ 'SALESMAN'::text)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c3 LIKE 'SALESMAN'
+  ORDER BY c1;
+ c1 | c2 | c6 | c8 
+----+----+----+----
+(0 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c3 LIKE 'MANA%'
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c2, c6, c8
+   Sort Key: e.c1
+   ->  Foreign Scan on public.f_test_tbl1 e
+         Output: c1, c2, c6, c8
+         Filter: (e.c3 ~~ 'MANA%'::text)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
+  WHERE c3 LIKE 'MANA%'
+  ORDER BY c1;
+ c1  |  c2  |   c6    | c8 
+-----+------+---------+----
+ 400 | EMP4 |    2975 | 20
+ 600 | EMP6 |    2850 | 30
+ 700 | EMP7 | 2450.34 | 10
+(3 rows)
+
+-- Pushdown in prepared statement.
+INSERT INTO f_mongo_test VALUES ('0', 1, 'One');
+INSERT INTO f_mongo_test VALUES ('0', 2, 'Two');
+INSERT INTO f_mongo_test VALUES ('0', 3, 'Three');
+PREPARE pre_stmt_f_mongo_test(int) AS
+  SELECT b FROM f_mongo_test WHERE a = $1 ORDER BY b;
+EXPLAIN (VERBOSE, COSTS FALSE)
+EXECUTE pre_stmt_f_mongo_test(1);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Output: b
+   Sort Key: f_mongo_test.b
+   ->  Foreign Scan on public.f_mongo_test
+         Output: b
+         Filter: (f_mongo_test.a = 1)
+         Foreign Namespace: mongo_fdw_regress.mongo_test
+(7 rows)
+
+EXECUTE pre_stmt_f_mongo_test(1);
+  b  
+-----
+ One
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+EXECUTE pre_stmt_f_mongo_test(2);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Output: b
+   Sort Key: f_mongo_test.b
+   ->  Foreign Scan on public.f_mongo_test
+         Output: b
+         Filter: (f_mongo_test.a = 2)
+         Foreign Namespace: mongo_fdw_regress.mongo_test
+(7 rows)
+
+EXECUTE pre_stmt_f_mongo_test(2);
+  b  
+-----
+ Two
+(1 row)
+
+-- Cleanup
+DELETE FROM f_mongo_test WHERE a != 0;
+DROP FOREIGN TABLE f_mongo_test;
+DROP FOREIGN TABLE f_test_tbl1;
+DROP FOREIGN TABLE f_test_tbl2;
+DROP USER MAPPING FOR public SERVER mongo_server;
+DROP SERVER mongo_server;
+DROP EXTENSION mongo_fdw;

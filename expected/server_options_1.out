@@ -1,0 +1,93 @@
+\set MONGO_HOST			'\'localhost\''
+\set MONGO_PORT			'\'27017\''
+\set MONGO_USER_NAME	'\'edb\''
+\set MONGO_PASS			'\'edb\''
+-- Before running this file User must create database mongo_fdw_regress and
+-- mongo_fdw_regress1 databases on MongoDB with all permission for 'edb' user
+-- with 'edb' password and ran mongodb_init.sh file to load collections.
+\c contrib_regression
+CREATE EXTENSION IF NOT EXISTS mongo_fdw;
+NOTICE:  extension "mongo_fdw" already exists, skipping
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
+  OPTIONS (address :MONGO_HOST, port :MONGO_PORT);
+CREATE USER MAPPING FOR public SERVER mongo_server;
+-- Validate extension, server and mapping details
+SELECT e.fdwname AS "Extension", srvname AS "Server", s.srvoptions AS "Server_Options", u.umoptions AS "User_Mapping_Options"
+  FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
+  WHERE e.fdwname = 'mongo_fdw'
+  ORDER BY 1, 2, 3, 4;
+ Extension |    Server    |         Server_Options         | User_Mapping_Options 
+-----------+--------------+--------------------------------+----------------------
+ mongo_fdw | mongo_server | {address=localhost,port=27017} | 
+(1 row)
+
+-- Create foreign tables and perform basic SQL operations
+CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+(1 row)
+
+INSERT INTO f_mongo_test VALUES ('0', 2, 'mongo_test insert');
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+ 2 | mongo_test insert
+(2 rows)
+
+UPDATE f_mongo_test SET b = 'mongo_test update' WHERE a = 2;
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+ 2 | mongo_test update
+(2 rows)
+
+DELETE FROM f_mongo_test WHERE a = 2;
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+(1 row)
+
+DROP FOREIGN TABLE f_mongo_test;
+DROP USER MAPPING FOR public SERVER mongo_server;
+DROP SERVER mongo_server;
+-- Create server with authentication_database option
+-- authentication_database options is not supported with legacy driver
+-- so below queries will fail when compiled with legacy driver.
+CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
+  OPTIONS (address :MONGO_HOST, port :MONGO_PORT, authentication_database 'NOT_EXIST_DB');
+ERROR:  invalid option "authentication_database"
+HINT:  Valid options in this context are: address, port.
+CREATE USER MAPPING FOR public SERVER mongo_server
+  OPTIONS (username :MONGO_USER_NAME, password :MONGO_PASS);
+ERROR:  server "mongo_server" does not exist
+CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
+ERROR:  server "mongo_server" does not exist
+-- Below query will fail with authentication error as user cannot be
+-- authenticated against given authentication_database.
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ERROR:  relation "f_mongo_test" does not exist
+LINE 1: SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+                         ^
+-- Now changed to valid authentication_database so select query should work.
+ALTER SERVER mongo_server
+  OPTIONS (SET authentication_database 'mongo_fdw_regress');
+ERROR:  server "mongo_server" does not exist
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ERROR:  relation "f_mongo_test" does not exist
+LINE 1: SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+                         ^
+-- Cleanup
+DROP FOREIGN TABLE f_mongo_test;
+ERROR:  foreign table "f_mongo_test" does not exist
+DROP USER MAPPING FOR public SERVER mongo_server;
+ERROR:  server "mongo_server" does not exist
+DROP SERVER mongo_server;
+ERROR:  server "mongo_server" does not exist
+DROP EXTENSION mongo_fdw;

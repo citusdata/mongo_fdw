@@ -1,0 +1,14 @@
+[
+	{
+		"_id" : {"$oid": "58a1ebbaf543ec0b90545859"},
+		"warehouse_id" : 1,
+		"warehouse_name" : "UPS",
+		"warehouse_created" : {"$date": 1418368330000}
+	},
+	{
+		"_id" : {"$oid": "58a1ebbaf543ec0b9054585a"},
+		"warehouse_id" : 2,
+		"warehouse_name" : "Laptop",
+		"warehouse_created" : {"$date": 1447229590000}
+	}
+]
