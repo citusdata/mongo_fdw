@@ -53,9 +53,9 @@ PG_MODULE_MAGIC;
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 5.1.0 so number will be 50100
+ * our version is 5.2.7 so number will be 50207
  */
-#define CODE_VERSION   50201
+#define CODE_VERSION   50207
 
 extern PGDLLEXPORT void _PG_init(void);
 const char *EscapeJsonString(const char *string);

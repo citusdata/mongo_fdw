@@ -14,6 +14,9 @@ CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
   OPTIONS (address :MONGO_HOST, port :MONGO_PORT);
 CREATE USER MAPPING FOR public SERVER mongo_server;
 
+-- Check version
+SELECT mongo_fdw_version();
+
 -- Create foreign tables
 CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
