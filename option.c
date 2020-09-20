@@ -81,7 +81,16 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 
 		/* If port option is given, error out if its value isn't an integer */
 		if (strncmp(optionName, OPTION_NAME_PORT, NAMEDATALEN) == 0)
-			(void) pg_atoi(defGetString(optionDef), sizeof(int32), 0);
+		{
+			int32 		port;
+
+			port = pg_atoi(defGetString(optionDef), sizeof(int32), 0);
+			if (port < 0 || port > USHRT_MAX)
+				ereport(ERROR,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						 errmsg("port value \"%d\" is out of range for type %s",
+								port, "unsigned short")));
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -175,7 +184,17 @@ mongo_get_options(Oid foreignTableId)
 	if (portName == NULL)
 		options->svr_port = DEFAULT_PORT_NUMBER;
 	else
-		options->svr_port = pg_atoi(portName, sizeof(int32), 0);
+	{
+		int32		port;
+
+		port = pg_atoi(portName, sizeof(int32), 0);
+		if (port < 0 || port > USHRT_MAX)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("port value \"%d\" is out of range for type %s",
+							port, "unsigned short")));
+		options->svr_port = (unsigned short) port;
+	}
 
 	options->svr_database = mongo_get_option_value(optionList,
 												   OPTION_NAME_DATABASE);

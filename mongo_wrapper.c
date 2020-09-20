@@ -31,14 +31,15 @@ MongoConnect(MongoFdwOptions *opt)
 	conn = mongo_alloc();
 	mongo_init(conn);
 
-	if (mongo_connect(conn, opt->svr_address, opt->svr_port) != MONGO_OK)
+	if (mongo_connect(conn, opt->svr_address,
+					  (int32) opt->svr_port) != MONGO_OK)
 	{
 		int			err = conn->err;
 
 		mongo_destroy(conn);
 		mongo_dealloc(conn);
 		ereport(ERROR,
-				(errmsg("could not connect to %s:%d", opt->svr_address,
+				(errmsg("could not connect to %s:%hu", opt->svr_address,
 						opt->svr_port),
 				 errhint("Mongo driver connection error: %d.", err)));
 	}
@@ -52,7 +53,7 @@ MongoConnect(MongoFdwOptions *opt)
 			mongo_destroy(conn);
 			mongo_dealloc(conn);
 			ereport(ERROR,
-					(errmsg("could not connect to %s:%d", opt->svr_address,
+					(errmsg("could not connect to %s:%hu", opt->svr_address,
 							opt->svr_port),
 					 errhint("Mongo driver connection error: %s", str)));
 		}

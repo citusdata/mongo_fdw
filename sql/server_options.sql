@@ -13,6 +13,11 @@ CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
   OPTIONS (address :MONGO_HOST, port :MONGO_PORT);
 CREATE USER MAPPING FOR public SERVER mongo_server;
 
+-- Port outside ushort range. Error.
+CREATE SERVER mongo_server1 FOREIGN DATA WRAPPER mongo_fdw
+  OPTIONS (address :MONGO_HOST, port '65537');
+ALTER SERVER mongo_server OPTIONS (SET port '65537');
+
 -- Validate extension, server and mapping details
 SELECT e.fdwname AS "Extension", srvname AS "Server", s.srvoptions AS "Server_Options", u.umoptions AS "User_Mapping_Options"
   FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
