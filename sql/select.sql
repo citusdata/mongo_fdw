@@ -18,7 +18,7 @@ CREATE USER MAPPING FOR public SERVER mongo_server;
 SELECT mongo_fdw_version();
 
 -- Create foreign tables
-CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
+CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b text)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
 CREATE FOREIGN TABLE f_test_tbl1 (_id NAME, c1 INTEGER, c2 VARCHAR(10), c3 CHAR(9),c4 INTEGER, c5 pg_catalog.Date, c6 DECIMAL, c7 INTEGER, c8 INTEGER)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
@@ -222,10 +222,27 @@ $$ LANGUAGE plpgsql;
 
 SELECT test_param_where();
 
+-- FDW-103: Parameter expression should work correctly with WHERE clause.
+SELECT a, b FROM f_mongo_test WHERE a = (SELECT 2) ORDER BY a;
+SELECT a, b FROM f_mongo_test WHERE b = (SELECT 'Seven'::text) ORDER BY a;
+-- Create local table and load data into it.
+CREATE TABLE l_mongo_test AS SELECT a, b FROM f_mongo_test;
+-- Check correlated query.
+SELECT a, b FROM l_mongo_test lt
+  WHERE lt.b = (SELECT b FROM f_mongo_test ft WHERE lt.b = ft.b)
+  ORDER BY a;
+SELECT a, b FROM l_mongo_test lt
+  WHERE lt.a = (SELECT a FROM f_mongo_test ft WHERE lt.a = ft.a)
+  ORDER BY a;
+SELECT c1, c8 FROM f_test_tbl1 ft1
+  WHERE ft1.c8 = (SELECT c1 FROM f_test_tbl2 ft2 WHERE ft1.c8 = ft2.c1)
+  ORDER BY c1 LIMIT 2;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
 DROP TABLE l_test_tbl2;
+DROP TABLE l_mongo_test;
 DROP VIEW smpl_vw;
 DROP VIEW comp_vw;
 DROP VIEW temp_vw;

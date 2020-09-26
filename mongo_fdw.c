@@ -358,7 +358,6 @@ MongoGetForeignPlan(PlannerInfo *root,
 	ForeignScan *foreignScan;
 	List	   *foreignPrivateList;
 	List	   *opExpressionList;
-	BSON	   *queryDocument;
 	List	   *columnList;
 
 	/*
@@ -371,23 +370,16 @@ MongoGetForeignPlan(PlannerInfo *root,
 	restrictionClauses = extract_actual_clauses(restrictionClauses, false);
 
 	/*
-	 * We construct the query document to have MongoDB filter its rows. We
-	 * could also construct a column name document here to retrieve only the
-	 * needed columns. However, we found this optimization to degrade
-	 * performance on the MongoDB server-side, so we instead filter out
-	 * columns on our side.
+	 * Find the foreign relation's clauses, which can be transformed to
+	 * equivalent MongoDB queries.
 	 */
 	opExpressionList = ApplicableOpExpressionList(foreignrel);
-	queryDocument = QueryDocument(foreigntableid, opExpressionList, NULL);
 
 	/* We don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(foreignrel);
 
 	/* Construct foreign plan with query document and column list */
 	foreignPrivateList = list_make2(columnList, opExpressionList);
-
-	/* Only clean up the query struct */
-	BsonDestroy(queryDocument);
 
 	/* Create the foreign scan node */
 	foreignScan = make_foreignscan(targetList, restrictionClauses,
@@ -464,16 +456,12 @@ static void
 MongoBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	MONGO_CONN *mongoConnection;
-	MONGO_CURSOR *mongoCursor;
 	Oid			foreignTableId;
 	List	   *columnList;
 	HTAB	   *columnMappingHash;
-	ForeignScan *foreignScan;
 	List	   *foreignPrivateList;
-	BSON	   *queryDocument;
 	MongoFdwOptions *options;
 	MongoFdwModifyState *fmstate;
-	List	   *opExpressionList;
 	RangeTblEntry *rte;
 	EState	   *estate = node->ss.ps.state;
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
@@ -510,26 +498,16 @@ MongoBeginForeignScan(ForeignScanState *node, int eflags)
 	 */
 	mongoConnection = mongo_get_connection(server, user, options);
 
-	foreignScan = (ForeignScan *) node->ss.ps.plan;
-	foreignPrivateList = foreignScan->fdw_private;
+	foreignPrivateList = fsplan->fdw_private;
 	Assert(list_length(foreignPrivateList) == 2);
 
 	columnList = list_nth(foreignPrivateList, 0);
-	opExpressionList = list_nth(foreignPrivateList, 1);
-
-	queryDocument = QueryDocument(foreignTableId, opExpressionList, node);
 
 	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
-
-	/* Create cursor for collection name and set query */
-	mongoCursor = MongoCursorCreate(mongoConnection, options->svr_database,
-									options->collectionName, queryDocument);
 
 	/* Create and set foreign execution state */
 	fmstate->columnMappingHash = columnMappingHash;
 	fmstate->mongoConnection = mongoConnection;
-	fmstate->mongoCursor = mongoCursor;
-	fmstate->queryDocument = queryDocument;
 	fmstate->options = options;
 
 	node->fdw_state = (void *) fmstate;
@@ -537,9 +515,11 @@ MongoBeginForeignScan(ForeignScanState *node, int eflags)
 
 /*
  * MongoIterateForeignScan
- * 		Reads the next document from MongoDB, converts it to a PostgreSQL tuple
- * 		and stores the converted tuple into the ScanTupleSlot as a virtual
- * 		tuple.
+ *		Opens a Mongo cursor that uses the database name, collection name, and
+ *		the remote query to send to the server.
+ *
+ *	Reads the next document from MongoDB, converts it to a PostgreSQL tuple,
+ *	and stores the converted tuple into the ScanTupleSlot as a virtual tuple.
  */
 static TupleTableSlot *
 MongoIterateForeignScan(ForeignScanState *node)
@@ -548,10 +528,43 @@ MongoIterateForeignScan(ForeignScanState *node)
 	TupleTableSlot *tupleSlot = node->ss.ss_ScanTupleSlot;
 	MONGO_CURSOR *mongoCursor = fmstate->mongoCursor;
 	HTAB	   *columnMappingHash = fmstate->columnMappingHash;
+	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	TupleDesc	tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	Datum	   *columnValues = tupleSlot->tts_values;
 	bool	   *columnNulls = tupleSlot->tts_isnull;
 	int32		columnCount = tupleDescriptor->natts;
+
+	/* Create cursor for collection name and set query */
+	if (mongoCursor == NULL)
+	{
+		Oid			foreignTableId;
+		List	   *foreignPrivateList;
+		List	   *opExpressionList;
+		BSON	   *queryDocument;
+
+		foreignPrivateList = foreignScan->fdw_private;
+		Assert(list_length(foreignPrivateList) == 2);
+
+		opExpressionList = list_nth(foreignPrivateList, 1);
+		foreignTableId = RelationGetRelid(node->ss.ss_currentRelation);
+
+		/*
+		 * We construct the query document to have MongoDB filter its rows.  We
+		 * could also construct a column name document here to retrieve only
+		 * the needed columns.  However, we found this optimization to degrade
+		 * performance on the MongoDB server-side, so we instead filter out
+		 * columns on our side.
+		 */
+		queryDocument = QueryDocument(foreignTableId, opExpressionList, node);
+
+		mongoCursor = MongoCursorCreate(fmstate->mongoConnection,
+										fmstate->options->svr_database,
+										fmstate->options->collectionName,
+										queryDocument);
+
+		/* Save mongoCursor */
+		fmstate->mongoCursor = mongoCursor;
+	}
 
 	/*
 	 * We execute the protocol to load a virtual tuple into a slot. We first
@@ -614,23 +627,13 @@ static void
 MongoReScanForeignScan(ForeignScanState *node)
 {
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) node->fdw_state;
-	MONGO_CONN *mongoConnection = fmstate->mongoConnection;
-	MongoFdwOptions *options;
-	Oid			foreignTableId;
 
 	/* Close down the old cursor */
-	MongoCursorDestroy(fmstate->mongoCursor);
-
-	/* Reconstruct full collection name */
-	foreignTableId = RelationGetRelid(node->ss.ss_currentRelation);
-	options = mongo_get_options(foreignTableId);
-
-	/* Reconstruct cursor for collection name and set query */
-	fmstate->mongoCursor = MongoCursorCreate(mongoConnection,
-											 fmstate->options->svr_database,
-											 fmstate->options->collectionName,
-											 fmstate->queryDocument);
-	mongo_free_options(options);
+	if (fmstate->mongoCursor)
+	{
+		MongoCursorDestroy(fmstate->mongoCursor);
+		fmstate->mongoCursor = NULL;
+	}
 }
 
 static List *
