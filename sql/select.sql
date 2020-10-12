@@ -238,6 +238,20 @@ SELECT c1, c8 FROM f_test_tbl1 ft1
   WHERE ft1.c8 = (SELECT c1 FROM f_test_tbl2 ft2 WHERE ft1.c8 = ft2.c1)
   ORDER BY c1 LIMIT 2;
 
+-- FDW-197: Casting target list should give correct result.
+SELECT a::float FROM f_mongo_test ORDER BY a LIMIT 2;
+SELECT a, b::varchar FROM f_mongo_test ORDER BY a LIMIT 3;
+SELECT a::float, b::varchar FROM f_mongo_test ORDER BY a LIMIT 2;
+SELECT c1, c2::text FROM f_test_tbl1 ORDER BY c1 LIMIT 2;
+SELECT a, LENGTH(b) FROM f_mongo_test ORDER BY 1 LIMIT 2;
+SELECT t1.c6::float, t1.c6::int, t1.c5::timestamptz, t1.c3::text, t2.c1::numeric, t2.c3
+  FROM f_test_tbl1 t1, f_test_tbl2 t2 WHERE t1.c8 = t2.c1
+  ORDER BY t2.c1, t1.c6 LIMIT 5;
+SELECT SUM(a::float), SUM(a % 2), a % 2 AS "a % 2"FROM f_mongo_test
+  GROUP BY a % 2 ORDER BY 2;
+SELECT (c6::float + (c1 * length(c3::text))) AS "c1 + c6", c1, c6
+  FROM f_test_tbl1 ORDER BY c1 LIMIT 5;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;

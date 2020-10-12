@@ -730,7 +730,11 @@ ColumnList(RelOptInfo *baserel)
 	ListCell   *restrictInfoCell;
 
 	/* First add the columns used in joins and projections */
-	neededColumnList = list_copy(targetColumnList);
+	neededColumnList = pull_var_clause((Node *)targetColumnList,
+#if PG_VERSION_NUM < 90600
+									   PVC_RECURSE_AGGREGATES,
+#endif
+									   PVC_RECURSE_PLACEHOLDERS);
 
 	/* Then walk over all restriction clauses, and pull up any used columns */
 	foreach(restrictInfoCell, restrictInfoList)
