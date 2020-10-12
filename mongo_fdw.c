@@ -117,6 +117,12 @@ static void MongoExplainForeignModify(ModifyTableState *mtstate,
 static bool MongoAnalyzeForeignTable(Relation relation,
 									 AcquireSampleRowsFunc *func,
 									 BlockNumber *totalpages);
+#if PG_VERSION_NUM >= 110000
+static void MongoBeginForeignInsert(ModifyTableState *mtstate,
+									ResultRelInfo *resultRelInfo);
+static void MongoEndForeignInsert(EState *estate,
+								  ResultRelInfo *resultRelInfo);
+#endif
 
 /*
  * Helper functions
@@ -201,6 +207,12 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 
 	/* Support for ANALYZE */
 	fdwRoutine->AnalyzeForeignTable = MongoAnalyzeForeignTable;
+
+#if PG_VERSION_NUM >= 110000
+	/* Partition routing and/or COPY from */
+	fdwRoutine->BeginForeignInsert = MongoBeginForeignInsert;
+	fdwRoutine->EndForeignInsert = MongoEndForeignInsert;
+#endif
 
 	PG_RETURN_POINTER(fdwRoutine);
 }
@@ -2186,3 +2198,36 @@ mongo_fdw_version(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_INT32(CODE_VERSION);
 }
+
+#if PG_VERSION_NUM >= 110000
+/*
+ * MongoBeginForeignInsert
+ * 		Prepare for an insert operation triggered by partition routing
+ * 		or COPY FROM.
+ *
+ * This is not yet supported, so raise an error.
+ */
+static void
+MongoBeginForeignInsert(ModifyTableState *mtstate,
+						ResultRelInfo *resultRelInfo)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+			 errmsg("COPY and foreign partition routing not supported in mongo_fdw")));
+}
+
+/*
+ * MongoEndForeignInsert
+ * 		BeginForeignInsert() is not yet implemented, hence we do not
+ * 		have anything to cleanup as of now. We throw an error here just
+ * 		to make sure when we do that we do not forget to cleanup
+ * 		resources.
+ */
+static void
+MongoEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
+			 errmsg("COPY and foreign partition routing not supported in mongo_fdw")));
+}
+#endif
