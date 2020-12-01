@@ -1038,6 +1038,113 @@ SELECT (c6::float + (c1 * length(c3::text))) AS "c1 + c6", c1, c6
  5250.23 | 500 | 1250.23
 (5 rows)
 
+-- FDW-249; LEFT JOIN LATERAL should not crash
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Sort
+   Output: t1.a, t1.b, t2.a, (t1.a)
+   Sort Key: t1.a
+   ->  Nested Loop Left Join
+         Output: t1.a, t1.b, t2.a, (t1.a)
+         ->  Foreign Scan on public.f_mongo_test t1
+               Output: t1._id, t1.a, t1.b
+               Foreign Namespace: mongo_fdw_regress.mongo_test
+         ->  Foreign Scan on public.f_mongo_test t2
+               Output: t2.a, t1.a
+               Filter: (t1.a = t2.a)
+               Foreign Namespace: mongo_fdw_regress.mongo_test
+(12 rows)
+
+SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+ a  |           b           | a  | t1_a 
+----+-----------------------+----+------
+  0 | mongo_test collection |  0 |    0
+  1 | One                   |  1 |    1
+  2 | Two                   |  2 |    2
+  3 | Three                 |  3 |    3
+  4 | Four                  |  4 |    4
+  5 | Five                  |  5 |    5
+  6 | Six                   |  6 |    6
+  7 | Seven                 |  7 |    7
+  8 | Eight                 |  8 |    8
+  9 | Nine                  |  9 |    9
+ 10 | Ten                   | 10 |   10
+(11 rows)
+
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 INNER JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+  c1  | c1 | t1_c8 
+------+----+-------
+  100 | 20 |    20
+  200 | 30 |    30
+  300 | 30 |    30
+  400 | 20 |    20
+  500 | 30 |    30
+  600 | 30 |    30
+  700 | 10 |    10
+  800 | 20 |    20
+  900 | 10 |    10
+ 1000 | 30 |    30
+ 1100 | 20 |    20
+ 1200 | 30 |    30
+ 1300 | 20 |    20
+ 1400 | 10 |    10
+(14 rows)
+
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM l_test_tbl1 t1 LEFT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+  c1  | c1 | t1_c8 
+------+----+-------
+  100 | 20 |    20
+  200 | 30 |    30
+  300 | 30 |    30
+  400 | 20 |    20
+  500 | 30 |    30
+  600 | 30 |    30
+  700 | 10 |    10
+  800 | 20 |    20
+  900 | 10 |    10
+ 1000 | 30 |    30
+ 1100 | 20 |    20
+ 1200 | 30 |    30
+ 1300 | 20 |    20
+ 1400 | 10 |    10
+(14 rows)
+
+SELECT c1, c2, (SELECT r FROM (SELECT c1 AS c1) x, LATERAL (SELECT c1 AS r) y)
+  FROM f_test_tbl1 ORDER BY 1, 2, 3;
+  c1  |  c2   |  r   
+------+-------+------
+  100 | EMP1  |  100
+  200 | EMP2  |  200
+  300 | EMP3  |  300
+  400 | EMP4  |  400
+  500 | EMP5  |  500
+  600 | EMP6  |  600
+  700 | EMP7  |  700
+  800 | EMP8  |  800
+  900 | EMP9  |  900
+ 1000 | EMP10 | 1000
+ 1100 | EMP11 | 1100
+ 1200 | EMP12 | 1200
+ 1300 | EMP13 | 1300
+ 1400 | EMP14 | 1400
+(14 rows)
+
+-- LATERAL JOIN with RIGHT should throw error
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 RIGHT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+ERROR:  invalid reference to FROM-clause entry for table "t1"
+LINE 2:   SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3...
+                        ^
+DETAIL:  The combining JOIN type must be INNER or LEFT for a LATERAL reference.
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;

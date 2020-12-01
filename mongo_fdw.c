@@ -340,7 +340,7 @@ MongoGetForeignPaths(PlannerInfo *root,
 												   startupCost,
 												   totalCost,
 												   NIL, /* no pathkeys */
-												   NULL,	/* no outer rel either */
+												   baserel->lateral_relids,
 #if PG_VERSION_NUM >= 90500
 												   NULL,	/* no extra plan */
 #endif

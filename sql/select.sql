@@ -252,6 +252,25 @@ SELECT SUM(a::float), SUM(a % 2), a % 2 AS "a % 2"FROM f_mongo_test
 SELECT (c6::float + (c1 * length(c3::text))) AS "c1 + c6", c1, c6
   FROM f_test_tbl1 ORDER BY c1 LIMIT 5;
 
+-- FDW-249; LEFT JOIN LATERAL should not crash
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 INNER JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM l_test_tbl1 t1 LEFT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+SELECT c1, c2, (SELECT r FROM (SELECT c1 AS c1) x, LATERAL (SELECT c1 AS r) y)
+  FROM f_test_tbl1 ORDER BY 1, 2, 3;
+-- LATERAL JOIN with RIGHT should throw error
+SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 RIGHT JOIN LATERAL (
+  SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
+  ORDER BY 1, 2, 3;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
