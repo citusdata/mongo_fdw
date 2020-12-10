@@ -240,8 +240,10 @@ SELECT c1, c8 FROM f_test_tbl1 ft1
 
 -- FDW-197: Casting target list should give correct result.
 SELECT a::float FROM f_mongo_test ORDER BY a LIMIT 2;
+SELECT a::boolean FROM f_mongo_test ORDER BY a LIMIT 2;
 SELECT a, b::varchar FROM f_mongo_test ORDER BY a LIMIT 3;
 SELECT a::float, b::varchar FROM f_mongo_test ORDER BY a LIMIT 2;
+SELECT a::real, b::char(20) FROM f_mongo_test ORDER BY a LIMIT 2;
 SELECT c1, c2::text FROM f_test_tbl1 ORDER BY c1 LIMIT 2;
 SELECT a, LENGTH(b) FROM f_mongo_test ORDER BY 1 LIMIT 2;
 SELECT t1.c6::float, t1.c6::int, t1.c5::timestamptz, t1.c3::text, t2.c1::numeric, t2.c3

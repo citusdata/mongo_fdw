@@ -80,6 +80,82 @@ ANALYZE f_mongo_test;
 ANALYZE f_mongo_test(a);
 VACUUM ANALYZE f_mongo_test;
 
+-- FDW-226: Fix COPY FROM and foreign partition routing results in a
+-- server crash
+
+-- Should fail as foreign table direct copy is not supported
+COPY f_mongo_test TO '/tmp/data.txt' delimiter ',';
+COPY f_mongo_test (a) TO '/tmp/data.txt' delimiter ',';
+COPY f_mongo_test (b) TO '/tmp/data.txt' delimiter ',';
+
+-- Should pass
+COPY (SELECT * FROM f_mongo_test) TO '/tmp/data.txt' delimiter ',';
+COPY (SELECT a, b FROM f_mongo_test) TO '/tmp/data.txt' delimiter ',';
+COPY (SELECT a FROM f_mongo_test) TO '/tmp/data.txt' delimiter ',';
+COPY (SELECT b FROM f_mongo_test) TO '/tmp/data.txt' delimiter ',';
+
+-- Should throw an error as copy to foreign table is not supported
+DO
+$$
+BEGIN
+  COPY f_mongo_test FROM '/tmp/data.txt' delimiter ',';
+EXCEPTION WHEN others THEN
+  IF SQLERRM = 'COPY and foreign partition routing not supported in mongo_fdw' OR
+     SQLERRM = 'cannot copy to foreign table "f_mongo_test"' THEN
+    RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mongo_fdw';
+  ELSE
+    RAISE NOTICE '%', SQLERRM;
+  END IF;
+END;
+$$
+LANGUAGE plpgsql;
+
+DO
+$$
+BEGIN
+  COPY f_mongo_test(a, b) FROM '/tmp/data.txt' delimiter ',';
+EXCEPTION WHEN others THEN
+  IF SQLERRM = 'COPY and foreign partition routing not supported in mongo_fdw' OR
+     SQLERRM = 'cannot copy to foreign table "f_mongo_test"' THEN
+    RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mongo_fdw';
+  ELSE
+    RAISE NOTICE '%', SQLERRM;
+  END IF;
+END;
+$$
+LANGUAGE plpgsql;
+
+DO
+$$
+BEGIN
+  COPY f_mongo_test(a) FROM '/tmp/data.txt' delimiter ',';
+EXCEPTION WHEN others THEN
+  IF SQLERRM = 'COPY and foreign partition routing not supported in mongo_fdw' OR
+     SQLERRM = 'cannot copy to foreign table "f_mongo_test"' THEN
+    RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mongo_fdw';
+  ELSE
+    RAISE NOTICE '%', SQLERRM;
+  END IF;
+END;
+$$
+LANGUAGE plpgsql;
+
+DO
+$$
+BEGIN
+  COPY f_mongo_test(b) FROM '/tmp/data.txt' delimiter ',';
+EXCEPTION WHEN others THEN
+  IF SQLERRM = 'COPY and foreign partition routing not supported in mongo_fdw' OR
+     SQLERRM = 'cannot copy to foreign table "f_mongo_test"' THEN
+    RAISE NOTICE 'ERROR:  COPY and foreign partition routing not supported in mongo_fdw';
+  ELSE
+    RAISE NOTICE '%', SQLERRM;
+  END IF;
+END;
+$$
+LANGUAGE plpgsql;
+
+
 -- Cleanup
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_mongo_test1;

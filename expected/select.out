@@ -1014,6 +1014,13 @@ SELECT a::float FROM f_mongo_test ORDER BY a LIMIT 2;
  1
 (2 rows)
 
+SELECT a::boolean FROM f_mongo_test ORDER BY a LIMIT 2;
+ a 
+---
+ f
+ t
+(2 rows)
+
 SELECT a, b::varchar FROM f_mongo_test ORDER BY a LIMIT 3;
  a |           b           
 ---+-----------------------
@@ -1027,6 +1034,13 @@ SELECT a::float, b::varchar FROM f_mongo_test ORDER BY a LIMIT 2;
 ---+-----------------------
  0 | mongo_test collection
  1 | One
+(2 rows)
+
+SELECT a::real, b::char(20) FROM f_mongo_test ORDER BY a LIMIT 2;
+ a |          b           
+---+----------------------
+ 0 | mongo_test collectio
+ 1 | One                 
 (2 rows)
 
 SELECT c1, c2::text FROM f_test_tbl1 ORDER BY c1 LIMIT 2;
