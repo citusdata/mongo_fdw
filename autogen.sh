@@ -14,8 +14,8 @@
 #-------------------------------------------------------------------------
 
 
-MONGOC_VERSION=1.9.5
-JSONC_VERSION=0.13.1-20180305
+MONGOC_VERSION=1.17.3
+JSONC_VERSION=0.15-20200726
 
 if [ "$#" -ne 1 ]; then
     echo "Usage: autogen.sh --[with-legacy | with-master]"
@@ -61,13 +61,12 @@ function checkout_json_lib
 
 
 ##
-# Compile and instal json-c library
+# Compile and install json-c library
 #
 function install_json_lib
 {
 	cd json-c
-	sh ./autogen.sh
-	./configure CFLAGS='-fPIC'
+	cmake .
 	make install
 	cd ..
 }
@@ -78,7 +77,7 @@ function install_json_lib
 function install_mongoc_driver
 {
 	cd mongo-c-driver
-	./configure --with-libbson=auto --enable-ssl
+	cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO .
 	make install
 	cd ..
 }
@@ -117,7 +116,7 @@ elif [ "--with-master" == $1 ]; then
 	install_mongoc_driver
 	install_json_lib
 	create_config
-	export PKG_CONFIG_PATH=mongo-c-driver/src/:mongo-c-driver/src/libbson/src
+	export PKG_CONFIG_PATH=mongo-c-driver/src/libmongoc/src:mongo-c-driver/src/libbson/src
 	cp Makefile.meta Makefile
 	echo "Done"
 else

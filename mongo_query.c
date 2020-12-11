@@ -17,7 +17,6 @@
 
 #include <bson.h>
 #include <json.h>
-#include <bits.h>
 
 #ifdef META_DRIVER
 #include "mongoc.h"
@@ -678,7 +677,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				outputString = OidOutputFunctionCall(outputFunctionId, value);
 				o = JsonTokenerPrase(outputString);
 
-				if (is_error(o))
+				if (o == NULL)
 				{
 					elog(WARNING, "cannot parse the document");
 					status = 0;

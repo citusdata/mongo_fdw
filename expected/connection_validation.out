@@ -32,13 +32,13 @@ ERROR:  could not connect to server mongo_server
 HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
 UPDATE f_mongo_test SET b = 'RECORD UPDATED' WHERE a = 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+HINT:  Mongo error: "No servers yet eligible for rescan"
 DELETE FROM f_mongo_test WHERE a = 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+HINT:  Mongo error: "No servers yet eligible for rescan"
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
+HINT:  Mongo error: "No servers yet eligible for rescan"
 -- Set correct address for mongo_server
 ALTER SERVER mongo_server OPTIONS (SET address :MONGO_HOST);
 -- Should able to insert the data

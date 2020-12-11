@@ -16,7 +16,7 @@ order to initialize the driver submodule to a usable state.
 If checked out this project before and for some reason your submodule
 is not up-to-date, run git submodule update --init.
 
-When you type `make`, the C driver's source code also gets automatically
+When you type `cmake`, the C driver's source code also gets automatically
 compiled and linked.
 
 Note: Make sure you have permission to "/usr/local"
@@ -46,16 +46,13 @@ current implementation is based on the legacy driver of MongoDB. But
 MongoDB's meta driver. Added support for the same. Now compile time
 option is available to use legacy and meta driver.
 
-In order to use MongoDB driver 1.0.0+, take the following steps:
+In order to use MongoDB driver 1.17.0+, take the following steps:
 
-  * clone `libbson` version 1.0.0+ (https://github.com/mongodb/libbson).
-    Follow install directions on that project's README.
-  * clone `libmongoc` version 1.0.0+
-    (https://github.com/mongodb/mongo-c-driver). Follow the
-    install directions, except make sure to also run `./configure
-    --with-libbson=system` after running automake but before running make.
-    This should be the default behavior, but to be certain include this
-    step.
+  * clone `libmongoc` version 1.17.0+
+    (https://github.com/mongodb/mongo-c-driver) and follow the install
+    directions given there.  `libbson` is now maintained in a subdirectory
+    of the `libmongoc`.
+    (https://github.com/mongodb/mongo-c-driver/tree/master/src/libbson).
   * ensure pkg-config / pkgconf is installed on your system.
   * run `make -f Makefile.meta && make -f Makefile.meta install`
   * if you get an error when trying to `CREATE EXTENSION mongo_fdw;`,

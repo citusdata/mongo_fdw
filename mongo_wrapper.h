@@ -25,7 +25,6 @@
 #define json_object json_object_tmp
 
 #include <json.h>
-#include <bits.h>
 
 #ifdef META_DRIVER
 MONGO_CONN *MongoConnect(MongoFdwOptions *opt);

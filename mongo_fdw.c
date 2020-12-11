@@ -170,6 +170,11 @@ JsonSemAction nullSemAction =
 void
 _PG_init(void)
 {
+#ifdef META_DRIVER
+	/* Initialize MongoDB C driver */
+	mongoc_init();
+#endif
+
 	on_proc_exit(&mongo_fdw_exit, PointerGetDatum(NULL));
 }
 
@@ -225,6 +230,10 @@ static void
 mongo_fdw_exit(int code, Datum arg)
 {
 	mongo_cleanup_connection();
+#ifdef META_DRIVER
+	/* Release all memory and other resources allocated by the driver */
+	mongoc_cleanup();
+#endif
 }
 
 /*
