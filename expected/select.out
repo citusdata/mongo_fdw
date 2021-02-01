@@ -1195,6 +1195,15 @@ ERROR:  invalid reference to FROM-clause entry for table "t1"
 LINE 2:   SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3...
                         ^
 DETAIL:  The combining JOIN type must be INNER or LEFT for a LATERAL reference.
+-- FDW-262: Should throw an error when we select system attribute.
+SELECT xmin FROM f_test_tbl1;
+ERROR:  system attribute "xmin" can't be fetched from remote relation
+SELECT ctid, xmax, tableoid FROM f_test_tbl1;
+ERROR:  system attribute "ctid" can't be fetched from remote relation
+SELECT xmax, c1 FROM f_test_tbl1;
+ERROR:  system attribute "xmax" can't be fetched from remote relation
+SELECT count(tableoid) FROM f_test_tbl1;
+ERROR:  system attribute "tableoid" can't be fetched from remote relation
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;

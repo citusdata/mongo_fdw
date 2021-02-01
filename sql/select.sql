@@ -273,6 +273,12 @@ SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 RIGHT JOIN LATERAL (
   SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
   ORDER BY 1, 2, 3;
 
+-- FDW-262: Should throw an error when we select system attribute.
+SELECT xmin FROM f_test_tbl1;
+SELECT ctid, xmax, tableoid FROM f_test_tbl1;
+SELECT xmax, c1 FROM f_test_tbl1;
+SELECT count(tableoid) FROM f_test_tbl1;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
