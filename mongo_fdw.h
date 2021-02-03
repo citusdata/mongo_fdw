@@ -285,6 +285,18 @@ typedef struct ColumnMapping
 	Oid			columnArrayTypeId;
 } ColumnMapping;
 
+/*
+ * FDW-specific planner information kept in RelOptInfo.fdw_private for a
+ * mongo_fdw foreign table.  For a baserel, this struct is created by
+ * MongoGetForeignRelSize.
+ */
+typedef struct MongoFdwRelationInfo
+{
+	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
+	List	   *local_conds;
+	List	   *remote_conds;
+} MongoFdwRelationInfo;
+
 /* options.c */
 extern MongoFdwOptions *mongo_get_options(Oid foreignTableId);
 extern void mongo_free_options(MongoFdwOptions *options);
@@ -299,11 +311,12 @@ extern void mongo_cleanup_connection(void);
 extern void mongo_release_connection(MONGO_CONN *conn);
 
 /* Function declarations related to creating the mongo query */
-extern List *ApplicableOpExpressionList(RelOptInfo *baserel);
 extern BSON *QueryDocument(Oid relationId,
 						   List *opExpressionList,
 						   ForeignScanState *scanStateNode);
 extern List *ColumnList(RelOptInfo *baserel);
+extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
+								  Expr *expression);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);

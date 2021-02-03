@@ -17,6 +17,12 @@ CREATE FOREIGN TABLE f_test_tbl1 (_id name, c1 INTEGER, c2 VARCHAR(10), c3 CHAR(
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
 CREATE FOREIGN TABLE f_test_tbl2 (_id name, c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl2');
+CREATE FOREIGN TABLE f_test_tbl3 (_id name, name TEXT, marks FLOAT ARRAY)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl3');
+-- Inserts some values in mongo_test collection.
+INSERT INTO f_mongo_test VALUES ('0', 1, 'One');
+INSERT INTO f_mongo_test VALUES ('0', 2, 'Two');
+INSERT INTO f_mongo_test VALUES ('0', 3, 'Three');
 SET datestyle TO ISO;
 -- Sample data
 SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM f_test_tbl1 ORDER BY c1;
@@ -73,9 +79,8 @@ SELECT c1, c2, c6 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6
-         Filter: (e.c6 > '3000'::numeric)
          Foreign Namespace: mongo_fdw_regress.test_tbl1
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6 FROM f_test_tbl1 e
   WHERE c6 > 3000
@@ -96,9 +101,8 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Filter: (e.c6 = '1500'::numeric)
          Foreign Namespace: mongo_fdw_regress.test_tbl1
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 = 1500
@@ -112,16 +116,15 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 BETWEEN 1000 AND 4000
   ORDER BY c1;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Sort
    Output: c1, c2, c6, c8
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c6, c8
-         Filter: ((e.c6 >= '1000'::numeric) AND (e.c6 <= '4000'::numeric))
          Foreign Namespace: mongo_fdw_regress.test_tbl1
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c6 BETWEEN 1000 AND 4000
@@ -187,9 +190,8 @@ SELECT c1, c2, c5 FROM f_test_tbl1 e
    Sort Key: e.c1
    ->  Foreign Scan on public.f_test_tbl1 e
          Output: c1, c2, c5
-         Filter: (e.c5 <= '1980-12-17'::date)
          Foreign Namespace: mongo_fdw_regress.test_tbl1
-(7 rows)
+(6 rows)
 
 SELECT c1, c2, c5 FROM f_test_tbl1 e
   WHERE c5 <= '1980-12-17'
@@ -272,10 +274,197 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
  700 | EMP7 | 2450.34 | 10
 (3 rows)
 
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a FROM f_mongo_test
+  WHERE a%2 = 1
+  ORDER BY a;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Output: a
+   Sort Key: f_mongo_test.a
+   ->  Foreign Scan on public.f_mongo_test
+         Output: a
+         Filter: ((f_mongo_test.a % 2) = 1)
+         Foreign Namespace: mongo_fdw_regress.mongo_test
+(7 rows)
+
+SELECT a FROM f_mongo_test
+  WHERE a%2 = 1
+  ORDER BY a;
+ a 
+---
+ 1
+ 3
+(2 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a, b FROM f_mongo_test
+  WHERE a >= 1 AND b LIKE '%O%'
+  ORDER BY a;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Sort
+   Output: a, b
+   Sort Key: f_mongo_test.a
+   ->  Foreign Scan on public.f_mongo_test
+         Output: a, b
+         Filter: ((f_mongo_test.b)::text ~~ '%O%'::text)
+         Foreign Namespace: mongo_fdw_regress.mongo_test
+(7 rows)
+
+SELECT a, b FROM f_mongo_test
+  WHERE a >= 1 AND b LIKE '%O%'
+  ORDER BY a;
+ a |  b  
+---+-----
+ 1 | One
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17' AND c2 IN ('EMP1', 'EMP5', 'EMP10') AND c1 = 100
+  ORDER BY c1;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1 e
+   Output: c1, c2, c5
+   Filter: ((e.c2)::text = ANY ('{EMP1,EMP5,EMP10}'::text[]))
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(4 rows)
+
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17' AND c2 IN ('EMP1', 'EMP5', 'EMP10') AND c1 = 100
+  ORDER BY c1;
+ c1  |  c2  |     c5     
+-----+------+------------
+ 100 | EMP1 | 1980-12-17
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 = 'EMP10';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(3 rows)
+
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 = 'EMP10';
+  c1  |  c2   
+------+-------
+ 1000 | EMP10
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 < 'EMP10';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(3 rows)
+
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 < 'EMP10';
+ c1  |  c2  
+-----+------
+ 100 | EMP1
+(1 row)
+
+-- Should not push down if two columns of same table is
+-- involved in single WHERE clause operator expression.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c6 FROM f_test_tbl1
+  WHERE c1 = c6 AND c1 = 1100
+  ORDER BY c1;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c6
+   Filter: ((f_test_tbl1.c1)::numeric = f_test_tbl1.c6)
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(4 rows)
+
+SELECT c1, c6 FROM f_test_tbl1
+  WHERE c1 = c6 AND c1 = 1100
+  ORDER BY c1;
+  c1  |  c6  
+------+------
+ 1100 | 1100
+(1 row)
+
+-- Nested operator expression in WHERE clause. Shouldn't push down.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > FALSE;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2
+   Filter: ((f_test_tbl1.c1 > 1000) > false)
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(4 rows)
+
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > FALSE;
+  c1  |  c2   
+------+-------
+ 1100 | EMP11
+ 1200 | EMP12
+ 1300 | EMP13
+ 1400 | EMP14
+(4 rows)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > 0::BOOLEAN;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c2
+   Filter: ((f_test_tbl1.c1 > 1000) > false)
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(4 rows)
+
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > 0::BOOLEAN;
+  c1  |  c2   
+------+-------
+ 1100 | EMP11
+ 1200 | EMP12
+ 1300 | EMP13
+ 1400 | EMP14
+(4 rows)
+
+-- Shouldn't push down operators where the constant is an array.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, marks FROM f_test_tbl3
+  WHERE marks = ARRAY[23::FLOAT, 24::FLOAT]
+  ORDER BY name;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Sort
+   Output: name, marks
+   Sort Key: f_test_tbl3.name
+   ->  Foreign Scan on public.f_test_tbl3
+         Output: name, marks
+         Filter: (f_test_tbl3.marks = '{23,24}'::double precision[])
+         Foreign Namespace: mongo_fdw_regress.test_tbl3
+(7 rows)
+
+SELECT name, marks FROM f_test_tbl3
+  WHERE marks = ARRAY[23::FLOAT, 24::FLOAT]
+  ORDER BY name;
+ name |  marks  
+------+---------
+ dvd  | {23,24}
+(1 row)
+
 -- Pushdown in prepared statement.
-INSERT INTO f_mongo_test VALUES ('0', 1, 'One');
-INSERT INTO f_mongo_test VALUES ('0', 2, 'Two');
-INSERT INTO f_mongo_test VALUES ('0', 3, 'Three');
 PREPARE pre_stmt_f_mongo_test(int) AS
   SELECT b FROM f_mongo_test WHERE a = $1 ORDER BY b;
 EXPLAIN (VERBOSE, COSTS FALSE)
@@ -287,9 +476,8 @@ EXECUTE pre_stmt_f_mongo_test(1);
    Sort Key: f_mongo_test.b
    ->  Foreign Scan on public.f_mongo_test
          Output: b
-         Filter: (f_mongo_test.a = 1)
          Foreign Namespace: mongo_fdw_regress.mongo_test
-(7 rows)
+(6 rows)
 
 EXECUTE pre_stmt_f_mongo_test(1);
   b  
@@ -306,9 +494,8 @@ EXECUTE pre_stmt_f_mongo_test(2);
    Sort Key: f_mongo_test.b
    ->  Foreign Scan on public.f_mongo_test
          Output: b
-         Filter: (f_mongo_test.a = 2)
          Foreign Namespace: mongo_fdw_regress.mongo_test
-(7 rows)
+(6 rows)
 
 EXECUTE pre_stmt_f_mongo_test(2);
   b  
@@ -321,6 +508,7 @@ DELETE FROM f_mongo_test WHERE a != 0;
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
+DROP FOREIGN TABLE f_test_tbl3;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;

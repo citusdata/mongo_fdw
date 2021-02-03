@@ -23,4 +23,6 @@ bool AppendMongoValue(BSON *queryDocument,
 					  bool isnull,
 					  Oid id);
 
+char *MongoOperatorName(const char *operatorName);
+
 #endif							/* MONGO_QUERY_H */

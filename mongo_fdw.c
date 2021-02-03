@@ -247,6 +247,29 @@ MongoGetForeignRelSize(PlannerInfo *root,
 					   Oid foreigntableid)
 {
 	double		documentCount = ForeignTableDocumentCount(foreigntableid);
+	MongoFdwRelationInfo *fpinfo;
+	ListCell   *lc;
+
+	/*
+	 * We use MongoFdwRelationInfo to pass various information to subsequent
+	 * functions.
+	 */
+	fpinfo = (MongoFdwRelationInfo *) palloc0(sizeof(MongoFdwRelationInfo));
+	baserel->fdw_private = (void *) fpinfo;
+
+	/*
+	 * Identify which baserestrictinfo clauses can be sent to the remote
+	 * server and which can't.
+	 */
+	foreach(lc, baserel->baserestrictinfo)
+	{
+		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
+
+		if (mongo_is_foreign_expr(root, baserel, ri->clause))
+			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
+		else
+			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
+	}
 
 	if (documentCount > 0.0)
 	{
@@ -297,6 +320,7 @@ MongoGetForeignPaths(PlannerInfo *root,
 	Cost		startupCost = 0.0;
 	Cost		totalCost = 0.0;
 	Path	   *foreignPath;
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) baserel->fdw_private;
 
 	documentCount = ForeignTableDocumentCount(foreigntableid);
 
@@ -306,7 +330,7 @@ MongoGetForeignPaths(PlannerInfo *root,
 		 * We estimate the number of rows returned after restriction
 		 * qualifiers are applied by MongoDB.
 		 */
-		opExpressionList = ApplicableOpExpressionList(baserel);
+		opExpressionList = fpinfo->remote_conds;
 		documentSelectivity = clauselist_selectivity(root, opExpressionList,
 													 0, JOIN_INNER, NULL);
 		inputRowCount = clamp_row_est(documentCount * documentSelectivity);
@@ -376,13 +400,15 @@ MongoGetForeignPlan(PlannerInfo *root,
 					List *restrictionClauses,
 					Plan *outer_plan)
 {
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 	Index		scanRangeTableIndex = foreignrel->relid;
 	ForeignScan *foreignScan;
 	List	   *foreignPrivateList;
-	List	   *opExpressionList;
 	List	   *columnList;
 	List	   *scan_var_list;
 	ListCell   *lc;
+	List	   *local_exprs = NIL;
+	List	   *remote_exprs = NIL;
 
 #if PG_VERSION_NUM >= 90600
 	scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
@@ -416,28 +442,40 @@ MongoGetForeignPlan(PlannerInfo *root,
 	}
 
 	/*
-	 * We push down applicable restriction clauses to MongoDB, but for
-	 * simplicity we currently put all the restrictionClauses into the plan
-	 * node's qual list for the executor to re-check.  So all we have to do
-	 * here is strip RestrictInfo nodes from the clauses and ignore
-	 * pseudoconstants (which will be handled elsewhere).
+	 * Separate the restrictionClauses into those that can be executed remotely
+	 * and those that can't.  baserestrictinfo clauses that were previously
+	 * determined to be safe or unsafe are shown in fpinfo->remote_conds and
+	 * fpinfo->local_conds.  Anything else in the restrictionClauses list will
+	 * be a join clause, which we have to check for remote-safety.
 	 */
-	restrictionClauses = extract_actual_clauses(restrictionClauses, false);
+	foreach(lc, restrictionClauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-	/*
-	 * Find the foreign relation's clauses, which can be transformed to
-	 * equivalent MongoDB queries.
-	 */
-	opExpressionList = ApplicableOpExpressionList(foreignrel);
+		Assert(IsA(rinfo, RestrictInfo));
+
+		/* Ignore pseudoconstants, they are dealt with elsewhere */
+		if (rinfo->pseudoconstant)
+			continue;
+
+		if (list_member_ptr(fpinfo->remote_conds, rinfo))
+			remote_exprs = lappend(remote_exprs, rinfo->clause);
+		else if (list_member_ptr(fpinfo->local_conds, rinfo))
+			local_exprs = lappend(local_exprs, rinfo->clause);
+		else if (mongo_is_foreign_expr(root, foreignrel, rinfo->clause))
+			remote_exprs = lappend(remote_exprs, rinfo->clause);
+		else
+			local_exprs = lappend(local_exprs, rinfo->clause);
+	}
 
 	/* We don't need to serialize column list as lists are copiable */
 	columnList = ColumnList(foreignrel);
 
 	/* Construct foreign plan with query document and column list */
-	foreignPrivateList = list_make2(columnList, opExpressionList);
+	foreignPrivateList = list_make2(columnList, remote_exprs);
 
 	/* Create the foreign scan node */
-	foreignScan = make_foreignscan(targetList, restrictionClauses,
+	foreignScan = make_foreignscan(targetList, local_exprs,
 								   scanRangeTableIndex,
 								   NIL, /* No expressions to evaluate */
 								   foreignPrivateList

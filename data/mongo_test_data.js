@@ -11,6 +11,7 @@ db.dropDatabase();
 use mongo_fdw_regress
 db.test_tbl1.drop();
 db.test_tbl2.drop();
+db.test_tbl3.drop();
 db.mongo_test.drop();
 // Below queries will create and insert values in collections
 db.mongo_test.insert({a : NumberInt(0), b : "mongo_test collection"});
@@ -35,4 +36,8 @@ db.test_tbl1.insertMany([
    {c1: NumberInt(1200), c2 : "EMP12", c3 :"ADMIN", c4 :NumberInt(600) ,c5 :ISODate("1981-12-03"), c6 :950.00, c7 :NumberInt(0), c8 :NumberInt(30)  },
    {c1: NumberInt(1300), c2 : "EMP13", c3 :"FINANCE", c4 :NumberInt(400) ,c5 :ISODate("1981-12-03"), c6 :3000, c7 :NumberInt(0), c8 :NumberInt(20) },
    {c1: NumberInt(1400), c2 : "EMP14", c3 :"ADMIN", c4 :NumberInt(700) ,c5 :ISODate("1982-01-23"), c6 :1300, c7 :NumberInt(0), c8 :NumberInt(10)  },
+]);
+db.test_tbl3.insertMany([
+   {name: "dvd", marks: [23, 24]},
+   {name: "vdd", marks: [29, 31]}
 ]);

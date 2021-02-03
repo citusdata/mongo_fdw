@@ -20,6 +20,13 @@ CREATE FOREIGN TABLE f_test_tbl1 (_id name, c1 INTEGER, c2 VARCHAR(10), c3 CHAR(
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
 CREATE FOREIGN TABLE f_test_tbl2 (_id name, c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl2');
+CREATE FOREIGN TABLE f_test_tbl3 (_id name, name TEXT, marks FLOAT ARRAY)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl3');
+
+-- Inserts some values in mongo_test collection.
+INSERT INTO f_mongo_test VALUES ('0', 1, 'One');
+INSERT INTO f_mongo_test VALUES ('0', 2, 'Two');
+INSERT INTO f_mongo_test VALUES ('0', 3, 'Three');
 
 SET datestyle TO ISO;
 
@@ -99,11 +106,74 @@ SELECT c1, c2, c6, c8 FROM f_test_tbl1 e
   WHERE c3 LIKE 'MANA%'
   ORDER BY c1;
 
--- Pushdown in prepared statement.
-INSERT INTO f_mongo_test VALUES ('0', 1, 'One');
-INSERT INTO f_mongo_test VALUES ('0', 2, 'Two');
-INSERT INTO f_mongo_test VALUES ('0', 3, 'Three');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a FROM f_mongo_test
+  WHERE a%2 = 1
+  ORDER BY a;
+SELECT a FROM f_mongo_test
+  WHERE a%2 = 1
+  ORDER BY a;
 
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a, b FROM f_mongo_test
+  WHERE a >= 1 AND b LIKE '%O%'
+  ORDER BY a;
+SELECT a, b FROM f_mongo_test
+  WHERE a >= 1 AND b LIKE '%O%'
+  ORDER BY a;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17' AND c2 IN ('EMP1', 'EMP5', 'EMP10') AND c1 = 100
+  ORDER BY c1;
+SELECT c1, c2, c5 FROM f_test_tbl1 e
+  WHERE c5 <= '1980-12-17' AND c2 IN ('EMP1', 'EMP5', 'EMP10') AND c1 = 100
+  ORDER BY c1;
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 = 'EMP10';
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 = 'EMP10';
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 < 'EMP10';
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE c2 < 'EMP10';
+
+-- Should not push down if two columns of same table is
+-- involved in single WHERE clause operator expression.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c6 FROM f_test_tbl1
+  WHERE c1 = c6 AND c1 = 1100
+  ORDER BY c1;
+SELECT c1, c6 FROM f_test_tbl1
+  WHERE c1 = c6 AND c1 = 1100
+  ORDER BY c1;
+
+-- Nested operator expression in WHERE clause. Shouldn't push down.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > FALSE;
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > FALSE;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > 0::BOOLEAN;
+SELECT c1, c2 FROM f_test_tbl1
+  WHERE (c1 > 1000) > 0::BOOLEAN;
+
+-- Shouldn't push down operators where the constant is an array.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, marks FROM f_test_tbl3
+  WHERE marks = ARRAY[23::FLOAT, 24::FLOAT]
+  ORDER BY name;
+SELECT name, marks FROM f_test_tbl3
+  WHERE marks = ARRAY[23::FLOAT, 24::FLOAT]
+  ORDER BY name;
+
+-- Pushdown in prepared statement.
 PREPARE pre_stmt_f_mongo_test(int) AS
   SELECT b FROM f_mongo_test WHERE a = $1 ORDER BY b;
 EXPLAIN (VERBOSE, COSTS FALSE)
@@ -118,6 +188,7 @@ DELETE FROM f_mongo_test WHERE a != 0;
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
+DROP FOREIGN TABLE f_test_tbl3;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;
