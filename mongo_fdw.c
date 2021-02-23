@@ -259,13 +259,15 @@ MongoGetForeignRelSize(PlannerInfo *root,
 
 	/*
 	 * Identify which baserestrictinfo clauses can be sent to the remote
-	 * server and which can't.
+	 * server and which can't.  Only the OpExpr clauses are sent to the remote
+	 * server.
 	 */
 	foreach(lc, baserel->baserestrictinfo)
 	{
 		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
 
-		if (mongo_is_foreign_expr(root, baserel, ri->clause))
+		if (IsA(ri->clause, OpExpr) &&
+			mongo_is_foreign_expr(root, baserel, ri->clause))
 			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
 		else
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
@@ -446,7 +448,8 @@ MongoGetForeignPlan(PlannerInfo *root,
 	 * and those that can't.  baserestrictinfo clauses that were previously
 	 * determined to be safe or unsafe are shown in fpinfo->remote_conds and
 	 * fpinfo->local_conds.  Anything else in the restrictionClauses list will
-	 * be a join clause, which we have to check for remote-safety.
+	 * be a join clause, which we have to check for remote-safety.  Only the
+	 * OpExpr clauses are sent to the remote server.
 	 */
 	foreach(lc, restrictionClauses)
 	{
@@ -462,7 +465,8 @@ MongoGetForeignPlan(PlannerInfo *root,
 			remote_exprs = lappend(remote_exprs, rinfo->clause);
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
-		else if (mongo_is_foreign_expr(root, foreignrel, rinfo->clause))
+		else if (IsA(rinfo->clause, OpExpr) &&
+				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause))
 			remote_exprs = lappend(remote_exprs, rinfo->clause);
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);

@@ -38,6 +38,6 @@ db.test_tbl1.insertMany([
    {c1: NumberInt(1400), c2 : "EMP14", c3 :"ADMIN", c4 :NumberInt(700) ,c5 :ISODate("1982-01-23"), c6 :1300, c7 :NumberInt(0), c8 :NumberInt(10)  },
 ]);
 db.test_tbl3.insertMany([
-   {name: "dvd", marks: [23, 24]},
-   {name: "vdd", marks: [29, 31]}
+   {name: "dvd", marks: [23, 24], pass: false},
+   {name: "vdd", marks: [29, 31], pass: true}
 ]);

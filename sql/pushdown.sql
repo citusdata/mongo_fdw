@@ -20,7 +20,7 @@ CREATE FOREIGN TABLE f_test_tbl1 (_id name, c1 INTEGER, c2 VARCHAR(10), c3 CHAR(
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
 CREATE FOREIGN TABLE f_test_tbl2 (_id name, c1 INTEGER, c2 VARCHAR(14), c3 VARCHAR(13))
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl2');
-CREATE FOREIGN TABLE f_test_tbl3 (_id name, name TEXT, marks FLOAT ARRAY)
+CREATE FOREIGN TABLE f_test_tbl3 (_id name, name TEXT, marks FLOAT ARRAY, pass BOOLEAN)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl3');
 
 -- Inserts some values in mongo_test collection.
@@ -182,6 +182,15 @@ EXECUTE pre_stmt_f_mongo_test(1);
 EXPLAIN (VERBOSE, COSTS FALSE)
 EXECUTE pre_stmt_f_mongo_test(2);
 EXECUTE pre_stmt_f_mongo_test(2);
+
+-- FDW-297: Only operator expressions should be pushed down in WHERE clause.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, marks FROM f_test_tbl3
+  WHERE pass = true
+  ORDER BY name;
+SELECT name, marks FROM f_test_tbl3
+  WHERE pass = true
+  ORDER BY name;
 
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
