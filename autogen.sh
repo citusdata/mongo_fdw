@@ -27,10 +27,10 @@ fi
 #
 function checkout_mongo_driver
 {
-	rm -rf mongo-c-driver
-	wget https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz
-	tar -zxf mongo-c-driver-$MONGOC_VERSION.tar.gz
-	mv mongo-c-driver-$MONGOC_VERSION mongo-c-driver
+	rm -rf mongo-c-driver &&
+	wget https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz &&
+	tar -zxf mongo-c-driver-$MONGOC_VERSION.tar.gz &&
+	mv mongo-c-driver-$MONGOC_VERSION mongo-c-driver &&
 	rm -rf mongo-c-driver-$MONGOC_VERSION.tar.gz
 }
 
@@ -39,10 +39,10 @@ function checkout_mongo_driver
 #
 function checkout_legacy_branch
 {
-	rm -rf mongo-c-driver
-	wget https://github.com/mongodb/mongo-c-driver/archive/v0.8.tar.gz
-	tar -zxf v0.8.tar.gz
-	mv  mongo-c-driver-0.8 mongo-c-driver
+	rm -rf mongo-c-driver &&
+	wget https://github.com/mongodb/mongo-c-driver/archive/v0.8.tar.gz &&
+	tar -zxf v0.8.tar.gz &&
+	mv  mongo-c-driver-0.8 mongo-c-driver &&
 	rm -rf v0.8.tar.gz
 }
 ##
@@ -50,12 +50,12 @@ function checkout_legacy_branch
 #
 function checkout_json_lib
 {
-	echo $PWD
-	rm -rf json-c
-	wget https://github.com/json-c/json-c/archive/json-c-$JSONC_VERSION.tar.gz
-	tar -zxf json-c-$JSONC_VERSION.tar.gz
-	mv json-c-json-c-$JSONC_VERSION json-c
-	rm -rf json-c-$JSONC_VERSION.tar.gz
+	echo $PWD &&
+	rm -rf json-c &&
+	wget https://github.com/json-c/json-c/archive/json-c-$JSONC_VERSION.tar.gz &&
+	tar -zxf json-c-$JSONC_VERSION.tar.gz &&
+	mv json-c-json-c-$JSONC_VERSION json-c &&
+	rm -rf json-c-$JSONC_VERSION.tar.gz &&
 	echo $PWD
 }
 
@@ -65,9 +65,9 @@ function checkout_json_lib
 #
 function install_json_lib
 {
-	cd json-c
-	cmake3 $JSONC_CFLAGS .
-	make install
+	cd json-c &&
+	cmake3 $JSONC_CFLAGS . &&
+	make install &&
 	cd ..
 }
 
@@ -76,9 +76,9 @@ function install_json_lib
 #
 function install_mongoc_driver
 {
-	cd mongo-c-driver
-	cmake3 -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO .
-	make install
+	cd mongo-c-driver &&
+	cmake3 -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO . &&
+	make install &&
 	cd ..
 }
 
@@ -97,28 +97,44 @@ function cleanup
 #
 function create_config
 {
-	echo "#ifdef __CONFIG__" >> config.h
-	echo "#define META_DRIVER" >> config.h
+	echo "#ifdef __CONFIG__" >> config.h &&
+	echo "#define META_DRIVER" >> config.h &&
 	echo "#endif" >> config.h
 }
 
 cleanup
 
 if [ "--with-legacy" = $1 ]; then
-	checkout_json_lib
-	checkout_legacy_branch
-	install_json_lib
+	checkout_json_lib &&
+	checkout_legacy_branch &&
+	install_json_lib &&
 	cp Makefile.legacy Makefile
-	echo "Done"
+
+	ret=$?
+	if [ "$ret" -ne 0 ]; then
+		echo "Failed"
+		exit $ret
+	else
+		echo "Done"
+		exit 0
+	fi
 elif [ "--with-master" == $1 ]; then
-	checkout_mongo_driver
-	checkout_json_lib
-	install_mongoc_driver
-	install_json_lib
-	create_config
-	export PKG_CONFIG_PATH=mongo-c-driver/src/libmongoc/src:mongo-c-driver/src/libbson/src
+	checkout_mongo_driver &&
+	checkout_json_lib &&
+	install_mongoc_driver &&
+	install_json_lib &&
+	create_config &&
+	export PKG_CONFIG_PATH=mongo-c-driver/src/libmongoc/src:mongo-c-driver/src/libbson/src &&
 	cp Makefile.meta Makefile
-	echo "Done"
+
+	ret=$?
+	if [ "$ret" -ne 0 ]; then
+		echo "Failed"
+		exit $ret
+	else
+		echo "Done"
+		exit 0
+	fi
 else
 	echo "Usage: autogen.sh --[with-legacy | with-master]"
 fi
