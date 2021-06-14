@@ -22,6 +22,11 @@ if [ "$#" -ne 1 ]; then
     exit
 fi
 
+CMAKE_COMMAND='cmake3'
+if ! [ -x "$(command -v cmake3)" ]; then
+    CMAKE_COMMAND='cmake'
+fi
+
 ###
 # Pull the latest version of Monggo C Driver's master branch
 #
@@ -66,7 +71,7 @@ function checkout_json_lib
 function install_json_lib
 {
 	cd json-c &&
-	cmake3 $JSONC_CFLAGS . &&
+	$CMAKE_COMMAND $JSONC_CFLAGS . &&
 	make install &&
 	cd ..
 }
@@ -77,7 +82,7 @@ function install_json_lib
 function install_mongoc_driver
 {
 	cd mongo-c-driver &&
-	cmake3 -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO . &&
+	$CMAKE_COMMAND -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO . &&
 	make install &&
 	cd ..
 }
