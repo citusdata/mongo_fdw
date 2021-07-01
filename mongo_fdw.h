@@ -264,9 +264,7 @@ typedef struct MongoFdwModifyState
 	BSON	   *queryDocument;	/* Bson Document */
 
 	MongoFdwOptions *options;
-
-	/* Working memory context */
-	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
+	AttrNumber	rowidAttno; 	/* attnum of resjunk rowid column */
 } MongoFdwModifyState;
 
 /*

@@ -65,7 +65,6 @@ DELETE FROM f_mongo_test3 WHERE a = 10;
 SELECT a,b FROM f_mongo_test3 ORDER BY 1, 2;
 
 -- FDW-158: Fix server crash when analyzing a foreign table.
-SELECT reltuples FROM pg_class WHERE relname = 'f_mongo_test';
 ANALYZE f_mongo_test;
 -- Should give correct number of rows now.
 SELECT reltuples FROM pg_class WHERE relname = 'f_mongo_test';

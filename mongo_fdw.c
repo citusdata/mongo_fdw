@@ -33,6 +33,9 @@
 #include "miscadmin.h"
 #include "mongo_fdw.h"
 #include "mongo_query.h"
+#if PG_VERSION_NUM >= 140000
+#include "optimizer/appendinfo.h"
+#endif
 #if PG_VERSION_NUM >= 120000
 #include "optimizer/optimizer.h"
 #endif
@@ -94,9 +97,16 @@ static TupleTableSlot *MongoExecForeignDelete(EState *estate,
 											  TupleTableSlot *planSlot);
 static void MongoEndForeignModify(EState *estate,
 								  ResultRelInfo *resultRelInfo);
+#if PG_VERSION_NUM >= 140000
+static void MongoAddForeignUpdateTargets(PlannerInfo *root,
+										 Index rtindex,
+										 RangeTblEntry *target_rte,
+										 Relation target_relation);
+#else
 static void MongoAddForeignUpdateTargets(Query *parsetree,
 										 RangeTblEntry *target_rte,
 										 Relation target_relation);
+#endif
 static void MongoBeginForeignModify(ModifyTableState *mtstate,
 									ResultRelInfo *resultRelInfo,
 									List *fdw_private,
@@ -872,6 +882,26 @@ MongoBeginForeignModify(ModifyTableState *mtstate,
 	fmstate->p_flinfo = (FmgrInfo *) palloc(sizeof(FmgrInfo) * n_params);
 	fmstate->p_nums = 0;
 
+	if (mtstate->operation == CMD_UPDATE)
+	{
+		Form_pg_attribute attr;
+#if PG_VERSION_NUM >= 140000
+		Plan	   *subplan = outerPlanState(mtstate)->plan;
+#else
+		Plan	   *subplan = mtstate->mt_plans[subplan_index]->plan;
+#endif
+
+		Assert(subplan != NULL);
+
+		attr = TupleDescAttr(RelationGetDescr(rel), 0);
+
+		/* Find the rowid resjunk column in the subplan's result */
+		fmstate->rowidAttno = ExecFindJunkAttributeInTlist(subplan->targetlist,
+														   NameStr(attr->attname));
+		if (!AttributeNumberIsValid(fmstate->rowidAttno))
+			elog(ERROR, "could not find junk row identifier column");
+	}
+
 	/* Set up for remaining transmittable parameters */
 	foreach(lc, fmstate->target_attrs)
 	{
@@ -984,14 +1014,24 @@ MongoExecForeignInsert(EState *estate,
  *		first column as row identification column, so we are adding that into
  *		target list.
  */
+#if PG_VERSION_NUM >= 140000
+static void
+MongoAddForeignUpdateTargets(PlannerInfo *root,
+							 Index rtindex,
+							 RangeTblEntry *target_rte,
+							 Relation target_relation)
+#else
 static void
 MongoAddForeignUpdateTargets(Query *parsetree,
 							 RangeTblEntry *target_rte,
 							 Relation target_relation)
+#endif
 {
 	Var		   *var;
 	const char *attrname;
+#if PG_VERSION_NUM < 140000
 	TargetEntry *tle;
+#endif
 
 	/*
 	 * What we need is the rowid which is the first column
@@ -1004,16 +1044,25 @@ MongoAddForeignUpdateTargets(Query *parsetree,
 #endif
 
 	/* Make a Var representing the desired value */
+#if PG_VERSION_NUM >= 140000
+	var = makeVar(rtindex,
+#else
 	var = makeVar(parsetree->resultRelation,
+#endif
 				  1,
 				  attr->atttypid,
 				  attr->atttypmod,
 				  InvalidOid,
 				  0);
 
-	/* Wrap it in a TLE with the right name ... */
+	/* Get name of the row identifier column */
 	attrname = NameStr(attr->attname);
 
+#if PG_VERSION_NUM >= 140000
+	/* Register it as a row-identity column needed by this target rel */
+	add_row_identity_var(root, var, rtindex, attrname);
+#else
+	/* Wrap it in a TLE with the right name ... */
 	tle = makeTargetEntry((Expr *) var,
 						  list_length(parsetree->targetList) + 1,
 						  pstrdup(attrname),
@@ -1021,6 +1070,7 @@ MongoAddForeignUpdateTargets(Query *parsetree,
 
 	/* ... And add it to the query's targetlist */
 	parsetree->targetList = lappend(parsetree->targetList, tle);
+#endif
 }
 
 static TupleTableSlot *
@@ -1043,7 +1093,7 @@ MongoExecForeignUpdate(EState *estate,
 	foreignTableId = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 
 	/* Get the id that was passed up as a resjunk column */
-	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
+	datum = ExecGetJunkAttribute(planSlot, fmstate->rowidAttno, &isNull);
 
 #if PG_VERSION_NUM < 110000
 	columnName = get_relid_attribute_name(foreignTableId, 1);
