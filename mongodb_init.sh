@@ -1,8 +1,8 @@
 #!/bin/sh
-MONGO_HOST="127.0.0.1"
-MONGO_PORT="27017"
-MONGO_USER_NAME="edb"
-MONGO_PWD="edb"
+export MONGO_HOST="localhost"
+export MONGO_PORT="27017"
+export MONGO_USER_NAME="edb"
+export MONGO_PWD="edb"
 
 # Below commands must be run in MongoDB to create mongo_fdw_regress and mongo_fdw_regress1 databases
 # used in regression tests with edb user and edb password.

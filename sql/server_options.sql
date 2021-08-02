@@ -1,11 +1,12 @@
-\set MONGO_HOST			'\'localhost\''
-\set MONGO_PORT			'\'27017\''
-\set MONGO_USER_NAME	'\'edb\''
-\set MONGO_PASS			'\'edb\''
+\set MONGO_HOST			`echo \'"$MONGO_HOST"\'`
+\set MONGO_PORT			`echo \'"$MONGO_PORT"\'`
+\set MONGO_USER_NAME	`echo \'"$MONGO_USER_NAME"\'`
+\set MONGO_PASS			`echo \'"$MONGO_PWD"\'`
 
 -- Before running this file User must create database mongo_fdw_regress and
--- mongo_fdw_regress1 databases on MongoDB with all permission for 'edb' user
--- with 'edb' password and ran mongodb_init.sh file to load collections.
+-- mongo_fdw_regress1 databases on MongoDB with all permission for
+-- MONGO_USER_NAME user with MONGO_PASS password and ran mongodb_init.sh file
+-- to load collections.
 
 \c contrib_regression
 CREATE EXTENSION IF NOT EXISTS mongo_fdw;
@@ -19,10 +20,35 @@ CREATE SERVER mongo_server1 FOREIGN DATA WRAPPER mongo_fdw
 ALTER SERVER mongo_server OPTIONS (SET port '65537');
 
 -- Validate extension, server and mapping details
-SELECT e.fdwname AS "Extension", srvname AS "Server", s.srvoptions AS "Server_Options", u.umoptions AS "User_Mapping_Options"
-  FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
-  WHERE e.fdwname = 'mongo_fdw'
-  ORDER BY 1, 2, 3, 4;
+CREATE OR REPLACE FUNCTION show_details(host TEXT, port TEXT, uid TEXT, pwd TEXT) RETURNS int AS $$
+DECLARE
+  ext TEXT;
+  srv TEXT;
+  sopts TEXT;
+  uopts TEXT;
+BEGIN
+  SELECT e.fdwname, srvname, array_to_string(s.srvoptions, ','), array_to_string(u.umoptions, ',')
+    INTO ext, srv, sopts, uopts
+    FROM pg_foreign_data_wrapper e LEFT JOIN pg_foreign_server s ON e.oid = s.srvfdw LEFT JOIN pg_user_mapping u ON s.oid = u.umserver
+    WHERE e.fdwname = 'mongo_fdw'
+    ORDER BY 1, 2, 3, 4;
+
+  raise notice 'Extension            : %', ext;
+  raise notice 'Server               : %', srv;
+
+  IF strpos(sopts, host) <> 0 AND strpos(sopts, port) <> 0 THEN
+    raise notice 'Server_Options       : matched';
+  END IF;
+
+  IF strpos(uopts, uid) <> 0 AND strpos(uopts, pwd) <> 0 THEN
+    raise notice 'User_Mapping_Options : matched';
+  END IF;
+
+  return 1;
+END;
+$$ language plpgsql;
+
+SELECT show_details(:MONGO_HOST, :MONGO_PORT, :MONGO_USER_NAME, :MONGO_PASS);
 
 -- Create foreign tables and perform basic SQL operations
 CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)

@@ -22,6 +22,37 @@ compiled and linked.
 Note: Make sure you have permission to "/usr/local"
 (default installation location) folder.
 
+1. To build on POSIX-compliant systems you need to ensure the
+   `pg_config` executable is in your path when you run `make`. This
+   executable is typically in your PostgreSQL installation's `bin`
+   directory. For example:
+
+    ```
+    $ export PATH=/usr/local/pgsql/bin/:$PATH
+    ```
+
+2. Compile the code using make.
+
+    ```
+    $ make USE_PGXS=1
+    ```
+
+3.  Finally install the foreign data wrapper.
+
+    ```
+    $ make USE_PGXS=1 install
+    ```
+
+4. Running regression test.
+
+    ```
+    $ make USE_PGXS=1 installcheck
+    ```
+   However, make sure to set the `MONGO_HOST`, `MONGO_PORT`, `MONGO_USER_NAME`,
+   and `MONGO_PWD` environment variables correctly. The default settings can be
+   found in the `mongodb_init.sh` script.
+
+
 If you run into any issues, please [let us know][2].
 
 Enhancements
