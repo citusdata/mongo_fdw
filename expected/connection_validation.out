@@ -1,3 +1,4 @@
+\set VERBOSITY terse
 \set MONGO_HOST			`echo \'"$MONGO_HOST"\'`
 \set MONGO_PORT			`echo \'"$MONGO_PORT"\'`
 \set MONGO_USER_NAME	`echo \'"$MONGO_USER_NAME"\'`
@@ -30,16 +31,12 @@ ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.5');
 -- Should fail with an error
 INSERT INTO f_mongo_test VALUES ('0', 2, 'RECORD INSERTED');
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No suitable servers found (`serverSelectionTryOnce` set): [connection refused calling ismaster on '127.0.0.5:27017']"
 UPDATE f_mongo_test SET b = 'RECORD UPDATED' WHERE a = 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No servers yet eligible for rescan"
 DELETE FROM f_mongo_test WHERE a = 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No servers yet eligible for rescan"
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "No servers yet eligible for rescan"
 -- Set correct address for mongo_server
 ALTER SERVER mongo_server OPTIONS (SET address :MONGO_HOST);
 -- Should able to insert the data
@@ -53,16 +50,12 @@ CREATE USER MAPPING FOR public SERVER mongo_server
 -- Should fail with an error
 INSERT INTO f_mongo_test VALUES ('0', 3, 'RECORD INSERTED');
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "Authentication failed."
 UPDATE f_mongo_test SET b = 'RECORD UPDATED' WHERE a = 3;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "Authentication failed."
 DELETE FROM f_mongo_test WHERE a = 3;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "Authentication failed."
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 ERROR:  could not connect to server mongo_server
-HINT:  Mongo error: "Authentication failed."
 -- Drop user mapping and create without username and password for public
 -- user mapping
 DROP USER MAPPING FOR public SERVER mongo_server;

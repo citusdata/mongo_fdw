@@ -1,3 +1,4 @@
+\set VERBOSITY terse
 \set MONGO_HOST			`echo \'"$MONGO_HOST"\'`
 \set MONGO_PORT			`echo \'"$MONGO_PORT"\'`
 \set MONGO_USER_NAME	`echo \'"$MONGO_USER_NAME"\'`
