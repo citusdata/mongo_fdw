@@ -17,8 +17,6 @@
 #include "miscadmin.h"
 #include "mongo_wrapper.h"
 
-static char *mongo_get_option_value(List *optionList, const char *optionName);
-
 /*
  * Validate the generic options given to a FOREIGN DATA WRAPPER, SERVER,
  * USER MAPPING or FOREIGN TABLE that uses postgres_fdw.
@@ -91,6 +89,14 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("port value \"%d\" is out of range for type %s",
 								port, "unsigned short")));
 		}
+#ifdef META_DRIVER
+		else if (strcmp(optionName, OPTION_NAME_SSL) == 0 ||
+				 strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0)
+		{
+			/* These accept only boolean values */
+			(void) defGetBoolean(optionDef);
+		}
+#endif
 	}
 
 	PG_RETURN_VOID();
@@ -142,9 +148,9 @@ mongo_get_options(Oid foreignTableId)
 	ForeignTable *foreignTable;
 	ForeignServer *foreignServer;
 	UserMapping *mapping;
-	char       *portName;
 	List	   *optionList = NIL;
 	MongoFdwOptions *options;
+	ListCell   *lc;
 
 	foreignTable = GetForeignTable(foreignTableId);
 	foreignServer = GetForeignServer(foreignTable->serverid);
@@ -157,59 +163,80 @@ mongo_get_options(Oid foreignTableId)
 	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 
 #ifdef META_DRIVER
-	options->readPreference = mongo_get_option_value(optionList,
-													 OPTION_NAME_READ_PREFERENCE);
-	options->authenticationDatabase = mongo_get_option_value(optionList,
-															 OPTION_NAME_AUTHENTICATION_DATABASE);
-	options->replicaSet = mongo_get_option_value(optionList,
-												 OPTION_NAME_REPLICA_SET);
-	options->ssl = mongo_get_option_value(optionList, OPTION_NAME_SSL);
-	options->pem_file = mongo_get_option_value(optionList,
-											   OPTION_NAME_PEM_FILE);
-	options->pem_pwd = mongo_get_option_value(optionList, OPTION_NAME_PEM_PWD);
-	options->ca_file = mongo_get_option_value(optionList, OPTION_NAME_CA_FILE);
-	options->ca_dir = mongo_get_option_value(optionList,
-											 OPTION_NAME_CA_DIR);
-	options->crl_file = mongo_get_option_value(optionList,
-											   OPTION_NAME_CRL_FILE);
-	options->weak_cert_validation = mongo_get_option_value(optionList,
-														   OPTION_NAME_WEAK_CERT);
+	options->ssl = false;
+	options->weak_cert_validation = false;
 #endif
-	options->svr_address = mongo_get_option_value(optionList,
-												  OPTION_NAME_ADDRESS);
-	if (options->svr_address == NULL)
-		options->svr_address = pstrdup(DEFAULT_IP_ADDRESS);
 
-	portName = mongo_get_option_value(optionList, OPTION_NAME_PORT);
-	if (portName == NULL)
-		options->svr_port = DEFAULT_PORT_NUMBER;
-	else
+	/* Loop through the options */
+	foreach(lc, optionList)
 	{
-		int32		port;
+		DefElem    *def = (DefElem *) lfirst(lc);
 
-		port = pg_atoi(portName, sizeof(int32), 0);
-		if (port < 0 || port > USHRT_MAX)
-			ereport(ERROR,
-					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-					 errmsg("port value \"%d\" is out of range for type %s",
-							port, "unsigned short")));
-		options->svr_port = (unsigned short) port;
+#ifdef META_DRIVER
+		if (strcmp(def->defname, OPTION_NAME_READ_PREFERENCE) == 0)
+			options->readPreference = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_AUTHENTICATION_DATABASE) == 0)
+			options->authenticationDatabase = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_REPLICA_SET) == 0)
+			options->replicaSet = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_SSL) == 0)
+			options->ssl = defGetBoolean(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_PEM_FILE) == 0)
+			options->pem_file = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_PEM_PWD) == 0)
+			options->pem_pwd = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_CA_FILE) == 0)
+			options->ca_file = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_CA_DIR) == 0)
+			options->ca_dir = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_CRL_FILE) == 0)
+			options->crl_file = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_WEAK_CERT) == 0)
+			options->weak_cert_validation = defGetBoolean(def);
+
+		else /* This is for continuation */
+#endif
+
+		if (strcmp(def->defname, OPTION_NAME_ADDRESS) == 0)
+			options->svr_address = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_PORT) == 0)
+			options->svr_port = atoi(defGetString(def));
+
+		else if (strcmp(def->defname, OPTION_NAME_DATABASE) == 0)
+			options->svr_database = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_COLLECTION) == 0)
+			options->collectionName = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_USERNAME) == 0)
+			options->svr_username = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_PASSWORD) == 0)
+			options->svr_password = defGetString(def);
 	}
 
-	options->svr_database = mongo_get_option_value(optionList,
-												   OPTION_NAME_DATABASE);
-	if (options->svr_database == NULL)
+	/* Default values, if required */
+	if (!options->svr_address)
+		options->svr_address = pstrdup(DEFAULT_IP_ADDRESS);
+
+	if (!options->svr_port)
+		options->svr_port = DEFAULT_PORT_NUMBER;
+
+	if (!options->svr_database)
 		options->svr_database = pstrdup(DEFAULT_DATABASE_NAME);
 
-	options->collectionName = mongo_get_option_value(optionList,
-													 OPTION_NAME_COLLECTION);
-	if (options->collectionName == NULL)
-		options->collectionName = get_rel_name(foreignTableId);
-
-	options->svr_username = mongo_get_option_value(optionList,
-												   OPTION_NAME_USERNAME);
-	options->svr_password = mongo_get_option_value(optionList,
-												   OPTION_NAME_PASSWORD);
+	if (!options->collectionName)
+		options->collectionName= get_rel_name(foreignTableId);
 
 	return options;
 }
@@ -223,31 +250,4 @@ mongo_free_options(MongoFdwOptions *options)
 		pfree(options->svr_database);
 		pfree(options);
 	}
-}
-
-/*
- * mongo_get_option_value
- *		Walks over foreign table and foreign server options, and looks for the
- *		option with the given name.  If found, the function returns the
- *		option's value.
- */
-static char *
-mongo_get_option_value(List *optionList, const char *optionName)
-{
-	ListCell   *optionCell;
-	char	   *optionValue = NULL;
-
-	foreach(optionCell, optionList)
-	{
-		DefElem    *optionDef = (DefElem *) lfirst(optionCell);
-		char	   *optionDefName = optionDef->defname;
-
-		if (strncmp(optionDefName, optionName, NAMEDATALEN) == 0)
-		{
-			optionValue = defGetString(optionDef);
-			break;
-		}
-	}
-
-	return optionValue;
 }

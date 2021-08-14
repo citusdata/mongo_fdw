@@ -60,6 +60,24 @@ UPDATE f_mongo_test SET b = 'mongo_test update' WHERE a = 2;
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 DELETE FROM f_mongo_test WHERE a = 2;
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+
+-- Test SSL option when MongoDB server running in non-SSL mode.
+-- Set non-boolean value, should throw an error.
+ALTER SERVER mongo_server OPTIONS (ssl '1');
+ALTER SERVER mongo_server OPTIONS (ssl 'x');
+-- Check for default value i.e. false
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+-- Set 'true'.
+ALTER SERVER mongo_server OPTIONS (ssl 'true');
+-- Results into an error as MongoDB server is running in non-SSL mode.
+\set VERBOSITY terse
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+\set VERBOSITY default
+-- Switch back to 'false'.
+ALTER SERVER mongo_server OPTIONS (SET ssl 'false');
+-- Should now be successful.
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+
 DROP FOREIGN TABLE f_mongo_test;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;

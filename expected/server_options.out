@@ -87,6 +87,35 @@ SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
  0 | mongo_test collection
 (1 row)
 
+-- Test SSL option when MongoDB server running in non-SSL mode.
+-- Set non-boolean value, should throw an error.
+ALTER SERVER mongo_server OPTIONS (ssl '1');
+ERROR:  ssl requires a Boolean value
+ALTER SERVER mongo_server OPTIONS (ssl 'x');
+ERROR:  ssl requires a Boolean value
+-- Check for default value i.e. false
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+(1 row)
+
+-- Set 'true'.
+ALTER SERVER mongo_server OPTIONS (ssl 'true');
+-- Results into an error as MongoDB server is running in non-SSL mode.
+\set VERBOSITY terse
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ERROR:  could not connect to server mongo_server
+\set VERBOSITY default
+-- Switch back to 'false'.
+ALTER SERVER mongo_server OPTIONS (SET ssl 'false');
+-- Should now be successful.
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+ a |           b           
+---+-----------------------
+ 0 | mongo_test collection
+(1 row)
+
 DROP FOREIGN TABLE f_mongo_test;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
