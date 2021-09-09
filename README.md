@@ -132,7 +132,7 @@ The following options are only supported with meta driver:
   * `ca_file`: SSL option.
   * `ca_dir`: SSL option.
   * `crl_file`: SSL option.
-  * `weak_cert_validation`: SSL option.
+  * `weak_cert_validation`: SSL option, false [default].
 
 The following parameters can be set on a MongoDB foreign table object:
 
