@@ -96,7 +96,34 @@ different type of MongoDB drivers and supported libraries. If you want
 to avoid the manual steps, there is a shell script available which will
 download and install the appropriate drivers and libraries for you.
 
-Here is how it works :
+Here is how it works:
+
+To install mongo-c and json-c libraries at custom locations, you need to
+export environment variables `MONGOC_INSTALL_DIR` and `JSONC_INSTALL_DIR`
+respectively. If these variables are not set then these libraries will be
+installed in the default location. Please note that you need to have the
+required permission to install the directory whether it is custom or default.
+
+The `PKG_CONFIG_PATH` environment variable must be set to mongo-c-driver source
+directory for successful compilation as shown below,
+
+```sh
+export PKG_CONFIG_PATH=$YOUR_MONGO_FDW_SOURCE_DIR/mongo-c-driver/src/libmongoc/src:$YOUR_MONGO_FDW_SOURCE_DIR/mongo-c-driver/src/libbson/src
+```
+
+The `LD_LIBRARY_PATH` environment variable must include the path to the mongo-c
+installation directory containing the libmongoc-1.0.so and libbson-1.0.so
+files. For example, assuming the installation directory is /home/mongo-c and
+the libraries were created under it in lib64 sub-directory, then we can define
+the `LD_LIBRARY_PATH` as:
+
+```sh
+export LD_LIBRARY_PATH=/home/mongo-c/lib64:$LD_LIBRARY_PATH
+```
+
+Note: This `LD_LIBRARY_PATH` environment variable setting must be in effect
+when the `pg_ctl` utility is executed to start or restart PostgreSQL or
+EDB Postgres Advanced Server.
 
 Build with [MongoDB][1]'s legacy branch driver
    * autogen.sh --with-legacy

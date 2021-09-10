@@ -16,6 +16,8 @@
 
 MONGOC_VERSION=1.17.3
 JSONC_VERSION=0.15-20200726
+MONGOC_INSTALL="${MONGOC_INSTALL_DIR}"
+JSONC_INSTALL="${JSONC_INSTALL_DIR}"
 
 if [ "$#" -ne 1 ]; then
     echo "Usage: autogen.sh --[with-legacy | with-master]"
@@ -71,7 +73,7 @@ function checkout_json_lib
 function install_json_lib
 {
 	cd json-c &&
-	$CMAKE_COMMAND $JSONC_CFLAGS . &&
+	$CMAKE_COMMAND -DCMAKE_INSTALL_PREFIX=$JSONC_INSTALL $JSONC_CFLAGS . &&
 	make install &&
 	cd ..
 }
@@ -82,7 +84,7 @@ function install_json_lib
 function install_mongoc_driver
 {
 	cd mongo-c-driver &&
-	$CMAKE_COMMAND -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO . &&
+	$CMAKE_COMMAND -DCMAKE_INSTALL_PREFIX=$MONGOC_INSTALL -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -DENABLE_SSL=AUTO . &&
 	make install &&
 	cd ..
 }
