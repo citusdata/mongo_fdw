@@ -489,7 +489,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 													   PVC_RECURSE_PLACEHOLDERS));
 
 	/* Form column list required for query execution from scan_var_list. */
-	columnList = mongo_get_column_list(foreignrel, scan_var_list);
+	columnList = mongo_get_column_list(root, foreignrel, scan_var_list);
 
 	/* Construct foreign plan with query document and column list */
 	foreignPrivateList = list_make2(columnList, remote_exprs);

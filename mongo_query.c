@@ -18,6 +18,13 @@
 #include <bson.h>
 #include <json.h>
 
+#if PG_VERSION_NUM < 120000
+#include "access/sysattr.h"
+#endif
+#if PG_VERSION_NUM >= 120000
+#include "access/table.h"
+#endif
+#include "catalog/heap.h"
 #include "catalog/pg_collation.h"
 #ifdef META_DRIVER
 #include "mongoc.h"
@@ -32,6 +39,8 @@
 #if PG_VERSION_NUM >= 120000
 #include "optimizer/optimizer.h"
 #endif
+#include "parser/parsetree.h"
+#include "utils/rel.h"
 
 /*
  * Global context for foreign_expr_walker's search of an expression tree.
@@ -74,6 +83,8 @@ static void AppendParamValue(BSON *queryDocument, const char *keyName,
 static bool foreign_expr_walker(Node *node,
 								foreign_glob_cxt *glob_cxt,
 								foreign_loc_cxt *outer_cxt);
+static List *prepare_var_list_for_baserel(Oid relid, Index varno,
+										  Bitmapset *attrs_used);
 
 /*
  * FindArgumentOfType
@@ -669,7 +680,8 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
  *		and return them.
  */
 List *
-mongo_get_column_list(RelOptInfo *foreignrel, List *scan_var_list)
+mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
+					  List *scan_var_list)
 {
 	List	   *columnList = NIL;
 	ListCell   *lc;
@@ -684,11 +696,29 @@ mongo_get_column_list(RelOptInfo *foreignrel, List *scan_var_list)
 		if (!bms_is_member(var->varno, foreignrel->relids))
 			continue;
 
-		/* Do not support whole-row reference */
+		/* Is whole-row reference requested? */
 		if (var->varattno == 0)
-			continue;
+		{
+			List	   *wr_var_list;
+			RangeTblEntry *rte = rt_fetch(var->varno, root->parse->rtable);
+			Bitmapset  *attrs_used;
 
-		columnList = lappend(columnList, var);
+			Assert(OidIsValid(rte->relid));
+
+			/*
+			 * Get list of Var nodes for all undropped attributes of the base
+			 * relation.
+			 */
+			attrs_used = bms_make_singleton(0 -
+										 FirstLowInvalidHeapAttributeNumber);
+
+			wr_var_list = prepare_var_list_for_baserel(rte->relid, var->varno,
+													   attrs_used);
+			columnList = list_concat_unique(columnList, wr_var_list);
+			bms_free(attrs_used);
+		}
+		else
+			columnList = list_append_unique(columnList, var);
 	}
 
 	return columnList;
@@ -1009,4 +1039,68 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression)
 
 	/* OK to evaluate on the remote server */
 	return true;
+}
+
+/*
+ * prepare_var_list_for_baserel
+ *		Build list of nodes corresponding to the attributes requested for given
+ *		base relation.
+ *
+ * The list contains Var nodes corresponding to the attributes specified in
+ * attrs_used. If whole-row reference is required, add Var nodes corresponding
+ * to all the attributes in the relation.
+ */
+static List *
+prepare_var_list_for_baserel(Oid relid, Index varno, Bitmapset *attrs_used)
+{
+	int			attno;
+	List	   *tlist = NIL;
+	Node	   *node;
+	bool		wholerow_requested = false;
+	Relation	relation;
+	TupleDesc	tupdesc;
+
+	Assert(OidIsValid(relid));
+
+	/* Planner must have taken a lock, so request no lock here */
+#if PG_VERSION_NUM < 130000
+	relation = heap_open(relid, NoLock);
+#else
+	relation = table_open(relid, NoLock);
+#endif
+
+	tupdesc = RelationGetDescr(relation);
+
+	/* Is whole-row reference requested? */
+	wholerow_requested = bms_is_member(0 - FirstLowInvalidHeapAttributeNumber,
+									   attrs_used);
+
+	/* Handle user defined attributes first. */
+	for (attno = 1; attno <= tupdesc->natts; attno++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+
+		/* Ignore dropped attributes. */
+		if (attr->attisdropped)
+			continue;
+
+		/* For a required attribute create a Var node */
+		if (wholerow_requested ||
+			bms_is_member(attno - FirstLowInvalidHeapAttributeNumber,
+						  attrs_used))
+		{
+			node = (Node *) makeVar(varno, attno, attr->atttypid,
+									attr->atttypmod, attr->attcollation, 0);
+			tlist = lappend(tlist, node);
+
+		}
+	}
+
+#if PG_VERSION_NUM < 130000
+	heap_close(relation, NoLock);
+#else
+	table_close(relation, NoLock);
+#endif
+
+	return tlist;
 }

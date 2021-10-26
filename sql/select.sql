@@ -279,6 +279,14 @@ SELECT ctid, xmax, tableoid FROM f_test_tbl1;
 SELECT xmax, c1 FROM f_test_tbl1;
 SELECT count(tableoid) FROM f_test_tbl1;
 
+-- FDW-391: Support whole-row reference.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.c2, t1 FROM f_test_tbl1 t1
+  WHERE c1 = 100 ORDER BY 1;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT d, d.c2, e.c1, e
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
