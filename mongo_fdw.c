@@ -482,8 +482,14 @@ MongoGetForeignPlan(PlannerInfo *root,
 			local_exprs = lappend(local_exprs, rinfo->clause);
 	}
 
-	/* We don't need to serialize column list as lists are copiable */
-	columnList = ColumnList(foreignrel);
+	/* Add local expression Var nodes to scan_var_list. */
+	scan_var_list = list_concat_unique(NIL, scan_var_list);
+	scan_var_list = list_concat_unique(scan_var_list,
+									   pull_var_clause((Node *) local_exprs,
+													   PVC_RECURSE_PLACEHOLDERS));
+
+	/* Form column list required for query execution from scan_var_list. */
+	columnList = mongo_get_column_list(foreignrel, scan_var_list);
 
 	/* Construct foreign plan with query document and column list */
 	foreignPrivateList = list_make2(columnList, remote_exprs);

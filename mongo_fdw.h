@@ -312,7 +312,8 @@ extern void mongo_release_connection(MONGO_CONN *conn);
 extern BSON *QueryDocument(Oid relationId,
 						   List *opExpressionList,
 						   ForeignScanState *scanStateNode);
-extern List *ColumnList(RelOptInfo *baserel);
+extern List *mongo_get_column_list(RelOptInfo *foreignrel,
+								   List *scan_var_list);
 extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
 								  Expr *expression);
 

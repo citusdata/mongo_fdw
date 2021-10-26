@@ -664,72 +664,31 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 }
 
 /*
- * ColumnList
- *		Takes in the planner's information about this foreign table.  The
- *		function then finds all columns needed for query execution, including
- *		those used in projections, joins, and filter clauses, de-duplicates
- *		these columns, and returns them in a new list.
+ * mongo_get_column_list
+ *		Process scan_var_list to find all columns needed for query execution
+ *		and return them.
  */
 List *
-ColumnList(RelOptInfo *baserel)
+mongo_get_column_list(RelOptInfo *foreignrel, List *scan_var_list)
 {
 	List	   *columnList = NIL;
-	List	   *neededColumnList;
-	AttrNumber	columnIndex;
-	AttrNumber	columnCount = baserel->max_attr;
+	ListCell   *lc;
 
-#if PG_VERSION_NUM >= 90600
-	List	   *targetColumnList = baserel->reltarget->exprs;
-#else
-	List	   *targetColumnList = baserel->reltargetlist;
-#endif
-	List	   *restrictInfoList = baserel->baserestrictinfo;
-	ListCell   *restrictInfoCell;
-
-	/* First add the columns used in joins and projections */
-	neededColumnList = pull_var_clause((Node *)targetColumnList,
-#if PG_VERSION_NUM < 90600
-									   PVC_RECURSE_AGGREGATES,
-#endif
-									   PVC_RECURSE_PLACEHOLDERS);
-
-	/* Then walk over all restriction clauses, and pull up any used columns */
-	foreach(restrictInfoCell, restrictInfoList)
+	foreach(lc, scan_var_list)
 	{
-		RestrictInfo *restrictInfo = (RestrictInfo *) lfirst(restrictInfoCell);
-		Node	   *restrictClause = (Node *) restrictInfo->clause;
-		List	   *clauseColumnList = NIL;
+		Var		   *var = (Var *) lfirst(lc);
 
-		/* Recursively pull up any columns used in the restriction clause */
-		clauseColumnList = pull_var_clause(restrictClause,
-#if PG_VERSION_NUM < 90600
-										   PVC_RECURSE_AGGREGATES,
-#endif
-										   PVC_RECURSE_PLACEHOLDERS);
+		Assert(IsA(var, Var));
 
-		neededColumnList = list_union(neededColumnList, clauseColumnList);
-	}
+		/* Var belongs to foreign table? */
+		if (!bms_is_member(var->varno, foreignrel->relids))
+			continue;
 
-	/* Walk over all column definitions, and de-duplicate column list */
-	for (columnIndex = 1; columnIndex <= columnCount; columnIndex++)
-	{
-		ListCell   *neededColumnCell;
-		Var		   *column = NULL;
+		/* Do not support whole-row reference */
+		if (var->varattno == 0)
+			continue;
 
-		/* Look for this column in the needed column list */
-		foreach(neededColumnCell, neededColumnList)
-		{
-			Var		   *neededColumn = (Var *) lfirst(neededColumnCell);
-
-			if (neededColumn->varattno == columnIndex)
-			{
-				column = neededColumn;
-				break;
-			}
-		}
-
-		if (column != NULL)
-			columnList = lappend(columnList, column);
+		columnList = lappend(columnList, var);
 	}
 
 	return columnList;
