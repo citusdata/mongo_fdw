@@ -92,6 +92,7 @@ static bool foreign_expr_walker(Node *node,
 								foreign_loc_cxt *outer_cxt);
 static List *prepare_var_list_for_baserel(Oid relid, Index varno,
 										  Bitmapset *attrs_used);
+#ifdef META_DRIVER
 static HTAB *ColumnInfoHash(List *colname_list, List *colnum_list,
 							List *rti_list, List *isouter_list);
 static void mongo_prepare_inner_pipeline(List *joinclause,
@@ -102,6 +103,7 @@ static void mongo_prepare_inner_pipeline(List *joinclause,
 static void mongo_append_joinclauses_to_inner_pipeline(List *joinclause,
 													   BSON *child_doc,
 													   pipeline_cxt *context);
+#endif
 
 /*
  * FindArgumentOfType
@@ -204,13 +206,14 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
 BSON *
 QueryDocument(ForeignScanState *scanStateNode)
 {
-	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanStateNode->fdw_state;
 	ForeignScan *fsplan = (ForeignScan *) scanStateNode->ss.ps.plan;
 	BSON	   *queryDocument = BsonCreate();
 	BSON	   *filter = BsonCreate();
 	List	   *PrivateList = fsplan->fdw_private;
 	List	   *opExpressionList = list_nth(PrivateList,
 											mongoFdwPrivateRemoteExprList);
+#ifdef META_DRIVER
+	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanStateNode->fdw_state;
 	BSON		root_pipeline;
 	int 		root_index = 0;
 	List	   *joinclauses;
@@ -256,6 +259,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 		columnInfoHash = ColumnInfoHash(colname_list, colnum_list, rti_list,
 										isouter_list);
 	}
+#endif
 
 	/*
 	 * Add filter into query pipeline if available.  These are remote_exprs
@@ -311,6 +315,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 				columnName = get_attname(relationId, columnId, false);
 #endif
 			}
+#ifdef META_DRIVER
 			/* For join rel, use columnInfoHash to get column name */
 			else
 			{
@@ -328,6 +333,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 				if (found)
 					columnName = columnInfo->colName;
 			}
+#endif
 
 			if (constant != NULL)
 				AppendConstantValue(filter, columnName, constant);
@@ -364,6 +370,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 				columnName = get_attname(relationId, columnId, false);
 #endif
 			}
+#ifdef META_DRIVER
 			/* For join rel, use columnInfoHash to get column name */
 			else
 			{
@@ -381,6 +388,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 				if (found)
 					columnName = columnInfo->colName;
 			}
+#endif
 
 			/* Find all expressions that correspond to the column */
 			columnOperatorList = ColumnOperatorList(column,
@@ -425,6 +433,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 #endif
 	}
 
+#ifdef META_DRIVER
 	if (fmstate->isJoinRel)
 	{
 		BSON		inner_pipeline;
@@ -543,6 +552,9 @@ QueryDocument(ForeignScanState *scanStateNode)
 	}
 
 	return queryDocument;
+#endif
+
+	return filter;
 }
 
 /*
@@ -1478,6 +1490,7 @@ prepare_var_list_for_baserel(Oid relid, Index varno, Bitmapset *attrs_used)
 	return tlist;
 }
 
+#ifdef META_DRIVER
 /*
  * ColumnInfoHash
  *		Creates a hash table that maps varno and varattno to the column names,
@@ -1626,3 +1639,4 @@ mongo_append_joinclauses_to_inner_pipeline(List *joinclause, BSON *child_doc,
 		context->arrayIndex++;
 	}
 }
+#endif

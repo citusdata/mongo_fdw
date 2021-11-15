@@ -137,11 +137,13 @@ static void MongoBeginForeignInsert(ModifyTableState *mtstate,
 static void MongoEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
 #endif
+#ifdef META_DRIVER
 static void MongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 									 RelOptInfo *outerrel,
 									 RelOptInfo *innerrel,
 									 JoinType jointype,
 									 JoinPathExtraData *extra);
+#endif
 
 /*
  * Helper functions
@@ -169,11 +171,13 @@ static int MongoAcquireSampleRows(Relation relation,
 								  double *totalRowCount,
 								  double *totalDeadRowCount);
 static void mongo_fdw_exit(int code, Datum arg);
+#ifdef META_DRIVER
 static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 								  JoinType jointype, RelOptInfo *outerrel,
 								  RelOptInfo *innerrel,
 								  JoinPathExtraData *extra);
 static void mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo);
+#endif
 
 /* The null action object used for pure validation */
 #if PG_VERSION_NUM < 130000
@@ -246,8 +250,10 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 	fdwRoutine->EndForeignInsert = MongoEndForeignInsert;
 #endif
 
+#ifdef META_DRIVER
 	/* Support function for join push-down */
 	fdwRoutine->GetForeignJoinPaths = MongoGetForeignJoinPaths;
+#endif
 
 	PG_RETURN_POINTER(fdwRoutine);
 }
@@ -471,7 +477,9 @@ MongoGetForeignPlan(PlannerInfo *root,
 	List	   *fdw_scan_tlist = NIL;
 	List	   *column_name_list = NIL;
 	List	   *is_inner_column_list = NIL;
+#ifdef META_DRIVER
 	MongoJoinQualInfo *jqinfo;
+#endif
 
 	/* Set scan relation id */
 	if (foreignrel->reloptkind == RELOPT_BASEREL ||
@@ -635,6 +643,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 									   &column_name_list,
 									   &is_inner_column_list);
 
+#ifdef META_DRIVER
 	/*
 	 * Prepare separate lists of column names, varno, varattno, and whether it
 	 * is part of the outer relation or not.  This information would be useful
@@ -682,6 +691,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 		/* Destroy hash table used to get unique column info */
 		hash_destroy(jqinfo->joinExprColHash);
 	}
+#endif
 
 	/*
 	 * Build the fdw_private list that will be available to the executor.
@@ -689,6 +699,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 	 */
 	fdw_private = list_make2(columnList, remote_exprs);
 
+#ifdef META_DRIVER
 	/*
 	 * Unlike postgres_fdw, remote query formation is done in the execution
 	 * state.  There is NO way to get the correct information required to form
@@ -716,6 +727,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 										 makeString(fpinfo->outer_relname)));
 		fdw_private = lappend(fdw_private, makeInteger(fpinfo->jointype));
 	}
+#endif
 
 	/* Create the foreign scan node */
 	foreignScan = make_foreignscan(targetList, local_exprs,
@@ -2689,6 +2701,7 @@ MongoEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
 }
 #endif
 
+#ifdef META_DRIVER
 /*
  * MongoGetForeignJoinPaths
  *		Add possible ForeignPath to joinrel, if the join is safe to push down.
@@ -3042,3 +3055,4 @@ mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo)
 		mongo_check_qual(expr, jqinfo);
 	}
 }
+#endif /* End of META_DRIVER */
