@@ -160,6 +160,13 @@ The following options are only supported with meta driver:
   * `ca_dir`: SSL option.
   * `crl_file`: SSL option.
   * `weak_cert_validation`: SSL option, false [default].
+  * `enable_join_pushdown`: If `true`, pushes the join between two foreign
+	tables from the same foreign server, instead of fetching all the rows
+	for both the tables and performing a join locally. This option can also
+	be set for an individual table, and if any of the tables involved in the
+	join has set it to false then the join will not be pushed down. The
+	table-level value of the option takes precedence over the server-level
+	option value. Default is `true`.
 
 The following parameters can be set on a MongoDB foreign table object:
 
@@ -167,6 +174,8 @@ The following parameters can be set on a MongoDB foreign table object:
     `test`.
   * `collection`: Name of the MongoDB collection to query. Defaults to
     the foreign table name used in the relevant `CREATE` command.
+  * `enable_join_pushdown`: Similar to the server-level option, but can be
+    configured at table level as well. Default is `true`.
 
 The following parameters can be supplied while creating user mapping:
 

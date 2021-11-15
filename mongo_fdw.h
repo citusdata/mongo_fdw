@@ -155,6 +155,7 @@
 #define OPTION_NAME_CA_DIR 					"ca_dir"
 #define OPTION_NAME_CRL_FILE 				"crl_file"
 #define OPTION_NAME_WEAK_CERT 				"weak_cert_validation"
+#define OPTION_NAME_ENABLE_JOIN_PUSHDOWN	"enable_join_pushdown"
 #endif
 
 /* Default values for option parameters */
@@ -197,7 +198,7 @@ typedef struct MongoValidOption
 
 /* Array of options that are valid for mongo_fdw */
 #ifdef META_DRIVER
-static const uint32 ValidOptionCount = 16;
+static const uint32 ValidOptionCount = 18;
 #else
 static const uint32 ValidOptionCount = 6;
 #endif
@@ -218,11 +219,15 @@ static const MongoValidOption ValidOptionArray[] =
 	{OPTION_NAME_CA_DIR, ForeignServerRelationId},
 	{OPTION_NAME_CRL_FILE, ForeignServerRelationId},
 	{OPTION_NAME_WEAK_CERT, ForeignServerRelationId},
+	{OPTION_NAME_ENABLE_JOIN_PUSHDOWN, ForeignServerRelationId},
 #endif
 
 	/* Foreign table options */
 	{OPTION_NAME_DATABASE, ForeignTableRelationId},
 	{OPTION_NAME_COLLECTION, ForeignTableRelationId},
+#ifdef META_DRIVER
+	{OPTION_NAME_ENABLE_JOIN_PUSHDOWN, ForeignTableRelationId},
+#endif
 
 	/* User mapping options */
 	{OPTION_NAME_USERNAME, UserMappingRelationId},
@@ -253,6 +258,7 @@ typedef struct MongoFdwOptions
 	char	   *ca_dir;
 	char	   *crl_file;
 	bool		weak_cert_validation;
+	bool        enable_join_pushdown;
 #endif
 } MongoFdwOptions;
 
@@ -337,6 +343,8 @@ typedef struct MongoFdwRelationInfo
 	List	   *joinclauses;
 	char       *inner_relname;
 	char	   *outer_relname;
+
+	MongoFdwOptions *options;  /* Options applicable for this relation */
 } MongoFdwRelationInfo;
 
 /*

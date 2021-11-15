@@ -91,7 +91,8 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 		}
 #ifdef META_DRIVER
 		else if (strcmp(optionName, OPTION_NAME_SSL) == 0 ||
-				 strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0)
+				 strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0 ||
+				 strcmp(optionName, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0)
 		{
 			/* These accept only boolean values */
 			(void) defGetBoolean(optionDef);
@@ -156,8 +157,8 @@ mongo_get_options(Oid foreignTableId)
 	foreignServer = GetForeignServer(foreignTable->serverid);
 	mapping = GetUserMapping(GetUserId(), foreignTable->serverid);
 
-	optionList = mongo_list_concat(optionList, foreignTable->options);
 	optionList = mongo_list_concat(optionList, foreignServer->options);
+	optionList = mongo_list_concat(optionList, foreignTable->options);
 	optionList = mongo_list_concat(optionList, mapping->options);
 
 	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
@@ -165,6 +166,7 @@ mongo_get_options(Oid foreignTableId)
 #ifdef META_DRIVER
 	options->ssl = false;
 	options->weak_cert_validation = false;
+	options->enable_join_pushdown = true;
 #endif
 
 	/* Loop through the options */
@@ -202,6 +204,9 @@ mongo_get_options(Oid foreignTableId)
 
 		else if (strcmp(def->defname, OPTION_NAME_WEAK_CERT) == 0)
 			options->weak_cert_validation = defGetBoolean(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0)
+			options->enable_join_pushdown = defGetBoolean(def);
 
 		else /* This is for continuation */
 #endif

@@ -28,6 +28,8 @@ CREATE FOREIGN TABLE test_text ( __doc text)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
 CREATE FOREIGN TABLE test_varchar ( __doc varchar)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
+CREATE FOREIGN TABLE f_test_tbl4 (_id NAME, c1 INTEGER, c2 TEXT, c3 CHAR(9), c4 INTEGER, c5 pg_catalog.Date, c6 DECIMAL, c7 INTEGER, c8 INTEGER)
+  SERVER mongo_server1 OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl1');
 
 INSERT INTO f_test_tbl1 VALUES (0, 1500, 'EMP15', 'FINANCE', 1300, '2000-12-25', 950.0, 400, 60);
 INSERT INTO f_test_tbl1 VALUES (0, 1600, 'EMP16', 'ADMIN', 600);
@@ -397,6 +399,54 @@ SELECT t1.c1, t1.phv, t2.c2, t2.phv
   ORDER BY t1.c1, t2.c2;
 RESET enable_partitionwise_join;
 
+-- FDW-445: Support enable_join_pushdown option at server level and table level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'abc11');
+
+-- Test the option at server level.
+ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+ALTER SERVER mongo_server OPTIONS (SET enable_join_pushdown 'true');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+-- Test the option with outer rel.
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (ADD enable_join_pushdown 'false');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'true');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+-- Test the option with inner rel.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (ADD enable_join_pushdown 'false');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'true');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'false');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'false');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT t1.c1, t2.c2
+  FROM f_test_tbl3 t1 JOIN f_test_tbl4 t2 ON (t1.c1 = t2.c8) ORDER BY 1, 2;
+
 DELETE FROM f_test_tbl1 WHERE c8 IS NULL;
 DELETE FROM f_test_tbl1 WHERE c8 = 60;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;
@@ -404,6 +454,7 @@ DELETE FROM f_test_tbl2 WHERE c1 = 50;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
 DROP FOREIGN TABLE f_test_tbl3;
+DROP FOREIGN TABLE f_test_tbl4;
 DROP FOREIGN TABLE test_text;
 DROP FOREIGN TABLE test_varchar;
 DROP TABLE l_test_tbl1;

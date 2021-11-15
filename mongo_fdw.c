@@ -354,6 +354,9 @@ MongoGetForeignRelSize(PlannerInfo *root,
 	if (*refname && strcmp(refname, relname) != 0)
 		appendStringInfo(fpinfo->relation_name, " %s",
 						 quote_identifier(rte->eref->aliasname));
+
+	/* Also store the options in fpinfo for further use */
+	fpinfo->options = options;
 }
 
 /*
@@ -2834,6 +2837,22 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 		jointype != JOIN_RIGHT)
 		return false;
 
+	fpinfo = (MongoFdwRelationInfo *) joinrel->fdw_private;
+	fpinfo_o = (MongoFdwRelationInfo *) outerrel->fdw_private;
+	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
+
+	/* If join pushdown is not enabled, honor it. */
+#if PG_VERSION_NUM >= 100000
+	if ((!IS_JOIN_REL(outerrel) && !fpinfo_o->options->enable_join_pushdown) ||
+		(!IS_JOIN_REL(innerrel) && !fpinfo_i->options->enable_join_pushdown))
+#else
+	if ((outerrel->reloptkind != RELOPT_JOINREL &&
+		 !fpinfo_o->options->enable_join_pushdown) ||
+		(innerrel->reloptkind != RELOPT_JOINREL &&
+		 !fpinfo_i->options->enable_join_pushdown))
+#endif
+		return false;
+
 	/* Recursive joins can't be pushed down */
 #if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(outerrel) || IS_JOIN_REL(innerrel))
@@ -2847,9 +2866,6 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	 * If either of the joining relations is marked as unsafe to pushdown, the
 	 * join can not be pushed down.
 	 */
-	fpinfo = (MongoFdwRelationInfo *) joinrel->fdw_private;
-	fpinfo_o = (MongoFdwRelationInfo *) outerrel->fdw_private;
-	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
 	if (!fpinfo_o || !fpinfo_o->pushdown_safe ||
 		!fpinfo_i || !fpinfo_i->pushdown_safe)
 		return false;
