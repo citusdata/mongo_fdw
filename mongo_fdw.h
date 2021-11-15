@@ -178,6 +178,13 @@
 #endif
 
 /*
+ * We build a hash table that stores the column details.  However, a table can
+ * have maximum MaxHeapAttributeNumber columns.  And since we allow join only
+ * on two tables, we set the max hash table size to twice that limit.
+ */
+#define MaxHashTableSize					(MaxHeapAttributeNumber * 2)
+
+/*
  * MongoValidOption keeps an option name and a context.  When an option is
  * passed into mongo_fdw objects (server and foreign table), we compare this
  * option's name and context against those of valid options.
@@ -272,6 +279,10 @@ typedef struct MongoFdwModifyState
 
 	MongoFdwOptions *options;
 	AttrNumber	rowidAttno; 	/* attnum of resjunk rowid column */
+
+	/* Join information */
+	bool	    isJoinRel;		/* Is this JOIN operation? */
+	char	   *outerRelName;	/* Outer relation name */
 } MongoFdwModifyState;
 
 /*
@@ -288,6 +299,8 @@ typedef struct ColumnMapping
 	Oid			columnTypeId;
 	int32		columnTypeMod;
 	Oid			columnArrayTypeId;
+	/* Column serial number in target list (set only for join rel) */
+	uint32		columnSerialNo;
 } ColumnMapping;
 
 /*
@@ -297,10 +310,90 @@ typedef struct ColumnMapping
  */
 typedef struct MongoFdwRelationInfo
 {
+	/*
+	 * True means that the relation can be pushed down. Always true for simple
+	 * foreign scan.
+	 */
+	bool		pushdown_safe;
+
 	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
 	List	   *local_conds;
 	List	   *remote_conds;
+
+	/* Name of the base rel (not set for join rels!) */
+	char	   *base_relname;
+
+	/*
+	 * Name of the relation while EXPLAINing ForeignScan.  It is used for join
+	 * relations but is set for all relations.  For join relation, the name
+	 * indicates which foreign tables are being joined and the join type used.
+	 */
+	StringInfo	relation_name;
+
+	/* Join information */
+	RelOptInfo *outerrel;
+	RelOptInfo *innerrel;
+	JoinType	jointype;
+	List	   *joinclauses;
+	char       *inner_relname;
+	char	   *outer_relname;
 } MongoFdwRelationInfo;
+
+/*
+ * MongoJoinQualInfo contains column name, varno, varattno, and its relation
+ * name of columns involved in the join quals which is passed to execution
+ * state through fdw_private.
+ *
+ * Unlike postgres_fdw, remote query formation is done in the execution state.
+ * The information, mainly the varno i.e. range table index, we get at the
+ * execution time is different than the planning state. That may result in
+ * fetching incorrect data.  So, to avoid this, we are gathering information
+ * required to form a MongoDB query in the planning state and passing it to the
+ * executor.
+ *
+ * Assume, we have the following two tables with RTI 1 and 2 respectively:
+ * 			T1(a int, b int)
+ * 			T2(x int, y int)
+ *
+ * and if the join clause is like below with T1 as inner relation and T2 outer
+ * relation:
+ * 			(T1.a = T2.x AND T1.b > T2.y)
+ *
+ * then as columns a, b, x, and y are involved in the join clause, we need to
+ * form the following 4 lists as part of MongoJoinQualInfo:
+ *
+ * 1. colNameList: List of column names
+ * 			a->x->b->y
+ * 2. colNumList: List of column attribute number
+ * 			1->1->2->2
+ * 3. rtiList: Range table index of the column
+ * 			1->2->1->2
+ * 4. isOuterList: Is it a column of an outer relation?
+ * 			1->0->1->0
+ *
+ * If we want information related to column 'a', then look for information
+ * available at the zeroth index of all four lists.
+ *
+ * To avoid duplicate entry of columns, we use a hash table having a unique
+ * hash key as a set of varno and varattno.
+ */
+typedef struct MongoJoinQualInfo
+{
+	PlannerInfo *root;			/* global planner state */
+	RelOptInfo *foreignRel;		/* the foreign relation we are planning for */
+	Relids      outerRelids;    /* set of base relids of outer relation */
+	List 	   *colNameList;
+	List	   *colNumList;
+	List	   *rtiList;
+	List	   *isOuterList;
+	struct HTAB *joinExprColHash;
+} MongoJoinQualInfo;
+
+typedef struct ColumnHashKey
+{
+	int		varno;
+	int		varattno;
+} ColumnHashKey;
 
 /* options.c */
 extern MongoFdwOptions *mongo_get_options(Oid foreignTableId);
@@ -316,17 +409,19 @@ extern void mongo_cleanup_connection(void);
 extern void mongo_release_connection(MONGO_CONN *conn);
 
 /* Function declarations related to creating the mongo query */
-extern BSON *QueryDocument(Oid relationId,
-						   List *opExpressionList,
-						   ForeignScanState *scanStateNode);
-extern List *mongo_get_column_list(PlannerInfo *root,
-								   RelOptInfo *foreignrel,
-								   List *scan_var_list);
+extern BSON *QueryDocument(ForeignScanState *scanStateNode);
+extern List *mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
+								   List *scan_var_list, List **colNameList,
+								   List **colIsInnerList );
 extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-								  Expr *expression);
+								  Expr *expression, bool is_join_cond);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
+
+/* deparse.c headers */
+extern void mongo_check_qual(Expr *node, MongoJoinQualInfo *jqinfo);
+extern const char *mongo_get_jointype_name(JoinType jointype);
 
 #endif							/* MONGO_FDW_H */

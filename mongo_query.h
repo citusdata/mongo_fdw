@@ -17,8 +17,102 @@
 
 #define NUMERICARRAY_OID 1231
 
+/*
+ * Context for aggregation pipeline formation.
+ */
+typedef struct pipeline_cxt
+{
+	struct HTAB *colInfoHash;   /* columns information hash */
+	unsigned int arrayIndex;    /* Index of the various arrays in the pipeline,
+								   starting from zero */
+	bool         isBoolExpr;    /* is join expression boolean? */
+} pipeline_cxt;
+
+/*
+ * ColInfoEntry represents a hash table entry that maps a unique column's varno
+ * and varattno to the column name and related information.  We construct these
+ * hash table entries to speed up the BSON query document formation.
+ */
+typedef struct ColInfoHashKey
+{
+	int			varNo;
+	int			varAttno;
+} ColInfoHashKey;
+typedef struct ColInfoEntry
+{
+	ColInfoHashKey key;    /* Hash key */
+	char	   *colName;
+	bool		isOuter;
+} ColInfoHashEntry;
+
+/*
+ * Indexes of FDW-private information stored in fdw_private lists.
+ *
+ * These items are indexed with the enum mongoFdwScanPrivateIndex, so an item
+ * can be fetched with list_nth().  For example, to get the column list:
+ *		col_list = strVal(list_nth(fdw_private, mongoFdwPrivateColumnList));
+ */
+enum mongoFdwScanPrivateIndex
+{
+	/*
+	 * Column list to form column mapping hash i.e. to get only needed columns
+	 * from all fetched columns from remote.
+	 */
+	mongoFdwPrivateColumnList,
+
+	/* Expressions to execute remotely */
+	mongoFdwPrivateRemoteExprList,
+
+	/* Join information */
+
+	/*
+	 * String describing join i.e. names of relations being joined and types
+	 * of join, added when the scan is join
+	 */
+	mongoFdwPrivateRelations,
+
+	/*
+	 * List of column names and whether those are part of inner or outer
+	 * relation stored to form Column Mapping Hash.  These are needed column
+	 * means those are part of target and restriction columns.
+	 */
+	mongoFdwPrivateColNameList,
+
+	mongoFdwPrivateColIsInnerList,
+
+	/* List of join clauses to form a pipeline */
+	mongoFdwPrivateJoinClauseList,
+
+	/*
+	 * List of column name, attribute number, range table index, and whether
+	 * this column is of outer relation or not.
+	 *
+	 * The columns which are part of the join clauses are listed.
+	 */
+	mongoFdwPrivateJoinClauseColNameList,
+
+	mongoFdwPrivareJoinClauseColNumList,
+
+	mongoFdwPrivateJoinClauseRtiList,
+
+	mongoFdwPrivateJoinClauseIsOuterList,
+
+	/* Inner and Outer relation names */
+	mongoFdwPrivateJoinInnerOuterRelName,
+
+	/* Join-type  */
+	mongoFdwPrivateJoinType
+};
+
 /* Function to be used in mongo_fdw.c */
 extern bool AppendMongoValue(BSON *queryDocument, const char *keyName,
 							 Datum value, bool isnull, Oid id);
+
+/* Functions to be used in deparse.c */
+extern char *MongoOperatorName(const char *operatorName);
+extern void AppendConstantValue(BSON *queryDocument, const char *keyName,
+								Const *constant);
+extern void mongo_append_expr(Expr *node, BSON *child_doc,
+							  pipeline_cxt *context);
 
 #endif							/* MONGO_QUERY_H */

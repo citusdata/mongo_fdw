@@ -249,7 +249,7 @@ MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 	bson_error_t error;
 
 	c = mongoc_client_get_collection(conn, database, collection);
-	cur = mongoc_collection_find_with_opts(c, q, NULL, NULL);
+	cur = mongoc_collection_aggregate(c, MONGOC_QUERY_NONE, q, NULL, NULL);
 	mongoc_cursor_error(cur, &error);
 	if (!cur)
 		ereport(ERROR,

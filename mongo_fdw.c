@@ -25,6 +25,7 @@
 #include "access/table.h"
 #endif
 #include "catalog/heap.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
@@ -39,6 +40,7 @@
 #if PG_VERSION_NUM >= 120000
 #include "optimizer/optimizer.h"
 #endif
+#include "optimizer/tlist.h"
 #if PG_VERSION_NUM < 120000
 #include "optimizer/var.h"
 #endif
@@ -51,6 +53,7 @@
 #include "utils/jsonfuncs.h"
 #endif
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -134,17 +137,25 @@ static void MongoBeginForeignInsert(ModifyTableState *mtstate,
 static void MongoEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
 #endif
+static void MongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
+									 RelOptInfo *outerrel,
+									 RelOptInfo *innerrel,
+									 JoinType jointype,
+									 JoinPathExtraData *extra);
 
 /*
  * Helper functions
  */
 static double ForeignTableDocumentCount(Oid foreignTableId);
-static HTAB *ColumnMappingHash(Oid foreignTableId, List *columnList);
+static HTAB *ColumnMappingHash(Oid foreignTableId, List *columnList,
+							   List *colNameList, List *colIsInnerList,
+							   bool isJoin);
 static void FillTupleSlot(const BSON *bsonDocument,
 						  const char *bsonDocumentKey,
 						  HTAB *columnMappingHash,
 						  Datum *columnValues,
-						  bool *columnNulls);
+						  bool *columnNulls,
+						  bool	isJoin);
 static bool ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId);
 static Datum ColumnValueArray(BSON_ITERATOR *bsonIterator, Oid valueTypeId);
 static Datum ColumnValue(BSON_ITERATOR *bsonIterator,
@@ -158,6 +169,11 @@ static int MongoAcquireSampleRows(Relation relation,
 								  double *totalRowCount,
 								  double *totalDeadRowCount);
 static void mongo_fdw_exit(int code, Datum arg);
+static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
+								  JoinType jointype, RelOptInfo *outerrel,
+								  RelOptInfo *innerrel,
+								  JoinPathExtraData *extra);
+static void mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo);
 
 /* The null action object used for pure validation */
 #if PG_VERSION_NUM < 130000
@@ -230,6 +246,9 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 	fdwRoutine->EndForeignInsert = MongoEndForeignInsert;
 #endif
 
+	/* Support function for join push-down */
+	fdwRoutine->GetForeignJoinPaths = MongoGetForeignJoinPaths;
+
 	PG_RETURN_POINTER(fdwRoutine);
 }
 
@@ -257,8 +276,13 @@ MongoGetForeignRelSize(PlannerInfo *root,
 					   Oid foreigntableid)
 {
 	double		documentCount = ForeignTableDocumentCount(foreigntableid);
+	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
 	MongoFdwRelationInfo *fpinfo;
+	MongoFdwOptions *options;
 	ListCell   *lc;
+	char 	   *relname;
+	char       *database;
+	char       *refname;
 
 	/*
 	 * We use MongoFdwRelationInfo to pass various information to subsequent
@@ -277,11 +301,14 @@ MongoGetForeignRelSize(PlannerInfo *root,
 		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
 
 		if (IsA(ri->clause, OpExpr) &&
-			mongo_is_foreign_expr(root, baserel, ri->clause))
+			mongo_is_foreign_expr(root, baserel, ri->clause, false))
 			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
 		else
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
 	}
+
+	/* Base foreign tables need to be pushed down always. */
+	fpinfo->pushdown_safe = true;
 
 	if (documentCount > 0.0)
 	{
@@ -301,6 +328,26 @@ MongoGetForeignRelSize(PlannerInfo *root,
 		ereport(DEBUG1,
 				(errmsg("could not retrieve document count for collection"),
 				 errhint("Falling back to default estimates in planning.")));
+
+	options = mongo_get_options(foreigntableid);
+	relname = options->collectionName;
+	database =  options->svr_database;
+	fpinfo->base_relname = relname;
+
+	/*
+	 * Set the name of relation in fpinfo, while we are constructing it here.
+	 * It will be used to build the string describing the join relation in
+	 * EXPLAIN output.  We can't know whether the VERBOSE option is specified
+	 * or not, so always schema-qualify the foreign table name.
+	 */
+	fpinfo->relation_name = makeStringInfo();
+	refname = rte->eref->aliasname;
+	appendStringInfo(fpinfo->relation_name, "%s.%s",
+					 quote_identifier(database),
+					 quote_identifier(relname));
+	if (*refname && strcmp(refname, relname) != 0)
+		appendStringInfo(fpinfo->relation_name, " %s",
+						 quote_identifier(rte->eref->aliasname));
 }
 
 /*
@@ -421,6 +468,40 @@ MongoGetForeignPlan(PlannerInfo *root,
 	ListCell   *lc;
 	List	   *local_exprs = NIL;
 	List	   *remote_exprs = NIL;
+	List	   *fdw_scan_tlist = NIL;
+	List	   *column_name_list = NIL;
+	List	   *is_inner_column_list = NIL;
+	MongoJoinQualInfo *jqinfo;
+
+	/* Set scan relation id */
+	if (foreignrel->reloptkind == RELOPT_BASEREL ||
+		foreignrel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+		scan_relid = foreignrel->relid;
+	else
+	{
+		 /* Join relation - set scan_relid to 0. */
+		scan_relid = 0;
+
+		Assert(!restrictionClauses);
+
+		/* Extract local expressions from local conditions */
+		foreach(lc, fpinfo->local_conds)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			Assert(IsA(rinfo, RestrictInfo));
+			local_exprs = lappend(local_exprs, rinfo->clause);
+		}
+
+		/* Extract remote expressions from remote conditions */
+		foreach(lc, fpinfo->remote_conds)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			Assert(IsA(rinfo, RestrictInfo));
+			remote_exprs = lappend(remote_exprs, rinfo->clause);
+		}
+	}
 
 #if PG_VERSION_NUM >= 90600
 	scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
@@ -476,7 +557,7 @@ MongoGetForeignPlan(PlannerInfo *root,
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
 		else if (IsA(rinfo->clause, OpExpr) &&
-				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause))
+				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause, false))
 			remote_exprs = lappend(remote_exprs, rinfo->clause);
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);
@@ -488,11 +569,153 @@ MongoGetForeignPlan(PlannerInfo *root,
 									   pull_var_clause((Node *) local_exprs,
 													   PVC_RECURSE_PLACEHOLDERS));
 
-	/* Form column list required for query execution from scan_var_list. */
-	columnList = mongo_get_column_list(root, foreignrel, scan_var_list);
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
+	{
+		/*
+		 * For join relations, the planner needs a targetlist, which represents
+		 * the output of the ForeignScan node.
+		 */
+		fdw_scan_tlist = add_to_flat_tlist(NIL, scan_var_list);
 
-	/* Construct foreign plan with query document and column list */
+		/*
+		 * Ensure that the outer plan produces a tuple whose descriptor
+		 * matches our scan tuple slot.  Also, remove the local conditions
+		 * from the outer plan's quals, lest they be evaluated twice, once by
+		 * the local plan and once by the scan.
+		 */
+		if (outer_plan)
+		{
+			ListCell   *lc;
+
+			/*
+			 * First, update the plan's qual list if possible.  In some cases,
+			 * the quals might be enforced below the topmost plan level, in
+			 * which case we'll fail to remove them; it's not worth working
+			 * harder than this.
+			 */
+			foreach(lc, local_exprs)
+			{
+				Node	   *qual = lfirst(lc);
+
+				outer_plan->qual = list_delete(outer_plan->qual, qual);
+
+				/*
+				 * For an inner join, the local conditions of the foreign scan
+				 * plan can be part of the joinquals as well.  (They might also
+				 * be in the mergequals or hashquals, but we can't touch those
+				 * without breaking the plan.)
+				 */
+				if (IsA(outer_plan, NestLoop) ||
+					IsA(outer_plan, MergeJoin) ||
+					IsA(outer_plan, HashJoin))
+				{
+					Join	   *join_plan = (Join *) outer_plan;
+
+					if (join_plan->jointype == JOIN_INNER)
+						join_plan->joinqual = list_delete(join_plan->joinqual,
+														  qual);
+				}
+			}
+
+			/*
+			 * Now fix the subplan's tlist --- this might result in inserting
+			 * a Result node atop the plan tree.
+			 */
+			outer_plan = change_plan_targetlist(outer_plan, fdw_scan_tlist,
+												best_path->path.parallel_safe);
+		}
+	}
+
+	/* Form column list required for query execution from scan_var_list. */
+	columnList = mongo_get_column_list(root, foreignrel, scan_var_list,
+									   &column_name_list,
+									   &is_inner_column_list);
+
+	/*
+	 * Prepare separate lists of column names, varno, varattno, and whether it
+	 * is part of the outer relation or not.  This information would be useful
+	 * at the time of execution to prepare the MongoDB query.
+	 */
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
+	{
+		/*
+		 * We use MongoJoinQualInfo to pass various information related to
+		 * joining quals to fdw_private which is used to form equivalent
+		 * MongoDB query during the execution phase.
+		 */
+		jqinfo = (MongoJoinQualInfo *) palloc(sizeof(MongoJoinQualInfo));
+
+		jqinfo->root = root;
+		jqinfo->foreignRel = foreignrel;
+		jqinfo->outerRelids = fpinfo->outerrel->relids;
+		jqinfo->joinExprColHash = NULL;
+		/* Initialize all lists */
+		jqinfo->colNameList = NIL;
+		jqinfo->colNumList = NIL;
+		jqinfo->rtiList = NIL;
+		jqinfo->isOuterList = NIL;
+
+		/*
+		 * Extract required data of columns involved in join clauses and append
+		 * it into the various lists required to pass it to the executor.
+		 * Also, save join type in the list.
+		 */
+		if (fpinfo->joinclauses)
+			mongo_prepare_qual_info(fpinfo->joinclauses, jqinfo);
+
+		/*
+		 * Extract required data of columns involved in the WHERE clause and
+		 * append it into the various lists required to pass it to the
+		 * executor.
+		 */
+		if (fpinfo->remote_conds)
+			mongo_prepare_qual_info(fpinfo->remote_conds, jqinfo);
+
+		/* Destroy hash table used to get unique column info */
+		hash_destroy(jqinfo->joinExprColHash);
+	}
+
+	/*
+	 * Build the fdw_private list that will be available to the executor.
+	 * Items in the list must match enum mongoFdwScanPrivateIndex.
+	 */
 	fdw_private = list_make2(columnList, remote_exprs);
+
+	/*
+	 * Unlike postgres_fdw, remote query formation is done in the execution
+	 * state.  There is NO way to get the correct information required to form
+	 * a remote query during the execution state.  So, we are gathering
+	 * information required to form a MongoDB query in the planning state and
+	 * passing it to the execution state through fdw_private.
+	 */
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(foreignrel))
+#else
+	if (foreignrel->reloptkind == RELOPT_JOINREL)
+#endif
+	{
+		fdw_private = lappend(fdw_private,
+							  makeString(fpinfo->relation_name->data));
+		fdw_private = lappend(fdw_private, column_name_list);
+		fdw_private = lappend(fdw_private, is_inner_column_list);
+		fdw_private = lappend(fdw_private, fpinfo->joinclauses);
+		fdw_private = lappend(fdw_private, jqinfo->colNameList);
+		fdw_private = lappend(fdw_private, jqinfo->colNumList);
+		fdw_private = lappend(fdw_private, jqinfo->rtiList);
+		fdw_private = lappend(fdw_private, jqinfo->isOuterList);
+		fdw_private = lappend(fdw_private,
+							  list_make2(makeString(fpinfo->inner_relname),
+										 makeString(fpinfo->outer_relname)));
+		fdw_private = lappend(fdw_private, makeInteger(fpinfo->jointype));
+	}
 
 	/* Create the foreign scan node */
 	foreignScan = make_foreignscan(targetList, local_exprs,
@@ -500,9 +723,9 @@ MongoGetForeignPlan(PlannerInfo *root,
 								   NIL, /* No expressions to evaluate */
 								   fdw_private
 #if PG_VERSION_NUM >= 90500
+								   ,fdw_scan_tlist
 								   ,NIL
-								   ,NIL
-								   ,NULL
+								   ,outer_plan
 #endif
 		);
 
@@ -516,21 +739,39 @@ MongoGetForeignPlan(PlannerInfo *root,
 static void
 MongoExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
-	MongoFdwOptions *options;
-	StringInfo	namespaceName;
-	Oid			foreignTableId;
+	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
+	RangeTblEntry *rte;
+	EState	   *estate = node->ss.ps.state;
+	List	   *fdw_private = fsplan->fdw_private;
+	int			rtindex;
 
-	foreignTableId = RelationGetRelid(node->ss.ss_currentRelation);
-	options = mongo_get_options(foreignTableId);
+	if (fsplan->scan.scanrelid > 0)
+		rtindex = fsplan->scan.scanrelid;
+	else
+		rtindex = bms_next_member(fsplan->fs_relids, -1);
+	rte = rt_fetch(rtindex, estate->es_range_table);
 
-	/* Construct fully qualified collection name */
-	namespaceName = makeStringInfo();
-	appendStringInfo(namespaceName, "%s.%s", options->svr_database,
-					 options->collectionName);
+	if (list_length(fdw_private) > mongoFdwPrivateRelations)
+	{
+		char	   *relations = strVal(list_nth(fdw_private,
+												mongoFdwPrivateRelations));
 
-	mongo_free_options(options);
+		ExplainPropertyText("Foreign Namespace", relations, es);
+	}
+	else
+	{
+		StringInfo	namespaceName;
+		MongoFdwOptions *options;
 
-	ExplainPropertyText("Foreign Namespace", namespaceName->data, es);
+		options = mongo_get_options(rte->relid);
+
+		/* Construct fully qualified collection name */
+		namespaceName = makeStringInfo();
+		appendStringInfo(namespaceName, "%s.%s", options->svr_database,
+						 options->collectionName);
+		ExplainPropertyText("Foreign Namespace", namespaceName->data, es);
+		mongo_free_options(options);
+	}
 }
 
 static void
@@ -569,41 +810,53 @@ static void
 MongoBeginForeignScan(ForeignScanState *node, int eflags)
 {
 	MONGO_CONN *mongoConnection;
-	Oid			foreignTableId;
 	List	   *columnList;
 	HTAB	   *columnMappingHash;
-	List	   *foreignPrivateList;
 	MongoFdwOptions *options;
 	MongoFdwModifyState *fmstate;
 	RangeTblEntry *rte;
 	EState	   *estate = node->ss.ps.state;
 	ForeignScan *fsplan = (ForeignScan *) node->ss.ps.plan;
+	List	   *fdw_private = fsplan->fdw_private;
 	Oid			userid;
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
+	int			rtindex;
+	List 	   *colNameList = NIL;
+	List 	   *colIsInnerList = NIL;
 
 	/* If Explain with no Analyze, do nothing */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
 
-	foreignTableId = RelationGetRelid(node->ss.ss_currentRelation);
-	options = mongo_get_options(foreignTableId);
-
 	fmstate = (MongoFdwModifyState *) palloc0(sizeof(MongoFdwModifyState));
 
 	/*
 	 * Identify which user to do the remote access as.  This should match what
-	 * ExecCheckRTEPerms() does.
+	 * ExecCheckRTEPerms() does. In the case of a join, use the lowest-numbered
+	 * member RTE as a representative; we would get the same result from any.
 	 */
-	rte = rt_fetch(fsplan->scan.scanrelid, estate->es_range_table);
+	if (fsplan->scan.scanrelid > 0)
+	{
+		rtindex = fsplan->scan.scanrelid;
+		fmstate->isJoinRel = false;
+	}
+	else
+	{
+		rtindex = bms_next_member(fsplan->fs_relids, -1);
+		fmstate->isJoinRel = true;
+	}
+	rte = rt_fetch(rtindex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
 	fmstate->rel = node->ss.ss_currentRelation;
-	table = GetForeignTable(RelationGetRelid(fmstate->rel));
+	table = GetForeignTable(rte->relid);
 	server = GetForeignServer(table->serverid);
 	user = GetUserMapping(userid, server->serverid);
+
+	options = mongo_get_options(rte->relid);
 
 	/*
 	 * Get connection to the foreign server.  Connection manager will establish
@@ -611,12 +864,16 @@ MongoBeginForeignScan(ForeignScanState *node, int eflags)
 	 */
 	mongoConnection = mongo_get_connection(server, user, options);
 
-	foreignPrivateList = fsplan->fdw_private;
-	Assert(list_length(foreignPrivateList) == 2);
+	columnList = list_nth(fdw_private, mongoFdwPrivateColumnList);
 
-	columnList = list_nth(foreignPrivateList, 0);
+	if (fmstate->isJoinRel == true)
+	{
+		colNameList = list_nth(fdw_private, mongoFdwPrivateColNameList);
+		colIsInnerList = list_nth(fdw_private, mongoFdwPrivateColIsInnerList);
+	}
 
-	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
+	columnMappingHash = ColumnMappingHash(rte->relid, columnList, colNameList,
+										  colIsInnerList, fmstate->isJoinRel);
 
 	/* Create and set foreign execution state */
 	fmstate->columnMappingHash = columnMappingHash;
@@ -641,7 +898,6 @@ MongoIterateForeignScan(ForeignScanState *node)
 	TupleTableSlot *tupleSlot = node->ss.ss_ScanTupleSlot;
 	MONGO_CURSOR *mongoCursor = fmstate->mongoCursor;
 	HTAB	   *columnMappingHash = fmstate->columnMappingHash;
-	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	TupleDesc	tupleDescriptor = tupleSlot->tts_tupleDescriptor;
 	Datum	   *columnValues = tupleSlot->tts_values;
 	bool	   *columnNulls = tupleSlot->tts_isnull;
@@ -650,16 +906,8 @@ MongoIterateForeignScan(ForeignScanState *node)
 	/* Create cursor for collection name and set query */
 	if (mongoCursor == NULL)
 	{
-		Oid			foreignTableId;
-		List	   *foreignPrivateList;
-		List	   *opExpressionList;
 		BSON	   *queryDocument;
-
-		foreignPrivateList = foreignScan->fdw_private;
-		Assert(list_length(foreignPrivateList) == 2);
-
-		opExpressionList = list_nth(foreignPrivateList, 1);
-		foreignTableId = RelationGetRelid(node->ss.ss_currentRelation);
+		char	   *collectionName;
 
 		/*
 		 * We construct the query document to have MongoDB filter its rows.  We
@@ -668,11 +916,20 @@ MongoIterateForeignScan(ForeignScanState *node)
 		 * performance on the MongoDB server-side, so we instead filter out
 		 * columns on our side.
 		 */
-		queryDocument = QueryDocument(foreignTableId, opExpressionList, node);
+		queryDocument = QueryDocument(node);
+
+		/*
+		 * Decide input collection to the aggregation.  In case of join, outer
+		 * relation should be given as input collection to the aggregation.
+		 */
+		if (fmstate->isJoinRel)
+			collectionName = fmstate->outerRelName;
+		else
+			collectionName = fmstate->options->collectionName;
 
 		mongoCursor = MongoCursorCreate(fmstate->mongoConnection,
 										fmstate->options->svr_database,
-										fmstate->options->collectionName,
+										collectionName,
 										queryDocument);
 
 		/* Save mongoCursor */
@@ -697,7 +954,7 @@ MongoIterateForeignScan(ForeignScanState *node)
 		const char *bsonDocumentKey = NULL; /* Top level document */
 
 		FillTupleSlot(bsonDocument, bsonDocumentKey, columnMappingHash,
-					  columnValues, columnNulls);
+					  columnValues, columnNulls, fmstate->isJoinRel);
 
 		ExecStoreVirtualTuple(tupleSlot);
 	}
@@ -1288,12 +1545,14 @@ ForeignTableDocumentCount(Oid foreignTableId)
  * corresponding PostgreSQL columns.
  */
 static HTAB *
-ColumnMappingHash(Oid foreignTableId, List *columnList)
+ColumnMappingHash(Oid foreignTableId, List *columnList, List *colNameList,
+				  List *colIsInnerList, bool isJoin)
 {
 	ListCell   *columnCell;
-	const long	hashTableSize = 2048;
 	HTAB	   *columnMappingHash;
 	HASHCTL		hashInfo;
+	uint32		attnum = 0;
+	Index      	listIndex = 0;
 
 	memset(&hashInfo, 0, sizeof(hashInfo));
 	hashInfo.keysize = NAMEDATALEN;
@@ -1301,7 +1560,7 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
 	hashInfo.hash = string_hash;
 	hashInfo.hcxt = CurrentMemoryContext;
 
-	columnMappingHash = hash_create("Column Mapping Hash", hashTableSize,
+	columnMappingHash = hash_create("Column Mapping Hash", MaxHashTableSize,
 									&hashInfo,
 									(HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT));
 	Assert(columnMappingHash != NULL);
@@ -1309,18 +1568,50 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
 	foreach(columnCell, columnList)
 	{
 		Var		   *column = (Var *) lfirst(columnCell);
-		AttrNumber	columnId = column->varattno;
 		ColumnMapping *columnMapping;
 		char	   *columnName;
 		bool		handleFound = false;
 		void	   *hashKey;
 
+		if (isJoin)
+		{
+			int			is_innerrel = list_nth_int(colIsInnerList, listIndex);
+
+			columnName = strVal(list_nth(colNameList, listIndex++));
+
+			/*
+			 * In MongoDB, columns involved in join result-set from inner table
+			 * prefixed with Join result name.  Uses hard-coded string
+			 * "Join Result" to be prefixed to form the hash key to read the
+			 * joined result set.  This same prefix needs to be given as joined
+			 * result set name in the $lookup stage when building the remote
+			 * query.
+			 *
+			 * For a simple relation scan, the column name would be the hash
+			 * key.
+			 */
+			if (is_innerrel)
+			{
+				const char *resultName = "Join_Result";
+				StringInfo	KeyString = makeStringInfo();
+
+				appendStringInfo(KeyString, "%s.%s", resultName, columnName);
+
+				hashKey = (void *) KeyString->data;
+			}
+			else
+				hashKey = (void *) columnName;
+		}
+		else
+		{
 #if PG_VERSION_NUM < 110000
-		columnName = get_relid_attribute_name(foreignTableId, columnId);
+			columnName = get_relid_attribute_name(foreignTableId,
+												  column->varattno);
 #else
-		columnName = get_attname(foreignTableId, columnId, false);
+			columnName = get_attname(foreignTableId, column->varattno, false);
 #endif
-		hashKey = (void *) columnName;
+			hashKey = (void *) columnName;
+		}
 
 		columnMapping = (ColumnMapping *) hash_search(columnMappingHash,
 													  hashKey,
@@ -1328,7 +1619,20 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
 													  &handleFound);
 		Assert(columnMapping != NULL);
 
-		columnMapping->columnIndex = columnId - 1;
+		/*
+		 * Save attribute number of the current column in the resulting tuple.
+		 * For join relation, it is continuously increasing integers starting
+		 * from 0, and for simple relation, it's varattno.
+		 */
+		if(isJoin)
+		{
+			columnMapping->columnIndex = attnum;
+			attnum++;
+		}
+		else
+			columnMapping->columnIndex = column->varattno - 1;
+
+		/* Save other information */
 		columnMapping->columnTypeId = column->vartype;
 		columnMapping->columnTypeMod = column->vartypmod;
 		columnMapping->columnArrayTypeId = get_element_type(column->vartype);
@@ -1352,7 +1656,8 @@ FillTupleSlot(const BSON *bsonDocument,
 			  const char *bsonDocumentKey,
 			  HTAB *columnMappingHash,
 			  Datum *columnValues,
-			  bool *columnNulls)
+			  bool *columnNulls,
+			  bool isJoin)
 {
 	ColumnMapping *columnMapping;
 	bool		handleFound = false;
@@ -1436,7 +1741,7 @@ FillTupleSlot(const BSON *bsonDocument,
 		bool		handleFound = false;
 		const char *bsonFullKey;
 		void	   *hashKey;
-		int32		columnIndex;
+		int32		attnum;
 
 		columnMapping = NULL;
 		if (bsonDocumentKey != NULL)
@@ -1475,7 +1780,7 @@ FillTupleSlot(const BSON *bsonDocument,
 
 				BsonIterSubObject(&bsonIterator, &subObject);
 				FillTupleSlot(&subObject, bsonFullKey, columnMappingHash,
-							  columnValues, columnNulls);
+							  columnValues, columnNulls, isJoin);
 				continue;
 			}
 		}
@@ -1494,16 +1799,16 @@ FillTupleSlot(const BSON *bsonDocument,
 		if (!compatibleTypes)
 			continue;
 
-		columnIndex = columnMapping->columnIndex;
+		attnum = columnMapping->columnIndex;
+
 		/* Fill in corresponding column value and null flag */
 		if (OidIsValid(columnArrayTypeId))
-			columnValues[columnIndex] = ColumnValueArray(&bsonIterator,
-														 columnArrayTypeId);
+			columnValues[attnum] = ColumnValueArray(&bsonIterator,
+													columnArrayTypeId);
 		else
-			columnValues[columnIndex] = ColumnValue(&bsonIterator,
-													columnTypeId,
-													columnMapping->columnTypeMod);
-		columnNulls[columnIndex] = false;
+			columnValues[attnum] = ColumnValue(&bsonIterator, columnTypeId,
+											   columnMapping->columnTypeMod);
+		columnNulls[attnum] = false;
 	}
 }
 
@@ -2211,7 +2516,8 @@ MongoAcquireSampleRows(Relation relation,
 	/* Create cursor for collection name and set query */
 	mongoCursor = MongoCursorCreate(mongoConnection, options->svr_database,
 									options->collectionName, queryDocument);
-	columnMappingHash = ColumnMappingHash(foreignTableId, columnList);
+	columnMappingHash = ColumnMappingHash(foreignTableId, columnList, NIL, NIL,
+										  false);
 
 	/*
 	 * Use per-tuple memory context to prevent leak of memory used to read
@@ -2254,7 +2560,7 @@ MongoAcquireSampleRows(Relation relation,
 			MemoryContextSwitchTo(tupleContext);
 
 			FillTupleSlot(bsonDocument, bsonDocumentKey,
-						  columnMappingHash, columnValues, columnNulls);
+						  columnMappingHash, columnValues, columnNulls, false);
 
 			MemoryContextSwitchTo(oldContext);
 		}
@@ -2382,3 +2688,357 @@ MongoEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
 			 errmsg("COPY and foreign partition routing not supported in mongo_fdw")));
 }
 #endif
+
+/*
+ * MongoGetForeignJoinPaths
+ *		Add possible ForeignPath to joinrel, if the join is safe to push down.
+ */
+static void
+MongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
+						 RelOptInfo *outerrel, RelOptInfo *innerrel,
+						 JoinType jointype, JoinPathExtraData *extra)
+{
+	MongoFdwRelationInfo *fpinfo;
+	ForeignPath *joinpath;
+	Cost		startup_cost;
+	Cost		total_cost;
+	Path	   *epq_path = NULL; /* Path to create plan to be executed when
+								  * EvalPlanQual gets triggered. */
+
+	/*
+	 * Skip if this join combination has been considered already.
+	 */
+	if (joinrel->fdw_private)
+		return;
+
+	/*
+	 * Create unfinished MongoFdwRelationInfo entry which is used to indicate
+	 * that the join relation is already considered, so that we won't waste
+	 * time in judging the safety of join pushdown and adding the same paths
+	 * again if found safe.  Once we know that this join can be pushed down,
+	 * we fill the entry.
+	 */
+	fpinfo = (MongoFdwRelationInfo *) palloc0(sizeof(MongoFdwRelationInfo));
+	fpinfo->pushdown_safe = false;
+	joinrel->fdw_private = fpinfo;
+
+	/*
+	 * In case there is a possibility that EvalPlanQual will be executed, we
+	 * should be able to reconstruct the row, from base relations applying all
+	 * the conditions.  We create a local plan from a suitable local path
+	 * available in the path list.  In case such a path doesn't exist, we can
+	 * not push the join to the foreign server since we won't be able to
+	 * reconstruct the row for EvalPlanQual().  Find an alternative local path
+	 * before we add ForeignPath, lest the new path would kick possibly the
+	 * only local path.  Do this before calling mongo_foreign_join_ok(), since
+	 * that function updates fpinfo and marks it as pushable if the join is
+	 * found to be pushable.
+	 */
+	if (root->parse->commandType == CMD_DELETE ||
+		root->parse->commandType == CMD_UPDATE ||
+		root->rowMarks)
+	{
+		epq_path = GetExistingLocalJoinPath(joinrel);
+		if (!epq_path)
+		{
+			elog(DEBUG3, "could not push down foreign join because a local path suitable for EPQ checks was not found");
+			return;
+		}
+	}
+	else
+		epq_path = NULL;
+
+	if (!mongo_foreign_join_ok(root, joinrel, jointype, outerrel, innerrel,
+							   extra))
+	{
+		/* Free path required for EPQ if we copied one; we don't need it now */
+		if (epq_path)
+			pfree(epq_path);
+		return;
+	}
+
+	/* TODO: Put accurate estimates here */
+	startup_cost = 15.0;
+	total_cost = 20 + startup_cost;
+
+	/*
+	 * Create a new join path and add it to the joinrel which represents a
+	 * join between foreign tables.
+	 */
+#if PG_VERSION_NUM >= 120000
+	joinpath = create_foreign_join_path(root,
+									   joinrel,
+									   NULL,
+									   joinrel->rows,
+									   startup_cost,
+									   total_cost,
+									   NIL,		/* no pathkeys */
+									   joinrel->lateral_relids,
+									   epq_path,
+									   NULL);	/* no fdw_private */
+#else
+	joinpath = create_foreignscan_path(root,
+									   joinrel,
+									   NULL,	/* default pathtarget */
+									   joinrel->rows,
+									   startup_cost,
+									   total_cost,
+									   NIL, /* no pathkeys */
+									   joinrel->lateral_relids,
+									   epq_path,
+									   NIL);	/* no fdw_private */
+#endif
+
+	/* Add generated path into joinrel by add_path(). */
+	add_path(joinrel, (Path *) joinpath);
+
+	/* XXX Consider pathkeys for the join relation */
+
+	/* XXX Consider parameterized paths for the join relation */
+}
+
+/*
+ * mongo_foreign_join_ok
+ * 		Assess whether the join between inner and outer relations can be
+ * 		pushed down to the foreign server.
+ */
+static bool
+mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
+					  JoinType jointype, RelOptInfo *outerrel,
+					  RelOptInfo *innerrel, JoinPathExtraData *extra)
+{
+	MongoFdwRelationInfo *fpinfo;
+	MongoFdwRelationInfo *fpinfo_o;
+	MongoFdwRelationInfo *fpinfo_i;
+	ListCell   *lc;
+	List	   *joinclauses = NIL;
+	List	   *scan_var_list;
+	RangeTblEntry *rte;
+	char	   *colname;
+
+	/* We support pushing down only INNER, LEFT, RIGHT OUTER join */
+	if (jointype != JOIN_INNER && jointype != JOIN_LEFT &&
+		jointype != JOIN_RIGHT)
+		return false;
+
+	/* Recursive joins can't be pushed down */
+#if PG_VERSION_NUM >= 100000
+	if (IS_JOIN_REL(outerrel) || IS_JOIN_REL(innerrel))
+#else
+	if (outerrel->reloptkind == RELOPT_JOINREL ||
+		innerrel->reloptkind == RELOPT_JOINREL)
+#endif
+		return false;
+
+	/*
+	 * If either of the joining relations is marked as unsafe to pushdown, the
+	 * join can not be pushed down.
+	 */
+	fpinfo = (MongoFdwRelationInfo *) joinrel->fdw_private;
+	fpinfo_o = (MongoFdwRelationInfo *) outerrel->fdw_private;
+	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
+	if (!fpinfo_o || !fpinfo_o->pushdown_safe ||
+		!fpinfo_i || !fpinfo_i->pushdown_safe)
+		return false;
+
+	/*
+	 * If joining relations have local conditions, those conditions are
+	 * required to be applied before joining the relations.  Hence the join can
+	 * not be pushed down.
+	 */
+	if (fpinfo_o->local_conds || fpinfo_i->local_conds)
+		return false;
+
+#if PG_VERSION_NUM >= 90600
+	scan_var_list = pull_var_clause((Node *) joinrel->reltarget->exprs,
+									PVC_RECURSE_PLACEHOLDERS);
+#else
+	scan_var_list = pull_var_clause((Node *) joinrel->reltargetlist,
+									PVC_RECURSE_AGGREGATES,
+									PVC_RECURSE_PLACEHOLDERS);
+#endif
+
+	/*
+	 * Don't push-down join when whole row reference and/or full document
+	 * retrieval is involved in the target list.
+	 */
+	foreach(lc, scan_var_list)
+	{
+		Var		   *var = lfirst(lc);
+
+		Assert(IsA(var, Var));
+
+		/* Don't support whole row reference. */
+		if (var->varattno == 0)
+			return false;
+
+		rte = planner_rt_fetch(var->varno, root);
+#if PG_VERSION_NUM >= 110000
+		colname = get_attname(rte->relid, var->varattno, false);
+#else
+		colname = get_relid_attribute_name(rte->relid, var->varattno);
+#endif
+		/* Don't support full document retrieval */
+		if (strcmp("__doc", colname) == 0)
+			return false;
+	}
+
+	/*
+	 * Separate restrict list into join quals and pushed-down (other) quals.
+	 *
+	 * Join quals belonging to an outer join must all be shippable, else we
+	 * cannot execute the join remotely.  Add such quals to 'joinclauses'.
+	 *
+	 * Add other quals to fpinfo->remote_conds if they are shippable, else to
+	 * fpinfo->local_conds.  In an inner join it's okay to execute conditions
+	 * either locally or remotely; the same is true for pushed-down conditions
+	 * at an outer join.
+	 *
+	 * Note we might return failure after having already scribbled on
+	 * fpinfo->remote_conds and fpinfo->local_conds.  That's okay because we
+	 * won't consult those lists again if we deem the join unshippable.
+	 */
+	joinclauses = NIL;
+	foreach(lc, extra->restrictlist)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		bool		is_remote_clause = mongo_is_foreign_expr(root,
+															 joinrel,
+															 rinfo->clause,
+															 true);
+
+		if (IS_OUTER_JOIN(jointype) &&
+			!RINFO_IS_PUSHED_DOWN(rinfo, joinrel->relids))
+		{
+			if (!is_remote_clause)
+				return false;
+			joinclauses = lappend(joinclauses, rinfo);
+		}
+		else
+		{
+			if (is_remote_clause && jointype == JOIN_INNER)
+			{
+				/*
+				 * Unlike postgres_fdw, for inner join, don't append the join
+				 * clauses to remote_conds, instead keep the join clauses
+				 * separate.  Currently, we are providing limited operator
+				 * push-ability support for join pushdown, hence we keep those
+				 * clauses separate to avoid INNER JOIN not getting pushdown if
+				 * any of the WHERE clauses are not shippable as per join
+				 * pushdown shippability.
+				 */
+				joinclauses = lappend(joinclauses, rinfo);
+			}
+			else
+				fpinfo->local_conds = lappend(fpinfo->local_conds, rinfo);
+		}
+	}
+
+	/*
+	 * If there's some PlaceHolderVar that would need to be evaluated within
+	 * this join tree (because there's an upper reference to a quantity that
+	 * may go to NULL as a result of an outer join), then we can't try to push
+	 * the join down.
+	 */
+	foreach(lc, root->placeholder_list)
+	{
+		PlaceHolderInfo *phinfo = lfirst(lc);
+		Relids		relids;
+
+		/* PlaceHolderInfo refers to parent relids, not child relids. */
+#if PG_VERSION_NUM >= 100000
+		relids = IS_OTHER_REL(joinrel) ?
+			joinrel->top_parent_relids : joinrel->relids;
+#else
+		relids = joinrel->relids;
+#endif			/* PG_VERSION_NUM >= 100000 */
+
+		if (bms_is_subset(phinfo->ph_eval_at, relids) &&
+			bms_nonempty_difference(relids, phinfo->ph_eval_at))
+			return false;
+	}
+
+	/* Save the join clauses, for later use. */
+	fpinfo->joinclauses = joinclauses;
+	fpinfo->outerrel = outerrel;
+	fpinfo->innerrel = innerrel;
+	fpinfo->jointype = jointype;
+
+	/*
+	 * Pull the other remote conditions from the joining relations into join
+	 * clauses or other remote clauses (remote_conds) of this relation.  This
+	 * avoids building sub-queries at every join step.
+	 *
+	 * For an INNER and OUTER join, the clauses from the outer side are added
+	 * to remote_conds since those can be evaluated after the join is
+	 * evaluated.  The clauses from the inner side are added to the
+	 * joinclauses, since they need to be evaluated while constructing the
+	 * join.
+	 *
+	 * The joining sides cannot have local conditions, thus no need to test
+	 * the shippability of the clauses being pulled up.
+	 */
+	switch (jointype)
+	{
+		case JOIN_INNER:
+		case JOIN_LEFT:
+			fpinfo->joinclauses = mongo_list_concat(fpinfo->joinclauses,
+													fpinfo_i->remote_conds);
+			fpinfo->remote_conds = mongo_list_concat(fpinfo->remote_conds,
+													 fpinfo_o->remote_conds);
+			break;
+		case JOIN_RIGHT:
+			fpinfo->joinclauses = mongo_list_concat(fpinfo->joinclauses,
+													fpinfo_o->remote_conds);
+			fpinfo->remote_conds = mongo_list_concat(fpinfo->remote_conds,
+													 fpinfo_i->remote_conds);
+			break;
+		default:
+			/* Should not happen, we have just checked this above */
+			elog(ERROR, "unsupported join type %d", jointype);
+	}
+
+	fpinfo->outer_relname = fpinfo_o->base_relname;
+	fpinfo->inner_relname = fpinfo_i->base_relname;
+
+	/* Mark that this join can be pushed down safely */
+	fpinfo->pushdown_safe = true;
+
+	/*
+	 * Set the string describing this join relation to be used in EXPLAIN
+	 * output of the corresponding ForeignScan.
+	 */
+	fpinfo->relation_name = makeStringInfo();
+	appendStringInfo(fpinfo->relation_name, "(%s) %s JOIN (%s)",
+					 fpinfo_o->relation_name->data,
+					 mongo_get_jointype_name(fpinfo->jointype),
+					 fpinfo_i->relation_name->data);
+
+	return true;
+}
+
+/*
+ * mongo_prepare_qual_info
+ *		Gather information of columns involved in the join quals by extracting
+ *		clause from each qual and process it further using mongo_check_qual().
+ */
+static void
+mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo)
+{
+	ListCell   *lc;
+
+	foreach(lc, quals)
+	{
+		Expr	   *expr = (Expr *) lfirst(lc);
+
+		/* Extract clause from RestrictInfo */
+		if (IsA(expr, RestrictInfo))
+		{
+			RestrictInfo *ri = (RestrictInfo *) expr;
+
+			expr = ri->clause;
+		}
+
+		mongo_check_qual(expr, jqinfo);
+	}
+}
