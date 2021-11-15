@@ -17,12 +17,8 @@
 
 #define NUMERICARRAY_OID 1231
 
-bool AppendMongoValue(BSON *queryDocument,
-					  const char *keyName,
-					  Datum value,
-					  bool isnull,
-					  Oid id);
-
-char *MongoOperatorName(const char *operatorName);
+/* Function to be used in mongo_fdw.c */
+extern bool AppendMongoValue(BSON *queryDocument, const char *keyName,
+							 Datum value, bool isnull, Oid id);
 
 #endif							/* MONGO_QUERY_H */

@@ -80,6 +80,7 @@ static void AppendConstantValue(BSON *queryDocument, const char *keyName,
 static void AppendParamValue(BSON *queryDocument, const char *keyName,
 							 Param *paramNode,
 							 ForeignScanState *scanStateNode);
+static char *MongoOperatorName(const char *operatorName);
 static bool foreign_expr_walker(Node *node,
 								foreign_glob_cxt *glob_cxt,
 								foreign_loc_cxt *outer_cxt);
@@ -249,7 +250,7 @@ QueryDocument(Oid relationId, List *opExpressionList,
  * 		Takes in the given PostgreSQL comparison operator name, and returns its
  * 		equivalent in MongoDB.
  */
-char *
+static char *
 MongoOperatorName(const char *operatorName)
 {
 	const char *mongoOperatorName = NULL;
@@ -710,7 +711,7 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 			 * relation.
 			 */
 			attrs_used = bms_make_singleton(0 -
-										 FirstLowInvalidHeapAttributeNumber);
+											FirstLowInvalidHeapAttributeNumber);
 
 			wr_var_list = prepare_var_list_for_baserel(rte->relid, var->varno,
 													   attrs_used);
@@ -1033,7 +1034,7 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression)
 	if (!foreign_expr_walker((Node *) expression, &glob_cxt, &loc_cxt))
 		return false;
 
-	/* Expressions examined here should be boolean, ie noncollatable */
+	/* Expressions examined here should be boolean, i.e. noncollatable */
 	Assert(loc_cxt.collation == InvalidOid);
 	Assert(loc_cxt.state == FDW_COLLATE_NONE);
 

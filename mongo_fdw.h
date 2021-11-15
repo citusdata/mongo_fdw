@@ -170,6 +170,13 @@
 #define POSTGRES_TO_UNIX_EPOCH_DAYS 		(POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE)
 #define POSTGRES_TO_UNIX_EPOCH_USECS 		(POSTGRES_TO_UNIX_EPOCH_DAYS * USECS_PER_DAY)
 
+/* Macro for list API backporting. */
+#if PG_VERSION_NUM < 130000
+	#define mongo_list_concat(l1, l2) list_concat(l1, list_copy(l2))
+#else
+	#define mongo_list_concat(l1, l2) list_concat((l1), (l2))
+#endif
+
 /*
  * MongoValidOption keeps an option name and a context.  When an option is
  * passed into mongo_fdw objects (server and foreign table), we compare this
@@ -268,10 +275,10 @@ typedef struct MongoFdwModifyState
 } MongoFdwModifyState;
 
 /*
- * ColumnMapping reprents a hash table entry that maps a column name to column
- * related information.  We construct these hash table entries to speed up the
- * conversion from BSON documents to PostgreSQL tuples; and each hash entry
- * maps the column name to the column's tuple index and its type-related
+ * ColumnMapping represents a hash table entry that maps a column name to
+ * column-related information.  We construct these hash table entries to speed
+ * up the conversion from BSON documents to PostgreSQL tuples, and each hash
+ * entry maps the column name to the column's tuple index and its type-related
  * information.
  */
 typedef struct ColumnMapping

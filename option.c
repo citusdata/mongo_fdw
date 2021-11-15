@@ -156,9 +156,9 @@ mongo_get_options(Oid foreignTableId)
 	foreignServer = GetForeignServer(foreignTable->serverid);
 	mapping = GetUserMapping(GetUserId(), foreignTable->serverid);
 
-	optionList = list_concat(optionList, foreignTable->options);
-	optionList = list_concat(optionList, foreignServer->options);
-	optionList = list_concat(optionList, mapping->options);
+	optionList = mongo_list_concat(optionList, foreignTable->options);
+	optionList = mongo_list_concat(optionList, foreignServer->options);
+	optionList = mongo_list_concat(optionList, mapping->options);
 
 	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 

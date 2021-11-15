@@ -413,9 +413,9 @@ MongoGetForeignPlan(PlannerInfo *root,
 					Plan *outer_plan)
 {
 	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
-	Index		scanRangeTableIndex = foreignrel->relid;
+	Index		scan_relid = foreignrel->relid;
 	ForeignScan *foreignScan;
-	List	   *foreignPrivateList;
+	List	   *fdw_private;
 	List	   *columnList;
 	List	   *scan_var_list;
 	ListCell   *lc;
@@ -492,13 +492,13 @@ MongoGetForeignPlan(PlannerInfo *root,
 	columnList = mongo_get_column_list(root, foreignrel, scan_var_list);
 
 	/* Construct foreign plan with query document and column list */
-	foreignPrivateList = list_make2(columnList, remote_exprs);
+	fdw_private = list_make2(columnList, remote_exprs);
 
 	/* Create the foreign scan node */
 	foreignScan = make_foreignscan(targetList, local_exprs,
-								   scanRangeTableIndex,
+								   scan_relid,
 								   NIL, /* No expressions to evaluate */
-								   foreignPrivateList
+								   fdw_private
 #if PG_VERSION_NUM >= 90500
 								   ,NIL
 								   ,NIL
@@ -680,7 +680,7 @@ MongoIterateForeignScan(ForeignScanState *node)
 	}
 
 	/*
-	 * We execute the protocol to load a virtual tuple into a slot. We first
+	 * We execute the protocol to load a virtual tuple into a slot.  We first
 	 * call ExecClearTuple, then fill in values / isnull arrays, and last call
 	 * ExecStoreVirtualTuple.  If we are done fetching documents from Mongo,
 	 * we just return an empty slot as required.
@@ -1293,8 +1293,6 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
 	ListCell   *columnCell;
 	const long	hashTableSize = 2048;
 	HTAB	   *columnMappingHash;
-
-	/* Create hash table */
 	HASHCTL		hashInfo;
 
 	memset(&hashInfo, 0, sizeof(hashInfo));
@@ -1313,7 +1311,7 @@ ColumnMappingHash(Oid foreignTableId, List *columnList)
 		Var		   *column = (Var *) lfirst(columnCell);
 		AttrNumber	columnId = column->varattno;
 		ColumnMapping *columnMapping;
-		char	   *columnName = NULL;
+		char	   *columnName;
 		bool		handleFound = false;
 		void	   *hashKey;
 
@@ -1581,7 +1579,7 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 			break;
 		default:
 			/*
-			 * We currently error out on other data types. Some types such as
+			 * We currently error out on other data types.  Some types such as
 			 * byte arrays are easy to add, but they need testing.
 			 *
 			 * Other types such as money or inet, do not have equivalents in
@@ -2152,7 +2150,7 @@ MongoAcquireSampleRows(Relation relation,
 	AttrNumber	columnId;
 	HTAB	   *columnMappingHash;
 	MONGO_CURSOR *mongoCursor;
-	BSON	   *queryDocument;
+	BSON	   *queryDocument = BsonCreate();
 	List	   *columnList = NIL;
 	char	   *relationName;
 	MemoryContext oldContext = CurrentMemoryContext;
@@ -2197,7 +2195,19 @@ MongoAcquireSampleRows(Relation relation,
 	 */
 	mongoConnection = mongo_get_connection(server, user, options);
 
-	queryDocument = QueryDocument(foreignTableId, NIL, NULL);
+	if (!BsonFinish(queryDocument))
+	{
+#ifdef META_DRIVER
+		ereport(ERROR,
+				(errmsg("could not create document for query"),
+				 errhint("BSON flags: %d", queryDocument->flags)));
+#else
+		ereport(ERROR,
+				(errmsg("could not create document for query"),
+				 errhint("BSON error: %d", queryDocument->err)));
+#endif
+	}
+
 	/* Create cursor for collection name and set query */
 	mongoCursor = MongoCursorCreate(mongoConnection, options->svr_database,
 									options->collectionName, queryDocument);
