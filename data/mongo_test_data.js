@@ -12,6 +12,10 @@ use mongo_fdw_regress
 db.test_tbl1.drop();
 db.test_tbl2.drop();
 db.test_tbl3.drop();
+db.test1.drop();
+db.test2.drop();
+db.test3.drop();
+db.test4.drop();
 db.mongo_test.drop();
 // Below queries will create and insert values in collections
 db.mongo_test.insert({a : NumberInt(0), b : "mongo_test collection"});
@@ -40,4 +44,32 @@ db.test_tbl1.insertMany([
 db.test_tbl3.insertMany([
    {name: "dvd", marks: [23, 24], pass: false},
    {name: "vdd", marks: [29, 31], pass: true}
+]);
+
+db.test1.insertMany([
+   {c1: NumberInt(1), c2: NumberInt(1), c3: "A"},
+   {c1: NumberInt(2), c2: NumberInt(2), c3: "B"},
+   {c1: NumberInt(3), c2: NumberInt(3), c3: "C"},
+   {c1: NumberInt(4), c2: NumberInt(4), c3: "D"},
+]);
+
+db.test2.insertMany([
+   {c1: NumberInt(5), c2: NumberInt(5), c3: "E"},
+   {c1: NumberInt(6), c2: NumberInt(6), c3: "F"},
+   {c1: NumberInt(7), c2: NumberInt(7), c3: "G"},
+   {c1: NumberInt(8), c2: NumberInt(8), c3: "H"},
+]);
+
+db.test3.insertMany([
+   {c1: NumberInt(1), c2: NumberInt(1), c3: "A"},
+   {c1: NumberInt(2), c2: NumberInt(2), c3: "B"},
+   {c1: NumberInt(3), c2: NumberInt(3), c3: "C"},
+   {c1: NumberInt(4), c2: NumberInt(4), c3: "D"},
+]);
+
+db.test4.insertMany([
+   {c1: NumberInt(5), c2: NumberInt(5), c3: "E"},
+   {c1: NumberInt(6), c2: NumberInt(6), c3: "F"},
+   {c1: NumberInt(7), c2: NumberInt(7), c3: "G"},
+   {c1: NumberInt(8), c2: NumberInt(8), c3: "H"},
 ]);
