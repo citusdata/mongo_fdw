@@ -70,6 +70,17 @@ same mango database connection for all the queries in the same session.
 The previous version would open a new [MongoDB][1] connection for every
 query. This is a performance enhancement.
 
+### JOIN push-down
+mongo_fdw now also supports join push-down. The joins between two
+foreign tables from the same remote MySQL server are pushed to a remote
+server, instead of fetching all the rows for both the tables and
+performing a join locally, thereby may enhance the performance. Currently,
+joins involving only relational and arithmetic operators in join-clauses
+are pushed down to avoid any potential join failure. Also, only the
+INNER and LEFT/RIGHT OUTER joins are supported, and not the FULL OUTER,
+SEMI, and ANTI join. Moreover, only joins between two tables are pushed
+down and not when either inner or outer relation is the join itself.
+
 ### New MongoDB C Driver Support
 The third enhancement is to add a new [MongoDB][1]' C driver. The
 current implementation is based on the legacy driver of MongoDB. But
