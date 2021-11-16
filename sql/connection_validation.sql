@@ -27,7 +27,8 @@ SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 
 -- Alter one of the SERVER option
 -- Set wrong address for mongo_server
-ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.5');
+ALTER SERVER mongo_server OPTIONS (SET address '127.0.0.10');
+ALTER SERVER mongo_server OPTIONS (SET port '9999');
 -- Should fail with an error
 INSERT INTO f_mongo_test VALUES ('0', 2, 'RECORD INSERTED');
 UPDATE f_mongo_test SET b = 'RECORD UPDATED' WHERE a = 2;
@@ -35,6 +36,7 @@ DELETE FROM f_mongo_test WHERE a = 2;
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 -- Set correct address for mongo_server
 ALTER SERVER mongo_server OPTIONS (SET address :MONGO_HOST);
+ALTER SERVER mongo_server OPTIONS (SET port :MONGO_PORT);
 -- Should able to insert the data
 INSERT INTO f_mongo_test VALUES ('0', 2, 'RECORD INSERTED');
 DELETE FROM f_mongo_test WHERE a = 2;
