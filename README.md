@@ -337,7 +337,7 @@ also support mongo_fdw.
 
 License
 -------
-Portions Copyright (c) 2004-2021, EnterpriseDB Corporation.
+Portions Copyright (c) 2004-2022, EnterpriseDB Corporation.
 Portions Copyright © 2012–2014 Citus Data, Inc.
 
 This program is free software: you can redistribute it and/or modify it
