@@ -1190,18 +1190,22 @@ SELECT d, d.c2, e.c1, e
  Sort
    Output: d.*, d.c2, e.c1, e.*
    Sort Key: d.*, e.c1
-   ->  Hash Right Join
+   ->  Merge Left Join
          Output: d.*, d.c2, e.c1, e.*
-         Hash Cond: (e.c8 = d.c1)
-         ->  Foreign Scan on public.f_test_tbl1 e
-               Output: e.c1, e.*, e.c8
-               Foreign Namespace: mongo_fdw_regress.test_tbl1
-         ->  Hash
+         Merge Cond: (d.c1 = e.c8)
+         ->  Sort
                Output: d.*, d.c2, d.c1
+               Sort Key: d.c1
                ->  Foreign Scan on public.f_test_tbl2 d
                      Output: d.*, d.c2, d.c1
                      Foreign Namespace: mongo_fdw_regress.test_tbl2
-(14 rows)
+         ->  Sort
+               Output: e.c1, e.*, e.c8
+               Sort Key: e.c8
+               ->  Foreign Scan on public.f_test_tbl1 e
+                     Output: e.c1, e.*, e.c8
+                     Foreign Namespace: mongo_fdw_regress.test_tbl1
+(18 rows)
 
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;

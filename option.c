@@ -89,15 +89,17 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 						 errmsg("port value \"%d\" is out of range for type %s",
 								port, "unsigned short")));
 		}
+		else if (strcmp(optionName, OPTION_NAME_USE_REMOTE_ESTIMATE) == 0
 #ifdef META_DRIVER
-		else if (strcmp(optionName, OPTION_NAME_SSL) == 0 ||
-				 strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0 ||
-				 strcmp(optionName, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0)
+				 || strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0 ||
+				 strcmp(optionName, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0 ||
+				 strcmp(optionName, OPTION_NAME_SSL) == 0
+#endif
+				 )
 		{
 			/* These accept only boolean values */
 			(void) defGetBoolean(optionDef);
 		}
-#endif
 	}
 
 	PG_RETURN_VOID();
@@ -163,6 +165,7 @@ mongo_get_options(Oid foreignTableId)
 
 	options = (MongoFdwOptions *) palloc0(sizeof(MongoFdwOptions));
 
+	options->use_remote_estimate = false;
 #ifdef META_DRIVER
 	options->ssl = false;
 	options->weak_cert_validation = false;
@@ -228,6 +231,9 @@ mongo_get_options(Oid foreignTableId)
 
 		else if (strcmp(def->defname, OPTION_NAME_PASSWORD) == 0)
 			options->svr_password = defGetString(def);
+
+		else if (strcmp(def->defname, OPTION_NAME_USE_REMOTE_ESTIMATE) == 0)
+			options->use_remote_estimate = defGetBoolean(def);
 	}
 
 	/* Default values, if required */

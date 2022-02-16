@@ -78,25 +78,38 @@ ALTER SERVER mongo_server OPTIONS (SET ssl 'false');
 -- Should now be successful.
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 
-DROP FOREIGN TABLE f_mongo_test;
-DROP USER MAPPING FOR public SERVER mongo_server;
-DROP SERVER mongo_server;
-
--- Create server with authentication_database option
+-- Alter server to add authentication_database option
 -- authentication_database options is not supported with legacy driver
 -- so below queries will fail when compiled with legacy driver.
-CREATE SERVER mongo_server FOREIGN DATA WRAPPER mongo_fdw
-  OPTIONS (address :MONGO_HOST, port :MONGO_PORT, authentication_database 'NOT_EXIST_DB');
-CREATE USER MAPPING FOR public SERVER mongo_server
-  OPTIONS (username :MONGO_USER_NAME, password :MONGO_PASS);
-CREATE FOREIGN TABLE f_mongo_test (_id name, a int, b varchar)
-  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test');
+ALTER SERVER mongo_server OPTIONS (ADD authentication_database 'NOT_EXIST_DB');
+ALTER USER MAPPING FOR public SERVER mongo_server
+  OPTIONS (ADD username :MONGO_USER_NAME, password :MONGO_PASS);
 -- Below query will fail with authentication error as user cannot be
 -- authenticated against given authentication_database.
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 -- Now changed to valid authentication_database so select query should work.
 ALTER SERVER mongo_server
   OPTIONS (SET authentication_database 'mongo_fdw_regress');
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+
+ALTER SERVER mongo_server
+  OPTIONS (DROP authentication_database);
+ALTER USER MAPPING FOR public SERVER mongo_server
+  OPTIONS (DROP username, DROP password);
+
+-- FDW-464: Support use_remote_estimate option at server level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD use_remote_estimate 'abc11');
+-- Check default behaviour. Should be 'false'.
+EXPLAIN(COSTS OFF)
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+-- Enable remote estimation.
+ALTER SERVER mongo_server OPTIONS (ADD use_remote_estimate 'true');
+EXPLAIN(COSTS OFF)
+SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
+-- Disable remote estimation.
+ALTER SERVER mongo_server OPTIONS (SET use_remote_estimate 'false');
+EXPLAIN(COSTS OFF)
 SELECT a, b FROM f_mongo_test ORDER BY 1, 2;
 
 -- Cleanup

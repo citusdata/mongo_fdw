@@ -233,6 +233,8 @@ The following parameters can be set on a MongoDB foreign server object:
   * `address`: Address or hostname of the MongoDB server. Defaults to
     `127.0.0.1`
   * `port`: Port number of the MongoDB server. Defaults to `27017`.
+  * `use_remote_estimate`: Controls whether mongo_fdw uses exact rows from
+    remote collection to obtain cost estimates. Default is `false`.
 
 The following options are only supported with meta driver:
 

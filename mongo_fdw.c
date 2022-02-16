@@ -281,7 +281,6 @@ MongoGetForeignRelSize(PlannerInfo *root,
 					   RelOptInfo *baserel,
 					   Oid foreigntableid)
 {
-	double		documentCount = ForeignTableDocumentCount(foreigntableid);
 	RangeTblEntry *rte = planner_rt_fetch(baserel->relid, root);
 	MongoFdwRelationInfo *fpinfo;
 	MongoFdwOptions *options;
@@ -316,26 +315,37 @@ MongoGetForeignRelSize(PlannerInfo *root,
 	/* Base foreign tables need to be pushed down always. */
 	fpinfo->pushdown_safe = true;
 
-	if (documentCount > 0.0)
-	{
-		double		rowSelectivity;
-
-		/*
-		 * We estimate the number of rows returned after restriction
-		 * qualifiers are applied.  This will be more accurate if analyze is
-		 * run on this relation.
-		 */
-		rowSelectivity = clauselist_selectivity(root,
-												baserel->baserestrictinfo,
-												0, JOIN_INNER, NULL);
-		baserel->rows = clamp_row_est(documentCount * rowSelectivity);
-	}
-	else
-		ereport(DEBUG1,
-				(errmsg("could not retrieve document count for collection"),
-				 errhint("Falling back to default estimates in planning.")));
-
+	/* Fetch options */
 	options = mongo_get_options(foreigntableid);
+
+	/*
+	 * Retrieve exact document count for remote collection if asked, otherwise,
+	 * use default estimate in planning.
+	 */
+	if (options->use_remote_estimate)
+	{
+		double		documentCount = ForeignTableDocumentCount(foreigntableid);
+
+		if (documentCount > 0.0)
+		{
+			double		rowSelectivity;
+
+			/*
+			 * We estimate the number of rows returned after restriction
+			 * qualifiers are applied.  This will be more accurate if analyze
+			 * is run on this relation.
+			 */
+			rowSelectivity = clauselist_selectivity(root,
+													baserel->baserestrictinfo,
+													0, JOIN_INNER, NULL);
+			baserel->rows = clamp_row_est(documentCount * rowSelectivity);
+		}
+		else
+			ereport(DEBUG1,
+					(errmsg("could not retrieve document count for collection"),
+					 errhint("Falling back to default estimates in planning.")));
+	}
+
 	relname = options->collectionName;
 	database =  options->svr_database;
 	fpinfo->base_relname = relname;
@@ -372,66 +382,78 @@ MongoGetForeignPaths(PlannerInfo *root,
 					 RelOptInfo *baserel,
 					 Oid foreigntableid)
 {
-	double		tupleFilterCost = baserel->baserestrictcost.per_tuple;
-	double		inputRowCount;
-	double		documentSelectivity;
-	double		foreignTableSize;
-	int32		documentWidth;
-	BlockNumber pageCount;
-	double		totalDiskAccessCost;
-	double		cpuCostPerDoc;
-	double		cpuCostPerRow;
-	double		totalCpuCost;
-	double		connectionCost;
-	double 		documentCount;
-	List	   *opExpressionList;
+	Path	   *foreignPath;
+	MongoFdwOptions *options;
 	Cost		startupCost = 0.0;
 	Cost		totalCost = 0.0;
-	Path	   *foreignPath;
-	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) baserel->fdw_private;
 
-	documentCount = ForeignTableDocumentCount(foreigntableid);
+	/* Fetch options */
+	options = mongo_get_options(foreigntableid);
 
-	if (documentCount > 0.0)
+	/*
+	 * Retrieve exact document count for remote collection if asked, otherwise,
+	 * use default estimate in planning.
+	 */
+	if (options->use_remote_estimate)
 	{
-		/*
-		 * We estimate the number of rows returned after restriction
-		 * qualifiers are applied by MongoDB.
-		 */
-		opExpressionList = fpinfo->remote_conds;
-		documentSelectivity = clauselist_selectivity(root, opExpressionList,
-													 0, JOIN_INNER, NULL);
-		inputRowCount = clamp_row_est(documentCount * documentSelectivity);
+		double 		documentCount = ForeignTableDocumentCount(foreigntableid);
 
-		/*
-		 * We estimate disk costs assuming a sequential scan over the data.
-		 * This is an inaccurate assumption as Mongo scatters the data over
-		 * disk pages, and may rely on an index to retrieve the data.  Still,
-		 * this should at least give us a relative cost.
-		 */
-		documentWidth = get_relation_data_width(foreigntableid,
-												baserel->attr_widths);
-		foreignTableSize = documentCount * documentWidth;
+		if (documentCount > 0.0)
+		{
+			MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) baserel->fdw_private;
+			double		tupleFilterCost = baserel->baserestrictcost.per_tuple;
+			double		inputRowCount;
+			double		documentSelectivity;
+			double		foreignTableSize;
+			int32		documentWidth;
+			BlockNumber pageCount;
+			double		totalDiskAccessCost;
+			double		cpuCostPerDoc;
+			double		cpuCostPerRow;
+			double		totalCpuCost;
+			double		connectionCost;
+			List	   *opExpressionList;
 
-		pageCount = (BlockNumber) rint(foreignTableSize / BLCKSZ);
-		totalDiskAccessCost = seq_page_cost * pageCount;
+			/*
+			 * We estimate the number of rows returned after restriction
+			 * qualifiers are applied by MongoDB.
+			 */
+			opExpressionList = fpinfo->remote_conds;
+			documentSelectivity = clauselist_selectivity(root,
+														 opExpressionList, 0,
+														 JOIN_INNER, NULL);
+			inputRowCount = clamp_row_est(documentCount * documentSelectivity);
 
-		/*
-		 * The cost of processing a document returned by Mongo (input row) is
-		 * 5x the cost of processing a regular row.
-		 */
-		cpuCostPerDoc = cpu_tuple_cost;
-		cpuCostPerRow = (cpu_tuple_cost * MONGO_TUPLE_COST_MULTIPLIER) + tupleFilterCost;
-		totalCpuCost = (cpuCostPerDoc * documentCount) +(cpuCostPerRow * inputRowCount);
+			/*
+			 * We estimate disk costs assuming a sequential scan over the data.
+			 * This is an inaccurate assumption as Mongo scatters the data over
+			 * disk pages, and may rely on an index to retrieve the data.
+			 * Still, this should at least give us a relative cost.
+			 */
+			documentWidth = get_relation_data_width(foreigntableid,
+													baserel->attr_widths);
+			foreignTableSize = documentCount * documentWidth;
 
-		connectionCost = MONGO_CONNECTION_COST_MULTIPLIER * seq_page_cost;
-		startupCost = baserel->baserestrictcost.startup + connectionCost;
-		totalCost = startupCost + totalDiskAccessCost + totalCpuCost;
+			pageCount = (BlockNumber) rint(foreignTableSize / BLCKSZ);
+			totalDiskAccessCost = seq_page_cost * pageCount;
+
+			/*
+			 * The cost of processing a document returned by Mongo (input row)
+			 * is 5x the cost of processing a regular row.
+			 */
+			cpuCostPerDoc = cpu_tuple_cost;
+			cpuCostPerRow = (cpu_tuple_cost * MONGO_TUPLE_COST_MULTIPLIER) + tupleFilterCost;
+			totalCpuCost = (cpuCostPerDoc * documentCount) +(cpuCostPerRow * inputRowCount);
+
+			connectionCost = MONGO_CONNECTION_COST_MULTIPLIER * seq_page_cost;
+			startupCost = baserel->baserestrictcost.startup + connectionCost;
+			totalCost = startupCost + totalDiskAccessCost + totalCpuCost;
+		}
+		else
+			ereport(DEBUG1,
+					(errmsg("could not retrieve document count for collection"),
+					 errhint("Falling back to default estimates in planning.")));
 	}
-	else
-		ereport(DEBUG1,
-				(errmsg("could not retrieve document count for collection"),
-				 errhint("Falling back to default estimates in planning.")));
 
 	/* Create a foreign path node */
 	foreignPath = (Path *) create_foreignscan_path(root, baserel,

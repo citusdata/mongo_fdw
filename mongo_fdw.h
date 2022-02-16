@@ -144,6 +144,7 @@
 #define OPTION_NAME_COLLECTION 				"collection"
 #define OPTION_NAME_USERNAME 				"username"
 #define OPTION_NAME_PASSWORD 				"password"
+#define OPTION_NAME_USE_REMOTE_ESTIMATE	    "use_remote_estimate"
 #ifdef META_DRIVER
 #define OPTION_NAME_READ_PREFERENCE 		"read_preference"
 #define OPTION_NAME_AUTHENTICATION_DATABASE "authentication_database"
@@ -198,15 +199,16 @@ typedef struct MongoValidOption
 
 /* Array of options that are valid for mongo_fdw */
 #ifdef META_DRIVER
-static const uint32 ValidOptionCount = 18;
+static const uint32 ValidOptionCount = 19;
 #else
-static const uint32 ValidOptionCount = 6;
+static const uint32 ValidOptionCount = 7;
 #endif
 static const MongoValidOption ValidOptionArray[] =
 {
 	/* Foreign server options */
 	{OPTION_NAME_ADDRESS, ForeignServerRelationId},
 	{OPTION_NAME_PORT, ForeignServerRelationId},
+	{OPTION_NAME_USE_REMOTE_ESTIMATE, ForeignServerRelationId},
 
 #ifdef META_DRIVER
 	{OPTION_NAME_READ_PREFERENCE, ForeignServerRelationId},
@@ -247,6 +249,7 @@ typedef struct MongoFdwOptions
 	char	   *collectionName;
 	char	   *svr_username;
 	char	   *svr_password;
+	bool		use_remote_estimate;	/* use remote estimate for rows */
 #ifdef META_DRIVER
 	char	   *readPreference;
 	char	   *authenticationDatabase;
