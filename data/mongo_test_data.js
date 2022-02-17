@@ -17,6 +17,7 @@ db.test2.drop();
 db.test3.drop();
 db.test4.drop();
 db.mongo_test.drop();
+db.test5.drop();
 // Below queries will create and insert values in collections
 db.mongo_test.insert({a : NumberInt(0), b : "mongo_test collection"});
 db.test_tbl2.insertMany([
@@ -72,4 +73,9 @@ db.test4.insertMany([
    {c1: NumberInt(6), c2: NumberInt(6), c3: "F"},
    {c1: NumberInt(7), c2: NumberInt(7), c3: "G"},
    {c1: NumberInt(8), c2: NumberInt(8), c3: "H"},
+]);
+
+db.test5.insertMany([
+   {c1: 12.345678},
+   {c1: -1.23}
 ]);

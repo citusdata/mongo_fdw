@@ -39,6 +39,8 @@ CREATE FOREIGN TABLE test_text ( __doc text)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
 CREATE FOREIGN TABLE test_varchar ( __doc varchar)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
 SET datestyle TO ISO;
 -- Retrieve data from foreign table using SELECT statement.
 SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM f_test_tbl1
@@ -1207,6 +1209,56 @@ SELECT d, d.c2, e.c1, e
                      Foreign Namespace: mongo_fdw_regress.test_tbl1
 (18 rows)
 
+-- FDW-427: The numeric value should display correctly as per precision and
+-- scale defined.
+SELECT c1 FROM f_test5 ORDER BY 1;
+    c1     
+-----------
+     -1.23
+ 12.345678
+(2 rows)
+
+-- Number with the required precision.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(8, 6))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+    c1     
+-----------
+ -1.230000
+ 12.345678
+(2 rows)
+
+-- Number with less scale. Should round-off the scale.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(6, 2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+  c1   
+-------
+ -1.23
+ 12.35
+(2 rows)
+
+-- Number only with precision.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+ c1 
+----
+ -1
+ 12
+(2 rows)
+
+-- Number with improper precision and scale,
+-- resulting in error "numeric field overflow".
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(3, 2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 3, scale 2 must round to an absolute value less than 10^1.
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
@@ -1227,6 +1279,7 @@ DROP FOREIGN TABLE test_json;
 DROP FOREIGN TABLE test_jsonb;
 DROP FOREIGN TABLE test_text;
 DROP FOREIGN TABLE test_varchar;
+DROP FOREIGN TABLE f_test5;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;

@@ -2051,10 +2051,15 @@ ColumnValue(BSON_ITERATOR *bsonIterator, Oid columnTypeId, int32 columnTypeMod)
 		case NUMERICOID:
 			{
 				float8		value = BsonIterDouble(bsonIterator);
-				Datum		valueDatum = Float8GetDatum(value);
+				Datum		valueDatum = DirectFunctionCall1(float8_numeric,
+															 Float8GetDatum(value));
 
-				/* Overlook type modifiers for numeric */
-				columnValue = DirectFunctionCall1(float8_numeric, valueDatum);
+				/*
+				 * Since we have a Numeric value, using numeric() here instead
+				 * of numeric_in() input function for typmod conversion.
+				 */
+				columnValue = DirectFunctionCall2(numeric, valueDatum,
+												  Int32GetDatum(columnTypeMod));
 			}
 			break;
 		case BOOLOID:

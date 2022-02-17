@@ -38,6 +38,8 @@ CREATE FOREIGN TABLE test_text ( __doc text)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
 CREATE FOREIGN TABLE test_varchar ( __doc varchar)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
 
 SET datestyle TO ISO;
 
@@ -287,6 +289,31 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT d, d.c2, e.c1, e
   FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
 
+-- FDW-427: The numeric value should display correctly as per precision and
+-- scale defined.
+SELECT c1 FROM f_test5 ORDER BY 1;
+-- Number with the required precision.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(8, 6))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+-- Number with less scale. Should round-off the scale.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(6, 2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+-- Number only with precision.
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+-- Number with improper precision and scale,
+-- resulting in error "numeric field overflow".
+DROP FOREIGN TABLE f_test5;
+CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(3, 2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+SELECT c1 FROM f_test5 ORDER BY 1;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
@@ -307,6 +334,7 @@ DROP FOREIGN TABLE test_json;
 DROP FOREIGN TABLE test_jsonb;
 DROP FOREIGN TABLE test_text;
 DROP FOREIGN TABLE test_varchar;
+DROP FOREIGN TABLE f_test5;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;
