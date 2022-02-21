@@ -112,7 +112,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 	{
 		elog(DEBUG3, "disconnecting mongo_fdw connection %p for option changes to take effect",
 			 entry->conn);
-		MongoDisconnect(entry->conn);
+		mongoDisconnect(entry->conn);
 		entry->conn = NULL;
 	}
 
@@ -122,7 +122,7 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 		Oid			umoid;
 #endif
 
-		entry->conn = MongoConnect(opt);
+		entry->conn = mongoConnect(opt);
 		elog(DEBUG3, "new mongo_fdw connection %p for server \"%s:%d\"",
 			 entry->conn, opt->svr_address, opt->svr_port);
 
@@ -198,7 +198,7 @@ mongo_cleanup_connection()
 			continue;
 
 		elog(DEBUG3, "disconnecting mongo_fdw connection %p", entry->conn);
-		MongoDisconnect(entry->conn);
+		mongoDisconnect(entry->conn);
 		entry->conn = NULL;
 	}
 }

@@ -24,7 +24,7 @@
 #define QUAL_STRING_LEN 512
 
 MONGO_CONN *
-MongoConnect(MongoFdwOptions *opt)
+mongoConnect(MongoFdwOptions *opt)
 {
 	MONGO_CONN *conn;
 
@@ -63,14 +63,14 @@ MongoConnect(MongoFdwOptions *opt)
 }
 
 void
-MongoDisconnect(MONGO_CONN *conn)
+mongoDisconnect(MONGO_CONN *conn)
 {
 	mongo_destroy(conn);
 	mongo_dealloc(conn);
 }
 
 bool
-MongoInsert(MONGO_CONN *conn, char *database, char *collection, bson *b)
+mongoInsert(MONGO_CONN *conn, char *database, char *collection, bson *b)
 {
 	char		qual[QUAL_STRING_LEN];
 
@@ -84,7 +84,7 @@ MongoInsert(MONGO_CONN *conn, char *database, char *collection, bson *b)
 }
 
 bool
-MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
+mongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
 			BSON *op)
 {
 	char		qual[QUAL_STRING_LEN];
@@ -99,7 +99,7 @@ MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
 }
 
 bool
-MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
+mongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 {
 	char		qual[QUAL_STRING_LEN];
 
@@ -113,7 +113,7 @@ MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 }
 
 MONGO_CURSOR *
-MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
+mongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 {
 	MONGO_CURSOR *c;
 	char		qual[QUAL_STRING_LEN];
@@ -127,26 +127,26 @@ MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 }
 
 const bson *
-MongoCursorBson(MONGO_CURSOR *c)
+mongoCursorBson(MONGO_CURSOR *c)
 {
 	return mongo_cursor_bson(c);
 }
 
 bool
-MongoCursorNext(MONGO_CURSOR *c, BSON *b)
+mongoCursorNext(MONGO_CURSOR *c, BSON *b)
 {
 	return (mongo_cursor_next(c) == MONGO_OK);
 }
 
 void
-MongoCursorDestroy(MONGO_CURSOR *c)
+mongoCursorDestroy(MONGO_CURSOR *c)
 {
 	mongo_cursor_destroy(c);
 	mongo_cursor_dealloc(c);
 }
 
 BSON *
-BsonCreate()
+bsonCreate()
 {
 	BSON	   *doc = NULL;
 
@@ -157,14 +157,14 @@ BsonCreate()
 }
 
 void
-BsonDestroy(BSON *b)
+bsonDestroy(BSON *b)
 {
 	bson_destroy(b);
 	bson_dealloc(b);
 }
 
 bool
-BsonIterInit(BSON_ITERATOR *it, BSON *b)
+bsonIterInit(BSON_ITERATOR *it, BSON *b)
 {
 	bson_iterator_init(it, b);
 
@@ -172,7 +172,7 @@ BsonIterInit(BSON_ITERATOR *it, BSON *b)
 }
 
 bool
-BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
+bsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 {
 	bson_iterator_subobject_init(it, b, 0);
 
@@ -180,7 +180,7 @@ BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 }
 
 int32_t
-BsonIterInt32(BSON_ITERATOR *it)
+bsonIterInt32(BSON_ITERATOR *it)
 {
 	switch (bson_iterator_type(it))
 	{
@@ -216,67 +216,67 @@ BsonIterInt32(BSON_ITERATOR *it)
 }
 
 int64_t
-BsonIterInt64(BSON_ITERATOR *it)
+bsonIterInt64(BSON_ITERATOR *it)
 {
 	return bson_iterator_long(it);
 }
 
 double
-BsonIterDouble(BSON_ITERATOR *it)
+bsonIterDouble(BSON_ITERATOR *it)
 {
 	return bson_iterator_double(it);
 }
 
 bool
-BsonIterBool(BSON_ITERATOR *it)
+bsonIterBool(BSON_ITERATOR *it)
 {
 	return bson_iterator_bool(it);
 }
 
 const char *
-BsonIterString(BSON_ITERATOR *it)
+bsonIterString(BSON_ITERATOR *it)
 {
 	return bson_iterator_string(it);
 }
 
 const char *
-BsonIterBinData(BSON_ITERATOR *it)
+bsonIterBinData(BSON_ITERATOR *it)
 {
 	return bson_iterator_bin_data(it);
 }
 
 int
-BsonIterBinLen(BSON_ITERATOR *it)
+bsonIterBinLen(BSON_ITERATOR *it)
 {
 	return bson_iterator_bin_len(it);
 }
 
 bson_oid_t *
-BsonIterOid(BSON_ITERATOR *it)
+bsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iterator_oid(it);
 }
 
 time_t
-BsonIterDate(BSON_ITERATOR *it)
+bsonIterDate(BSON_ITERATOR *it)
 {
 	return bson_iterator_date(it);
 }
 
 int
-BsonIterType(BSON_ITERATOR *it)
+bsonIterType(BSON_ITERATOR *it)
 {
 	return bson_iterator_type(it);
 }
 
 int
-BsonIterNext(BSON_ITERATOR *it)
+bsonIterNext(BSON_ITERATOR *it)
 {
 	return bson_iterator_next(it);
 }
 
 bool
-BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
+bsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
 {
 	bson_iterator_subiterator(it, sub);
 
@@ -284,108 +284,108 @@ BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
 }
 
 void
-BsonOidFromString(bson_oid_t *o, char *str)
+bsonOidFromString(bson_oid_t *o, char *str)
 {
 	bson_oid_from_string(o, str);
 }
 
 bool
-BsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
+bsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
 {
 	return (bson_append_oid(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendBool(BSON *b, const char *key, bool v)
+bsonAppendBool(BSON *b, const char *key, bool v)
 {
 	return (bson_append_int(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendNull(BSON *b, const char *key)
+bsonAppendNull(BSON *b, const char *key)
 {
 	return (bson_append_null(b, key) == MONGO_OK);
 }
 
 bool
-BsonAppendInt32(BSON *b, const char *key, int v)
+bsonAppendInt32(BSON *b, const char *key, int v)
 {
 	return (bson_append_int(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendInt64(BSON *b, const char *key, int64_t v)
+bsonAppendInt64(BSON *b, const char *key, int64_t v)
 {
 	return (bson_append_long(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendDouble(BSON *b, const char *key, double v)
+bsonAppendDouble(BSON *b, const char *key, double v)
 {
 	return (bson_append_double(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendUTF8(BSON *b, const char *key, char *v)
+bsonAppendUTF8(BSON *b, const char *key, char *v)
 {
 	return (bson_append_string(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendBinary(BSON *b, const char *key, char *v, size_t len)
+bsonAppendBinary(BSON *b, const char *key, char *v, size_t len)
 {
 	return (bson_append_binary(b, key, BSON_BIN_BINARY, v, len) == MONGO_OK);
 }
 bool
-BsonAppendDate(BSON *b, const char *key, time_t v)
+bsonAppendDate(BSON *b, const char *key, time_t v)
 {
 	return (bson_append_date(b, key, v) == MONGO_OK);
 }
 
 bool
-BsonAppendStartArray(BSON *b, const char *key, BSON *c)
+bsonAppendStartArray(BSON *b, const char *key, BSON *c)
 {
 	return (bson_append_start_array(b, key) == MONGO_OK);
 }
 
 bool
-BsonAppendFinishArray(BSON *b, BSON *c)
+bsonAppendFinishArray(BSON *b, BSON *c)
 {
 	return (bson_append_finish_array(b) == MONGO_OK);
 }
 
 bool
-BsonAppendStartObject(BSON *b, char *key, BSON *r)
+bsonAppendStartObject(BSON *b, char *key, BSON *r)
 {
 	return (bson_append_start_object(b, key) == MONGO_OK);
 }
 
 bool
-BsonAppendFinishObject(BSON *b, BSON *r)
+bsonAppendFinishObject(BSON *b, BSON *r)
 {
 	return (bson_append_finish_object(b) == MONGO_OK);
 }
 
 bool
-BsonAppendBson(BSON *b, char *key, BSON *c)
+bsonAppendBson(BSON *b, char *key, BSON *c)
 {
 	return (bson_append_bson(b, key, c) == MONGO_OK);
 }
 
 bool
-BsonFinish(BSON *b)
+bsonFinish(BSON *b)
 {
 	return (bson_finish(b) == MONGO_OK);
 }
 
 json_object *
-JsonTokenerPrase(char *s)
+jsonTokenerPrase(char *s)
 {
 	return json_tokener_parse(s);
 }
 
 bool
-JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
+jsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 {
 	bool		status = true;
 
@@ -420,15 +420,15 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 					bson_oid_t	bsonObjectId;
 
 					memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
-					BsonOidFromString(&bsonObjectId,
+					bsonOidFromString(&bsonObjectId,
 									  (char *) json_object_get_string(joj));
-					status = BsonAppendOid(bb, k, &bsonObjectId);
+					status = bsonAppendOid(bb, k, &bsonObjectId);
 					break;
 				}
 				joj = json_object_object_get(v, "$date");
 				if (joj != NULL)
 				{
-					status = BsonAppendDate(bb, k, json_object_get_int64(joj));
+					status = bsonAppendDate(bb, k, json_object_get_int64(joj));
 					break;
 				}
 
@@ -436,7 +436,7 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 
 				{
 					json_object_object_foreach(v, kk, vv)
-						JsonToBsonAppendElement(bb, kk, vv);
+						jsonToBsonAppendElement(bb, kk, vv);
 				}
 				bson_append_finish_object(bb);
 			}
@@ -450,7 +450,7 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 				for (i = 0; i < json_object_array_length(v); i++)
 				{
 					sprintf(buf, "%d", i);
-					JsonToBsonAppendElement(bb, buf,
+					jsonToBsonAppendElement(bb, buf,
 											json_object_array_get_idx(v, i));
 				}
 				bson_append_finish_object(bb);
@@ -467,50 +467,50 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 }
 
 double
-MongoAggregateCount(MONGO_CONN *conn, const char *database,
+mongoAggregateCount(MONGO_CONN *conn, const char *database,
 					const char *collection, const BSON *b)
 {
 	return mongo_count(conn, database, collection, b);
 }
 
 void
-BsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer)
+bsonIteratorFromBuffer(BSON_ITERATOR *i, const char *buffer)
 {
 	bson_iterator_from_buffer(i, buffer);
 }
 
 void
-BsonOidToString(const bson_oid_t *o, char str[25])
+bsonOidToString(const bson_oid_t *o, char str[25])
 {
 	bson_oid_to_string(o, str);
 }
 
 const char *
-BsonIterCode(BSON_ITERATOR *i)
+bsonIterCode(BSON_ITERATOR *i)
 {
 	return bson_iterator_code(i);
 }
 
 const char *
-BsonIterRegex(BSON_ITERATOR *i)
+bsonIterRegex(BSON_ITERATOR *i)
 {
 	return bson_iterator_regex(i);
 }
 
 const char *
-BsonIterKey(BSON_ITERATOR *i)
+bsonIterKey(BSON_ITERATOR *i)
 {
 	return bson_iterator_key(i);
 }
 
 const char *
-BsonIterValue(BSON_ITERATOR *i)
+bsonIterValue(BSON_ITERATOR *i)
 {
 	return bson_iterator_value(i);
 }
 
 char *
-BsonAsJson(const BSON *bsonDocument)
+bsonAsJson(const BSON *bsonDocument)
 {
 	ereport(ERROR,
 			(errmsg("full document retrival only available in MongoC meta driver")));

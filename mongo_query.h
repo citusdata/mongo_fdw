@@ -105,13 +105,13 @@ enum mongoFdwScanPrivateIndex
 };
 
 /* Function to be used in mongo_fdw.c */
-extern bool AppendMongoValue(BSON *queryDocument, const char *keyName,
-							 Datum value, bool isnull, Oid id);
+extern bool append_mongo_value(BSON *queryDocument, const char *keyName,
+							   Datum value, bool isnull, Oid id);
 
 /* Functions to be used in deparse.c */
-extern char *MongoOperatorName(const char *operatorName);
-extern void AppendConstantValue(BSON *queryDocument, const char *keyName,
-								Const *constant);
+extern char *mongo_operator_name(const char *operatorName);
+extern void append_constant_value(BSON *queryDocument, const char *keyName,
+								  Const *constant);
 extern void mongo_append_expr(Expr *node, BSON *child_doc,
 							  pipeline_cxt *context);
 

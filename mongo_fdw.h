@@ -420,7 +420,7 @@ extern void mongo_cleanup_connection(void);
 extern void mongo_release_connection(MONGO_CONN *conn);
 
 /* Function declarations related to creating the mongo query */
-extern BSON *QueryDocument(ForeignScanState *scanStateNode);
+extern BSON *mongo_query_document(ForeignScanState *scanStateNode);
 extern List *mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 								   List *scan_var_list, List **colNameList,
 								   List **colIsInnerList );

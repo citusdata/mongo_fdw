@@ -80,21 +80,21 @@ typedef struct foreign_loc_cxt
 } foreign_loc_cxt;
 
 /* Local functions forward declarations */
-static Expr *FindArgumentOfType(List *argumentList, NodeTag argumentType);
-static List *EqualityOperatorList(List *operatorList);
-static List *UniqueColumnList(List *operatorList);
-static List *ColumnOperatorList(Var *column, List *operatorList);
-static void AppendParamValue(BSON *queryDocument, const char *keyName,
-							 Param *paramNode,
-							 ForeignScanState *scanStateNode);
+static Expr *find_argument_of_type(List *argumentList, NodeTag argumentType);
+static List *equality_operator_list(List *operatorList);
+static List *unique_column_list(List *operatorList);
+static List *column_operator_list(Var *column, List *operatorList);
+static void append_param_value(BSON *queryDocument, const char *keyName,
+							   Param *paramNode,
+							   ForeignScanState *scanStateNode);
 static bool foreign_expr_walker(Node *node,
 								foreign_glob_cxt *glob_cxt,
 								foreign_loc_cxt *outer_cxt);
 static List *prepare_var_list_for_baserel(Oid relid, Index varno,
 										  Bitmapset *attrs_used);
 #ifdef META_DRIVER
-static HTAB *ColumnInfoHash(List *colname_list, List *colnum_list,
-							List *rti_list, List *isouter_list);
+static HTAB *column_info_hash(List *colname_list, List *colnum_list,
+							  List *rti_list, List *isouter_list);
 static void mongo_prepare_inner_pipeline(List *joinclause,
 										 BSON *inner_pipeline,
 										 List *colname_list,
@@ -106,12 +106,12 @@ static void mongo_append_joinclauses_to_inner_pipeline(List *joinclause,
 #endif
 
 /*
- * FindArgumentOfType
+ * find_argument_of_type
  *		Walks over the given argument list, looks for an argument with the
  *		given type, and returns the argument if it is found.
  */
 static Expr *
-FindArgumentOfType(List *argumentList, NodeTag argumentType)
+find_argument_of_type(List *argumentList, NodeTag argumentType)
 {
 	Expr	   *foundArgument = NULL;
 	ListCell   *argumentCell;
@@ -135,7 +135,7 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
 }
 
 /*
- * QueryDocument
+ * mongo_query_document
  *		Takes in the applicable operator expressions for relation and also the
  *		join clauses for join relation and converts these expressions and join
  *		clauses into equivalent queries in MongoDB.
@@ -204,11 +204,11 @@ FindArgumentOfType(List *argumentList, NodeTag argumentType)
  * "l_shipdate: { $gte: new Date(757382400000), $lt: new Date(788918400000) }".
  */
 BSON *
-QueryDocument(ForeignScanState *scanStateNode)
+mongo_query_document(ForeignScanState *scanStateNode)
 {
 	ForeignScan *fsplan = (ForeignScan *) scanStateNode->ss.ps.plan;
-	BSON	   *queryDocument = BsonCreate();
-	BSON	   *filter = BsonCreate();
+	BSON	   *queryDocument = bsonCreate();
+	BSON	   *filter = bsonCreate();
 	List	   *PrivateList = fsplan->fdw_private;
 	List	   *opExpressionList = list_nth(PrivateList,
 											mongoFdwPrivateRemoteExprList);
@@ -225,7 +225,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 	int			jointype;
 
 	/* Prepare array of stages */
-	BsonAppendStartArray(queryDocument, "pipeline", &root_pipeline);
+	bsonAppendStartArray(queryDocument, "pipeline", &root_pipeline);
 
 	if (fmstate->isJoinRel)
 	{
@@ -256,8 +256,8 @@ QueryDocument(ForeignScanState *scanStateNode)
 			   natts == list_length(rti_list) &&
 			   natts == list_length(isouter_list));
 
-		columnInfoHash = ColumnInfoHash(colname_list, colnum_list, rti_list,
-										isouter_list);
+		columnInfoHash = column_info_hash(colname_list, colnum_list, rti_list,
+										  isouter_list);
 	}
 #endif
 
@@ -285,7 +285,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 		 * to insert the latter (<, >, <=, >=, <>) as separate sub-documents
 		 * into the BSON query object.
 		 */
-		equalityOperatorList = EqualityOperatorList(opExpressionList);
+		equalityOperatorList = equality_operator_list(opExpressionList);
 		comparisonOperatorList = list_difference(opExpressionList,
 												 equalityOperatorList);
 
@@ -302,9 +302,9 @@ QueryDocument(ForeignScanState *scanStateNode)
 
 			equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
 			argumentList = equalityOperator->args;
-			column = (Var *) FindArgumentOfType(argumentList, T_Var);
-			constant = (Const *) FindArgumentOfType(argumentList, T_Const);
-			paramNode = (Param *) FindArgumentOfType(argumentList, T_Param);
+			column = (Var *) find_argument_of_type(argumentList, T_Var);
+			constant = (Const *) find_argument_of_type(argumentList, T_Const);
+			paramNode = (Param *) find_argument_of_type(argumentList, T_Param);
 
 			if (relationId != 0)
 			{
@@ -336,10 +336,10 @@ QueryDocument(ForeignScanState *scanStateNode)
 #endif
 
 			if (constant != NULL)
-				AppendConstantValue(filter, columnName, constant);
+				append_constant_value(filter, columnName, constant);
 			else
-				AppendParamValue(filter, columnName, paramNode,
-								 scanStateNode);
+				append_param_value(filter, columnName, paramNode,
+								   scanStateNode);
 		}
 
 		/*
@@ -349,7 +349,7 @@ QueryDocument(ForeignScanState *scanStateNode)
 		 * define the upper and lower bound of a range, Mongo uses only one of
 		 * these expressions during an index search.
 		 */
-		columnList = UniqueColumnList(comparisonOperatorList);
+		columnList = unique_column_list(comparisonOperatorList);
 
 		/* Append comparison expressions, grouped by columns, to the query */
 		foreach(columnCell, columnList)
@@ -391,11 +391,11 @@ QueryDocument(ForeignScanState *scanStateNode)
 #endif
 
 			/* Find all expressions that correspond to the column */
-			columnOperatorList = ColumnOperatorList(column,
-													comparisonOperatorList);
+			columnOperatorList = column_operator_list(column,
+													  comparisonOperatorList);
 
 			/* For comparison expressions, start a sub-document */
-			BsonAppendStartObject(filter, columnName, &childDocument);
+			bsonAppendStartObject(filter, columnName, &childDocument);
 
 			foreach(columnOperatorCell, columnOperatorList)
 			{
@@ -407,20 +407,21 @@ QueryDocument(ForeignScanState *scanStateNode)
 
 				columnOperator = (OpExpr *) lfirst(columnOperatorCell);
 				argumentList = columnOperator->args;
-				constant = (Const *) FindArgumentOfType(argumentList, T_Const);
+				constant = (Const *) find_argument_of_type(argumentList,
+														   T_Const);
 				operatorName = get_opname(columnOperator->opno);
-				mongoOperatorName = MongoOperatorName(operatorName);
+				mongoOperatorName = mongo_operator_name(operatorName);
 #ifdef META_DRIVER
-				AppendConstantValue(&childDocument, mongoOperatorName,
-									constant);
+				append_constant_value(&childDocument, mongoOperatorName,
+									  constant);
 #else
-				AppendConstantValue(filter, mongoOperatorName, constant);
+				append_constant_value(filter, mongoOperatorName, constant);
 #endif
 			}
-			BsonAppendFinishObject(filter, &childDocument);
+			bsonAppendFinishObject(filter, &childDocument);
 		}
 	}
-	if (!BsonFinish(filter))
+	if (!bsonFinish(filter))
 	{
 #ifdef META_DRIVER
 		ereport(ERROR,
@@ -443,22 +444,22 @@ QueryDocument(ForeignScanState *scanStateNode)
 		BSON		outer_match_stage;
 		BSON		unwind_stage;
 		BSON		unwind;
-		BSON	   *inner_pipeline_doc = BsonCreate();
+		BSON	   *inner_pipeline_doc = bsonCreate();
 		ListCell   *cell1;
 		ListCell   *cell2;
 
 		/* $lookup stage. This is to perform JOIN */
-		BsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
 							  &lookup_object);
-		BsonAppendStartObject(&lookup_object, "$lookup", &lookup);
-		BsonAppendUTF8(&lookup, "from", inner_relname);
+		bsonAppendStartObject(&lookup_object, "$lookup", &lookup);
+		bsonAppendUTF8(&lookup, "from", inner_relname);
 
 		/*
 		 * Start "let" operator: Specifies variables to use in the pipeline
 		 * stages.  To access columns of outer relation, those need to be
 		 * defined in terms of a variable using "let".
 		 */
-		BsonAppendStartObject(&lookup, "let", &let_exprs);
+		bsonAppendStartObject(&lookup, "let", &let_exprs);
 		forboth(cell1, colname_list, cell2, isouter_list)
 		{
 			char	*colname = strVal(lfirst(cell1));
@@ -475,13 +476,13 @@ QueryDocument(ForeignScanState *scanStateNode)
 				char	*varname = psprintf("v_%s", colname);
 				char	*field = psprintf("$%s", colname);
 
-				BsonAppendUTF8(&let_exprs, varname, field);
+				bsonAppendUTF8(&let_exprs, varname, field);
 			}
 		}
-		BsonAppendFinishObject(&lookup, &let_exprs); /* End "let" */
+		bsonAppendFinishObject(&lookup, &let_exprs); /* End "let" */
 
 		/* Form inner pipeline required in $lookup stage to execute $match */
-		BsonAppendStartArray(inner_pipeline_doc, "pipeline", &inner_pipeline);
+		bsonAppendStartArray(inner_pipeline_doc, "pipeline", &inner_pipeline);
 		if (joinclauses)
 		{
 			pipeline_cxt context;
@@ -492,39 +493,39 @@ QueryDocument(ForeignScanState *scanStateNode)
 			 /* Form equivalent join qual clauses in MongoDB */
 			mongo_prepare_inner_pipeline(joinclauses, &inner_pipeline,
 										 colname_list, isouter_list, &context);
-			BsonAppendFinishArray(inner_pipeline_doc, &inner_pipeline);
+			bsonAppendFinishArray(inner_pipeline_doc, &inner_pipeline);
 		}
 
 		/* Append inner pipeline to $lookup stage */
 		bson_append_array(&lookup, "pipeline", (int) strlen ("pipeline"),
 						  &inner_pipeline);
 
-		BsonAppendUTF8(&lookup, "as", "Join_Result");
-		BsonAppendFinishObject(&lookup_object, &lookup);
-		BsonAppendFinishObject(&root_pipeline, &lookup_object);
+		bsonAppendUTF8(&lookup, "as", "Join_Result");
+		bsonAppendFinishObject(&lookup_object, &lookup);
+		bsonAppendFinishObject(&root_pipeline, &lookup_object);
 
 		/* $match stage. This is to add a filter */
-		BsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
 							  &outer_match_stage);
-		BsonAppendBson(&outer_match_stage, "$match", filter);
-		BsonAppendFinishObject(&root_pipeline, &outer_match_stage);
+		bsonAppendBson(&outer_match_stage, "$match", filter);
+		bsonAppendFinishObject(&root_pipeline, &outer_match_stage);
 
 		/*
 		 * $unwind stage. This deconstructs an array field from the input
 		 * documents to output a document for each element.
 		 */
-		BsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
 							  &unwind_stage);
-		BsonAppendStartObject(&unwind_stage, "$unwind", &unwind);
-		BsonAppendUTF8(&unwind, "path", "$Join_Result");
+		bsonAppendStartObject(&unwind_stage, "$unwind", &unwind);
+		bsonAppendUTF8(&unwind, "path", "$Join_Result");
 		if (jointype == JOIN_INNER)
-			BsonAppendBool(&unwind, "preserveNullAndEmptyArrays", false);
+			bsonAppendBool(&unwind, "preserveNullAndEmptyArrays", false);
 		else
-			BsonAppendBool(&unwind, "preserveNullAndEmptyArrays", true);
-		BsonAppendFinishObject(&unwind_stage, &unwind);
-		BsonAppendFinishObject(&root_pipeline, &unwind_stage);
+			bsonAppendBool(&unwind, "preserveNullAndEmptyArrays", true);
+		bsonAppendFinishObject(&unwind_stage, &unwind);
+		bsonAppendFinishObject(&root_pipeline, &unwind_stage);
 
-		if (!BsonFinish(queryDocument))
+		if (!bsonFinish(queryDocument))
 			ereport(ERROR,
 					(errmsg("could not create document for query"),
 					 errhint("BSON flags: %d", queryDocument->flags)));
@@ -536,15 +537,15 @@ QueryDocument(ForeignScanState *scanStateNode)
 		BSON	    match_stage;
 
 		/* $match stage.  This is to add a filter for the WHERE clause */
-		BsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
 							  &match_stage);
-		BsonAppendBson(&match_stage, "$match", filter);
-		BsonAppendFinishObject(&root_pipeline, &match_stage);
+		bsonAppendBson(&match_stage, "$match", filter);
+		bsonAppendFinishObject(&root_pipeline, &match_stage);
 	}
 
-	BsonAppendFinishArray(queryDocument, &root_pipeline);
+	bsonAppendFinishArray(queryDocument, &root_pipeline);
 
-	if (!BsonFinish(queryDocument))
+	if (!bsonFinish(queryDocument))
 	{
 		ereport(ERROR,
 				(errmsg("could not create document for query"),
@@ -558,12 +559,12 @@ QueryDocument(ForeignScanState *scanStateNode)
 }
 
 /*
- * MongoOperatorName
+ * mongo_operator_name
  * 		Takes in the given PostgreSQL comparison operator name, and returns its
  * 		equivalent in MongoDB.
  */
 char *
-MongoOperatorName(const char *operatorName)
+mongo_operator_name(const char *operatorName)
 {
 	const char *mongoOperatorName = NULL;
 	const int32 nameCount = 14;
@@ -598,12 +599,12 @@ MongoOperatorName(const char *operatorName)
 }
 
 /*
- * EqualityOperatorList
+ * equality_operator_list
  *		Finds the equality (=) operators in the given list, and returns these
  *		operators in a new list.
  */
 static List *
-EqualityOperatorList(List *operatorList)
+equality_operator_list(List *operatorList)
 {
 	List	   *equalityOperatorList = NIL;
 	ListCell   *operatorCell;
@@ -621,7 +622,7 @@ EqualityOperatorList(List *operatorList)
 }
 
 /*
- * UniqueColumnList
+ * unique_column_list
  *		Walks over the given operator list, and extracts the column argument in
  *		each operator.
  *
@@ -629,7 +630,7 @@ EqualityOperatorList(List *operatorList)
  * list.
  */
 static List *
-UniqueColumnList(List *operatorList)
+unique_column_list(List *operatorList)
 {
 	List	   *uniqueColumnList = NIL;
 	ListCell   *operatorCell;
@@ -638,7 +639,8 @@ UniqueColumnList(List *operatorList)
 	{
 		OpExpr	   *operator = (OpExpr *) lfirst(operatorCell);
 		List	   *argumentList = operator->args;
-		Var		   *column = (Var *) FindArgumentOfType(argumentList, T_Var);
+		Var		   *column = (Var *) find_argument_of_type(argumentList,
+														   T_Var);
 
 		/* List membership is determined via column's equal() function */
 		uniqueColumnList = list_append_unique(uniqueColumnList, column);
@@ -648,12 +650,12 @@ UniqueColumnList(List *operatorList)
 }
 
 /*
- * ColumnOperatorList
+ * column_operator_list
  *		Finds all expressions that correspond to the given column, and returns
  *		them in a new list.
  */
 static List *
-ColumnOperatorList(Var *column, List *operatorList)
+column_operator_list(Var *column, List *operatorList)
 {
 	List	   *columnOperatorList = NIL;
 	ListCell   *operatorCell;
@@ -662,8 +664,8 @@ ColumnOperatorList(Var *column, List *operatorList)
 	{
 		OpExpr	   *operator = (OpExpr *) lfirst(operatorCell);
 		List	   *argumentList = operator->args;
-		Var		   *foundColumn = (Var *) FindArgumentOfType(argumentList,
-															 T_Var);
+		Var		   *foundColumn = (Var *) find_argument_of_type(argumentList,
+																T_Var);
 
 		if (equal(column, foundColumn))
 			columnOperatorList = lappend(columnOperatorList, operator);
@@ -673,8 +675,8 @@ ColumnOperatorList(Var *column, List *operatorList)
 }
 
 static void
-AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
-				 ForeignScanState *scanStateNode)
+append_param_value(BSON *queryDocument, const char *keyName, Param *paramNode,
+				   ForeignScanState *scanStateNode)
 {
 	ExprState  *param_expr;
 	Datum		param_value;
@@ -696,39 +698,39 @@ AppendParamValue(BSON *queryDocument, const char *keyName, Param *paramNode,
 	param_value = ExecEvalExpr(param_expr, econtext, &isNull, NULL);
 #endif
 
-	AppendMongoValue(queryDocument, keyName, param_value, isNull,
-					 paramNode->paramtype);
+	append_mongo_value(queryDocument, keyName, param_value, isNull,
+					   paramNode->paramtype);
 }
 
 /*
- * AppendConstantValue
+ * append_constant_value
  *		Appends to the query document the key name and constant value.
  *
  * The function translates the constant value from its PostgreSQL type
  * to its MongoDB equivalent.
  */
 void
-AppendConstantValue(BSON *queryDocument, const char *keyName, Const *constant)
+append_constant_value(BSON *queryDocument, const char *keyName, Const *constant)
 {
 	if (constant->constisnull)
 	{
-		BsonAppendNull(queryDocument, keyName);
+		bsonAppendNull(queryDocument, keyName);
 		return;
 	}
 
-	AppendMongoValue(queryDocument, keyName, constant->constvalue, false,
-					 constant->consttype);
+	append_mongo_value(queryDocument, keyName, constant->constvalue, false,
+					   constant->consttype);
 }
 
 bool
-AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
-				 bool isnull, Oid id)
+append_mongo_value(BSON *queryDocument, const char *keyName, Datum value,
+				   bool isnull, Oid id)
 {
 	bool		status = false;
 
 	if (isnull)
 	{
-		status = BsonAppendNull(queryDocument, keyName);
+		status = bsonAppendNull(queryDocument, keyName);
 		return status;
 	}
 
@@ -738,7 +740,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 			{
 				int16		valueInt = DatumGetInt16(value);
 
-				status = BsonAppendInt32(queryDocument, keyName,
+				status = bsonAppendInt32(queryDocument, keyName,
 										 (int) valueInt);
 			}
 			break;
@@ -746,21 +748,21 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 			{
 				int32		valueInt = DatumGetInt32(value);
 
-				status = BsonAppendInt32(queryDocument, keyName, valueInt);
+				status = bsonAppendInt32(queryDocument, keyName, valueInt);
 			}
 			break;
 		case INT8OID:
 			{
 				int64		valueLong = DatumGetInt64(value);
 
-				status = BsonAppendInt64(queryDocument, keyName, valueLong);
+				status = bsonAppendInt64(queryDocument, keyName, valueLong);
 			}
 			break;
 		case FLOAT4OID:
 			{
 				float4		valueFloat = DatumGetFloat4(value);
 
-				status = BsonAppendDouble(queryDocument, keyName,
+				status = bsonAppendDouble(queryDocument, keyName,
 										  (double) valueFloat);
 			}
 			break;
@@ -768,7 +770,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 			{
 				float8		valueFloat = DatumGetFloat8(value);
 
-				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+				status = bsonAppendDouble(queryDocument, keyName, valueFloat);
 			}
 			break;
 		case NUMERICOID:
@@ -777,14 +779,14 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 															 value);
 				float8		valueFloat = DatumGetFloat8(valueDatum);
 
-				status = BsonAppendDouble(queryDocument, keyName, valueFloat);
+				status = bsonAppendDouble(queryDocument, keyName, valueFloat);
 			}
 			break;
 		case BOOLOID:
 			{
 				bool		valueBool = DatumGetBool(value);
 
-				status = BsonAppendBool(queryDocument, keyName,
+				status = bsonAppendBool(queryDocument, keyName,
 										(int) valueBool);
 			}
 			break;
@@ -798,7 +800,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 
 				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 				outputString = OidOutputFunctionCall(outputFunctionId, value);
-				status = BsonAppendUTF8(queryDocument, keyName, outputString);
+				status = bsonAppendUTF8(queryDocument, keyName, outputString);
 			}
 			break;
 		case BYTEAOID:
@@ -823,13 +825,13 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 					bson_oid_t	oid;
 
 					bson_oid_init_from_data(&oid, (const uint8_t *) data);
-					status = BsonAppendOid(queryDocument, keyName, &oid);
+					status = bsonAppendOid(queryDocument, keyName, &oid);
 				}
 				else
-					status = BsonAppendBinary(queryDocument, keyName, data,
+					status = bsonAppendBinary(queryDocument, keyName, data,
 											  len);
 #else
-				status = BsonAppendBinary(queryDocument, keyName, data, len);
+				status = bsonAppendBinary(queryDocument, keyName, data, len);
 #endif
 			}
 			break;
@@ -843,8 +845,8 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
 				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 				outputString = OidOutputFunctionCall(outputFunctionId, value);
-				BsonOidFromString(&bsonObjectId, outputString);
-				status = BsonAppendOid(queryDocument, keyName, &bsonObjectId);
+				bsonOidFromString(&bsonObjectId, outputString);
+				status = bsonAppendOid(queryDocument, keyName, &bsonObjectId);
 			}
 			break;
 		case DATEOID:
@@ -855,7 +857,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				int64		valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 				int64		valueMilliSecs = valueMicroSecs / 1000;
 
-				status = BsonAppendDate(queryDocument, keyName,
+				status = bsonAppendDate(queryDocument, keyName,
 										valueMilliSecs);
 			}
 			break;
@@ -866,7 +868,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				int64		valueMicroSecs = valueTimestamp + POSTGRES_TO_UNIX_EPOCH_USECS;
 				int64		valueMilliSecs = valueMicroSecs / 1000;
 
-				status = BsonAppendDate(queryDocument, keyName,
+				status = bsonAppendDate(queryDocument, keyName,
 										valueMilliSecs);
 			}
 			break;
@@ -890,7 +892,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign,
 								  &elem_values, &elem_nulls, &num_elems);
 
-				BsonAppendStartArray(queryDocument, keyName, &childDocument);
+				bsonAppendStartArray(queryDocument, keyName, &childDocument);
 				for (i = 0; i < num_elems; i++)
 				{
 					Datum		valueDatum;
@@ -903,14 +905,14 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 													 elem_values[i]);
 					valueFloat = DatumGetFloat8(valueDatum);
 #ifdef META_DRIVER
-					status = BsonAppendDouble(&childDocument, keyName,
+					status = bsonAppendDouble(&childDocument, keyName,
 											  valueFloat);
 #else
-					status = BsonAppendDouble(queryDocument, keyName,
+					status = bsonAppendDouble(queryDocument, keyName,
 											  valueFloat);
 #endif
 				}
-				BsonAppendFinishArray(queryDocument, &childDocument);
+				bsonAppendFinishArray(queryDocument, &childDocument);
 				pfree(elem_values);
 				pfree(elem_nulls);
 			}
@@ -935,7 +937,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 				deconstruct_array(array, elmtype, elmlen, elmbyval, elmalign,
 								  &elem_values, &elem_nulls, &num_elems);
 
-				BsonAppendStartArray(queryDocument, keyName, &childDocument);
+				bsonAppendStartArray(queryDocument, keyName, &childDocument);
 				for (i = 0; i < num_elems; i++)
 				{
 					char	   *valueString;
@@ -949,10 +951,10 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 									  &typeVarLength);
 					valueString = OidOutputFunctionCall(outputFunctionId,
 														elem_values[i]);
-					status = BsonAppendUTF8(queryDocument, keyName,
+					status = bsonAppendUTF8(queryDocument, keyName,
 											valueString);
 				}
-				BsonAppendFinishArray(queryDocument, &childDocument);
+				bsonAppendFinishArray(queryDocument, &childDocument);
 				pfree(elem_values);
 				pfree(elem_nulls);
 			}
@@ -966,7 +968,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 
 				getTypeOutputInfo(id, &outputFunctionId, &typeVarLength);
 				outputString = OidOutputFunctionCall(outputFunctionId, value);
-				o = JsonTokenerPrase(outputString);
+				o = jsonTokenerPrase(outputString);
 
 				if (o == NULL)
 				{
@@ -975,7 +977,7 @@ AppendMongoValue(BSON *queryDocument, const char *keyName, Datum value,
 					break;
 				}
 
-				status = JsonToBsonAppendElement(queryDocument, keyName, o);
+				status = jsonToBsonAppendElement(queryDocument, keyName, o);
 			}
 			break;
 		default:
@@ -1225,7 +1227,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				 * operators for joinclause of join relation.
 				 */
 				if (!(strncmp(oname, EQUALITY_OPERATOR_NAME, NAMEDATALEN) == 0) &&
-					(MongoOperatorName(oname) == NULL))
+					(mongo_operator_name(oname) == NULL))
 					return false;
 
 				/*
@@ -1492,15 +1494,15 @@ prepare_var_list_for_baserel(Oid relid, Index varno, Bitmapset *attrs_used)
 
 #ifdef META_DRIVER
 /*
- * ColumnInfoHash
+ * column_info_hash
  *		Creates a hash table that maps varno and varattno to the column names,
  *		and also stores whether the column is part of outer relation or not.
  *
  * This table helps us to form the pipeline quickly.
  */
 static HTAB *
-ColumnInfoHash(List *colname_list, List *colnum_list, List *rti_list,
-			   List *isouter_list)
+column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
+				 List *isouter_list)
 {
 	HTAB	   *columnInfoHash;
 	ColInfoHashKey key;
@@ -1559,8 +1561,8 @@ ColumnInfoHash(List *colname_list, List *colnum_list, List *rti_list,
  * mongo_prepare_inner_pipeline
  *		Form inner query pipeline syntax equivalent to postgresql join clauses.
  *
- * From the example given on QueryDocument, the following part of MongoDB query
- * formed by this function:
+ * From the example given on mongo_query_document, the following part of
+ * MongoDB query formed by this function:
  *
  *          "pipeline": [
  *            {
@@ -1583,20 +1585,20 @@ mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
 							 List *colname_list, List *isouter_list,
 							 pipeline_cxt *context)
 {
-	BSON	   *and_query_doc = BsonCreate();
+	BSON	   *and_query_doc = bsonCreate();
 	BSON	    match_object;
 	BSON	    match_stage;
 	BSON	    expr;
 	BSON	    and_op;
 	int 	    inner_pipeline_index = 0;
 
-	BsonAppendStartObject(inner_pipeline,
+	bsonAppendStartObject(inner_pipeline,
 						  psprintf("%d", inner_pipeline_index++),
 						  &match_object);
-	BsonAppendStartObject(&match_object, "$match", &match_stage);
-	BsonAppendStartObject(&match_stage, "$expr", &expr);
+	bsonAppendStartObject(&match_object, "$match", &match_stage);
+	bsonAppendStartObject(&match_stage, "$expr", &expr);
 
-	BsonAppendStartArray(and_query_doc, "$and", &and_op);
+	bsonAppendStartArray(and_query_doc, "$and", &and_op);
 
 	context->arrayIndex = 0;
 
@@ -1606,10 +1608,10 @@ mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
 	/* Append $and array to $expr */
 	bson_append_array(&expr, "$and", (int) strlen ("$and"), &and_op);
 
-	BsonAppendFinishArray(and_query_doc, &and_op);
-	BsonAppendFinishObject(&match_stage, &expr);
-	BsonAppendFinishObject(&match_object, &match_stage);
-	BsonAppendFinishObject(inner_pipeline, &match_object);
+	bsonAppendFinishArray(and_query_doc, &and_op);
+	bsonAppendFinishObject(&match_stage, &expr);
+	bsonAppendFinishObject(&match_object, &match_stage);
+	bsonAppendFinishObject(inner_pipeline, &match_object);
 }
 
 /*

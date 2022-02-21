@@ -20,11 +20,11 @@
 #define ITER_TYPE(i) ((bson_type_t) * ((i)->raw + (i)->type))
 
 /*
- * MongoConnect
+ * mongoConnect
  *		Connect to MongoDB server using Host/ip and Port number.
  */
 MONGO_CONN *
-MongoConnect(MongoFdwOptions *opt)
+mongoConnect(MongoFdwOptions *opt)
 {
 	MONGO_CONN *client;
 	char	   *uri;
@@ -157,22 +157,22 @@ MongoConnect(MongoFdwOptions *opt)
 }
 
 /*
- * MongoDisconnect
+ * mongoDisconnect
  *		Disconnect from MongoDB server.
  */
 void
-MongoDisconnect(MONGO_CONN *conn)
+mongoDisconnect(MONGO_CONN *conn)
 {
 	if (conn)
 		mongoc_client_destroy(conn);
 }
 
 /*
- * MongoInsert
+ * mongoInsert
  *		Insert a document 'b' into MongoDB.
  */
 bool
-MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b)
+mongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 {
 	mongoc_collection_t *c;
 	bson_error_t error;
@@ -191,11 +191,11 @@ MongoInsert(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 }
 
 /*
- * MongoUpdate
+ * mongoUpdate
  *		Update a document 'b' into MongoDB.
  */
 bool
-MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
+mongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
 			BSON *op)
 {
 	mongoc_collection_t *c;
@@ -215,11 +215,11 @@ MongoUpdate(MONGO_CONN *conn, char *database, char *collection, BSON *b,
 }
 
 /*
- * MongoDelete
+ * mongoDelete
  *		Delete MongoDB's document.
  */
 bool
-MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
+mongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 {
 	mongoc_collection_t *c;
 	bson_error_t error;
@@ -239,12 +239,12 @@ MongoDelete(MONGO_CONN *conn, char *database, char *collection, BSON *b)
 }
 
 /*
- * MongoCursorCreate
+ * mongoCursorCreate
  *		Performs a query against the configured MongoDB server and return
  *		cursor which can be destroyed by calling mongoc_cursor_current.
  */
 MONGO_CURSOR *
-MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
+mongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 {
 	mongoc_collection_t *c;
 	MONGO_CURSOR *cur;
@@ -264,45 +264,45 @@ MongoCursorCreate(MONGO_CONN *conn, char *database, char *collection, BSON *q)
 }
 
 /*
- * MongoCursorDestroy
- *		Destroy cursor created by calling MongoCursorCreate function.
+ * mongoCursorDestroy
+ *		Destroy cursor created by calling mongoCursorCreate function.
  */
 void
-MongoCursorDestroy(MONGO_CURSOR *c)
+mongoCursorDestroy(MONGO_CURSOR *c)
 {
 	mongoc_cursor_destroy(c);
 }
 
 
 /*
- * MongoCursorNext
+ * mongoCursorBson
  *		Get the current document from cursor.
  */
 const BSON *
-MongoCursorBson(MONGO_CURSOR *c)
+mongoCursorBson(MONGO_CURSOR *c)
 {
 	return mongoc_cursor_current(c);
 }
 
 /*
- * MongoCursorNext
+ * mongoCursorNext
  *		Get the next document from the cursor.
  */
 bool
-MongoCursorNext(MONGO_CURSOR *c, BSON *b)
+mongoCursorNext(MONGO_CURSOR *c, BSON *b)
 {
 	return mongoc_cursor_next(c, (const BSON **) &b);
 }
 
 /*
- * BsonCreate
+ * bsonCreate
  *		Allocates a new bson_t structure, and also initialize the bson object.
  *
  * After that point objects can be appended to that bson object and can be
  * iterated. A newly allocated bson_t that should be freed with bson_destroy().
  */
 BSON *
-BsonCreate(void)
+bsonCreate(void)
 {
 	BSON	   *doc;
 
@@ -313,27 +313,27 @@ BsonCreate(void)
 }
 
 /*
- * BsonDestroy
- *		Destroy Bson object created by BsonCreate function.
+ * bsonDestroy
+ *		Destroy Bson object created by bsonCreate function.
  */
 void
-BsonDestroy(BSON *b)
+bsonDestroy(BSON *b)
 {
 	bson_destroy(b);
 }
 
 /*
- * BsonIterInit
+ * bsonIterInit
  *		Initialize the bson Iterator.
  */
 bool
-BsonIterInit(BSON_ITERATOR *it, BSON *b)
+bsonIterInit(BSON_ITERATOR *it, BSON *b)
 {
 	return bson_iter_init(it, b);
 }
 
 bool
-BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
+bsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 {
 	const uint8_t *buffer;
 	uint32_t	len;
@@ -345,7 +345,7 @@ BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 }
 
 int32_t
-BsonIterInt32(BSON_ITERATOR *it)
+bsonIterInt32(BSON_ITERATOR *it)
 {
 	BSON_ASSERT(it);
 	switch ((int) ITER_TYPE(it))
@@ -384,25 +384,25 @@ BsonIterInt32(BSON_ITERATOR *it)
 }
 
 int64_t
-BsonIterInt64(BSON_ITERATOR *it)
+bsonIterInt64(BSON_ITERATOR *it)
 {
 	return bson_iter_as_int64(it);
 }
 
 double
-BsonIterDouble(BSON_ITERATOR *it)
+bsonIterDouble(BSON_ITERATOR *it)
 {
 	return bson_iter_as_double(it);
 }
 
 bool
-BsonIterBool(BSON_ITERATOR *it)
+bsonIterBool(BSON_ITERATOR *it)
 {
 	return bson_iter_as_bool(it);
 }
 
 const char *
-BsonIterString(BSON_ITERATOR *it)
+bsonIterString(BSON_ITERATOR *it)
 {
 	uint32_t	len = 0;
 
@@ -410,7 +410,7 @@ BsonIterString(BSON_ITERATOR *it)
 }
 
 const char *
-BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
+bsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 {
 	const uint8_t *binary = NULL;
 	bson_subtype_t subtype = BSON_SUBTYPE_BINARY;
@@ -421,135 +421,135 @@ BsonIterBinData(BSON_ITERATOR *it, uint32_t *len)
 }
 
 const bson_oid_t *
-BsonIterOid(BSON_ITERATOR *it)
+bsonIterOid(BSON_ITERATOR *it)
 {
 	return bson_iter_oid(it);
 }
 
 time_t
-BsonIterDate(BSON_ITERATOR *it)
+bsonIterDate(BSON_ITERATOR *it)
 {
 	return bson_iter_date_time(it);
 }
 
 const char *
-BsonIterKey(BSON_ITERATOR *it)
+bsonIterKey(BSON_ITERATOR *it)
 {
 	return bson_iter_key(it);
 }
 
 int
-BsonIterType(BSON_ITERATOR *it)
+bsonIterType(BSON_ITERATOR *it)
 {
 	return bson_iter_type(it);
 }
 
 int
-BsonIterNext(BSON_ITERATOR *it)
+bsonIterNext(BSON_ITERATOR *it)
 {
 	return bson_iter_next(it);
 }
 
 bool
-BsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
+bsonIterSubIter(BSON_ITERATOR *it, BSON_ITERATOR *sub)
 {
 	return bson_iter_recurse(it, sub);
 }
 
 void
-BsonOidFromString(bson_oid_t *o, char *str)
+bsonOidFromString(bson_oid_t *o, char *str)
 {
 	bson_oid_init_from_string(o, str);
 }
 
 bool
-BsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
+bsonAppendOid(BSON *b, const char *key, bson_oid_t *v)
 {
 	return bson_append_oid(b, key, strlen(key), v);
 }
 
 bool
-BsonAppendBool(BSON *b, const char *key, bool v)
+bsonAppendBool(BSON *b, const char *key, bool v)
 {
 	return bson_append_bool(b, key, -1, v);
 }
 
 bool
-BsonAppendStartObject(BSON *b, char *key, BSON *r)
+bsonAppendStartObject(BSON *b, char *key, BSON *r)
 {
 	return bson_append_document_begin(b, key, strlen(key), r);
 }
 
 bool
-BsonAppendFinishObject(BSON *b, BSON *r)
+bsonAppendFinishObject(BSON *b, BSON *r)
 {
 	return bson_append_document_end(b, r);
 }
 
 bool
-BsonAppendNull(BSON *b, const char *key)
+bsonAppendNull(BSON *b, const char *key)
 {
 	return bson_append_null(b, key, strlen(key));
 }
 
 bool
-BsonAppendInt32(BSON *b, const char *key, int v)
+bsonAppendInt32(BSON *b, const char *key, int v)
 {
 	return bson_append_int32(b, key, strlen(key), v);
 }
 
 bool
-BsonAppendInt64(BSON *b, const char *key, int64_t v)
+bsonAppendInt64(BSON *b, const char *key, int64_t v)
 {
 	return bson_append_int64(b, key, strlen(key), v);
 }
 
 bool
-BsonAppendDouble(BSON *b, const char *key, double v)
+bsonAppendDouble(BSON *b, const char *key, double v)
 {
 	return bson_append_double(b, key, strlen(key), v);
 }
 
 bool
-BsonAppendUTF8(BSON *b, const char *key, char *v)
+bsonAppendUTF8(BSON *b, const char *key, char *v)
 {
 
 	return bson_append_utf8(b, key, strlen(key), v, strlen(v));
 }
 
 bool
-BsonAppendBinary(BSON *b, const char *key, char *v, size_t len)
+bsonAppendBinary(BSON *b, const char *key, char *v, size_t len)
 {
 	return bson_append_binary(b, key, (int) strlen(key), BSON_SUBTYPE_BINARY,
 							  (const uint8_t *) v, len);
 }
 
 bool
-BsonAppendDate(BSON *b, const char *key, time_t v)
+bsonAppendDate(BSON *b, const char *key, time_t v)
 {
 	return bson_append_date_time(b, key, strlen(key), v);
 }
 
 bool
-BsonAppendBson(BSON *b, char *key, BSON *c)
+bsonAppendBson(BSON *b, char *key, BSON *c)
 {
 	return bson_append_document(b, key, strlen(key), c);
 }
 
 bool
-BsonAppendStartArray(BSON *b, const char *key, BSON *c)
+bsonAppendStartArray(BSON *b, const char *key, BSON *c)
 {
 	return bson_append_array_begin(b, key, -1, c);
 }
 
 bool
-BsonAppendFinishArray(BSON *b, BSON *c)
+bsonAppendFinishArray(BSON *b, BSON *c)
 {
 	return bson_append_array_end(b, c);
 }
 
 bool
-BsonFinish(BSON *b)
+bsonFinish(BSON *b)
 {
 	/*
 	 * There is no need for bson_finish in Meta Driver.  We are doing nothing,
@@ -559,29 +559,29 @@ BsonFinish(BSON *b)
 }
 
 bool
-JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
+jsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 {
 	bool		status = true;
 
 	if (!v)
 	{
-		BsonAppendNull(bb, k);
+		bsonAppendNull(bb, k);
 		return status;
 	}
 
 	switch (json_object_get_type(v))
 	{
 		case json_type_int:
-			BsonAppendInt32(bb, k, json_object_get_int(v));
+			bsonAppendInt32(bb, k, json_object_get_int(v));
 			break;
 		case json_type_boolean:
-			BsonAppendBool(bb, k, json_object_get_boolean(v));
+			bsonAppendBool(bb, k, json_object_get_boolean(v));
 			break;
 		case json_type_double:
-			BsonAppendDouble(bb, k, json_object_get_double(v));
+			bsonAppendDouble(bb, k, json_object_get_double(v));
 			break;
 		case json_type_string:
-			BsonAppendUTF8(bb, k, (char *) json_object_get_string(v));
+			bsonAppendUTF8(bb, k, (char *) json_object_get_string(v));
 			break;
 		case json_type_object:
 			{
@@ -595,23 +595,23 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 					bson_oid_t	bsonObjectId;
 
 					memset(bsonObjectId.bytes, 0, sizeof(bsonObjectId.bytes));
-					BsonOidFromString(&bsonObjectId, (char *) json_object_get_string(joj));
-					status = BsonAppendOid(bb, k, &bsonObjectId);
+					bsonOidFromString(&bsonObjectId, (char *) json_object_get_string(joj));
+					status = bsonAppendOid(bb, k, &bsonObjectId);
 					break;
 				}
 				joj = json_object_object_get(v, "$date");
 				if (joj != NULL)
 				{
-					status = BsonAppendDate(bb, k, json_object_get_int64(joj));
+					status = bsonAppendDate(bb, k, json_object_get_int64(joj));
 					break;
 				}
-				BsonAppendStartObject(bb, (char *) k, &t);
+				bsonAppendStartObject(bb, (char *) k, &t);
 
 				{
 					json_object_object_foreach(v, kk, vv)
-						JsonToBsonAppendElement(&t, kk, vv);
+						jsonToBsonAppendElement(&t, kk, vv);
 				}
-				BsonAppendFinishObject(bb, &t);
+				bsonAppendFinishObject(bb, &t);
 			}
 			break;
 		case json_type_array:
@@ -620,13 +620,13 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 				char		buf[10];
 				BSON		t;
 
-				BsonAppendStartArray(bb, k, &t);
+				bsonAppendStartArray(bb, k, &t);
 				for (i = 0; i < json_object_array_length(v); i++)
 				{
 					sprintf(buf, "%d", i);
-					JsonToBsonAppendElement(&t, buf, json_object_array_get_idx(v, i));
+					jsonToBsonAppendElement(&t, buf, json_object_array_get_idx(v, i));
 				}
-				BsonAppendFinishObject(bb, &t);
+				bsonAppendFinishObject(bb, &t);
 			}
 			break;
 		default:
@@ -640,17 +640,17 @@ JsonToBsonAppendElement(BSON *bb, const char *k, struct json_object *v)
 }
 
 json_object *
-JsonTokenerPrase(char *s)
+jsonTokenerPrase(char *s)
 {
 	return json_tokener_parse(s);
 }
 
 /*
- * MongoAggregateCount
+ * mongoAggregateCount
  *		Count the number of documents.
  */
 double
-MongoAggregateCount(MONGO_CONN *conn, const char *database,
+mongoAggregateCount(MONGO_CONN *conn, const char *database,
 					const char *collection, const BSON *b)
 {
 	BSON	   *command;
@@ -658,13 +658,13 @@ MongoAggregateCount(MONGO_CONN *conn, const char *database,
 	double		count = 0;
 	mongoc_cursor_t *cursor;
 
-	command = BsonCreate();
-	reply = BsonCreate();
-	BsonAppendUTF8(command, "count", (char *) collection);
+	command = bsonCreate();
+	reply = bsonCreate();
+	bsonAppendUTF8(command, "count", (char *) collection);
 	if (b)						/* Not empty */
-		BsonAppendBson(command, "query", (BSON *) b);
+		bsonAppendBson(command, "query", (BSON *) b);
 
-	BsonFinish(command);
+	bsonFinish(command);
 
 	cursor = mongoc_client_command(conn, database, MONGOC_QUERY_SLAVE_OK, 0, 1,
 								   0, command, NULL, NULL);
@@ -680,51 +680,51 @@ MongoAggregateCount(MONGO_CONN *conn, const char *database,
 
 			bson_copy_to(doc, reply);
 			if (bson_iter_init_find(&it, reply, "n"))
-				count = BsonIterDouble(&it);
+				count = bsonIterDouble(&it);
 		}
 		mongoc_cursor_destroy(cursor);
 	}
-	BsonDestroy(reply);
-	BsonDestroy(command);
+	bsonDestroy(reply);
+	bsonDestroy(command);
 
 	return count;
 }
 
 void
-BsonOidToString(const bson_oid_t *o, char str[25])
+bsonOidToString(const bson_oid_t *o, char str[25])
 {
 	bson_oid_to_string(o, str);
 }
 
 const char *
-BsonIterCode(BSON_ITERATOR *i)
+bsonIterCode(BSON_ITERATOR *i)
 {
 	return bson_iter_code(i, NULL);
 }
 
 const char *
-BsonIterRegex(BSON_ITERATOR *i)
+bsonIterRegex(BSON_ITERATOR *i)
 {
 	return bson_iter_regex(i, NULL);
 }
 
 const bson_value_t *
-BsonIterValue(BSON_ITERATOR *i)
+bsonIterValue(BSON_ITERATOR *i)
 {
 	return bson_iter_value(i);
 }
 
 void
-BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
+bsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
 {
 	if (isArray)
-		DumpJsonArray(output, iter);
+		dumpJsonArray(output, iter);
 	else
-		DumpJsonObject(output, iter);
+		dumpJsonObject(output, iter);
 }
 
 /*
- * DumpJsonObject
+ * dumpJsonObject
  *		Converts BSON document to a JSON string.
  *
  * isArray signifies if bsonData is contents of array or object.
@@ -734,7 +734,7 @@ BsonToJsonStringValue(StringInfo output, BSON_ITERATOR *iter, bool isArray)
  * [1] http://docs.mongodb.org/manual/reference/mongodb-extended-json/
  */
 void
-DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
+dumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
 {
 	uint32_t	len;
 	const uint8_t *data;
@@ -754,7 +754,7 @@ DumpJsonObject(StringInfo output, BSON_ITERATOR *iter)
 }
 
 void
-DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
+dumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
 {
 	uint32_t	len;
 	const uint8_t *data;
@@ -774,7 +774,7 @@ DumpJsonArray(StringInfo output, BSON_ITERATOR *iter)
 }
 
 char *
-BsonAsJson(const BSON *bsonDocument)
+bsonAsJson(const BSON *bsonDocument)
 {
 	return bson_as_json(bsonDocument, NULL);
 }

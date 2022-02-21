@@ -268,8 +268,9 @@ mongo_append_expr(Expr *node, BSON *child_doc, pipeline_cxt *context)
 			mongo_append_column_name((Var *) node, child_doc, context);
 			break;
 		case T_Const:
-			AppendConstantValue(child_doc, psprintf("%d", context->arrayIndex),
-								(Const *) node);
+			append_constant_value(child_doc,
+								  psprintf("%d", context->arrayIndex),
+								  (Const *) node);
 			break;
 		case T_OpExpr:
 			mongo_append_op_expr((OpExpr *) node, child_doc, context);
@@ -315,8 +316,8 @@ mongo_append_bool_expr(BoolExpr *node, BSON *child_doc, pipeline_cxt *context)
 			return;
 	}
 
-	BsonAppendStartObject(child_doc, psprintf("%d", context->arrayIndex), &expr);
-	BsonAppendStartArray(&expr, op, &child);
+	bsonAppendStartObject(child_doc, psprintf("%d", context->arrayIndex), &expr);
+	bsonAppendStartArray(&expr, op, &child);
 
 	/* Save array index */
 	saved_array_index = context->arrayIndex;
@@ -333,8 +334,8 @@ mongo_append_bool_expr(BoolExpr *node, BSON *child_doc, pipeline_cxt *context)
 		context->arrayIndex++;
 	}
 
-	BsonAppendFinishArray(&expr, &child);
-	BsonAppendFinishObject(child_doc, &expr);
+	bsonAppendFinishArray(&expr, &child);
+	bsonAppendFinishObject(child_doc, &expr);
 
 	/* Retain array index */
 	context->arrayIndex = saved_array_index;
@@ -389,19 +390,20 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 
 	if (context->isBoolExpr == true)
 	{
-		BsonAppendStartObject(child_doc, psprintf("%d", and_index++), &and_obj);
-		BsonAppendStartArray(&and_obj, "$and", &and_op);
-		BsonAppendStartObject(&and_op, psprintf("%d", context->arrayIndex),
+		bsonAppendStartObject(child_doc, psprintf("%d", and_index++),
+							  &and_obj);
+		bsonAppendStartArray(&and_obj, "$and", &and_op);
+		bsonAppendStartObject(&and_op, psprintf("%d", context->arrayIndex),
 							  &expr);
 	}
 	else
-		BsonAppendStartObject(child_doc, psprintf("%d", context->arrayIndex),
+		bsonAppendStartObject(child_doc, psprintf("%d", context->arrayIndex),
 							  &expr);
 
 	/* Deparse operator name. */
-	mongo_operator = MongoOperatorName(get_opname(node->opno));
+	mongo_operator = mongo_operator_name(get_opname(node->opno));
 
-	BsonAppendStartArray(&expr, mongo_operator, &child1);
+	bsonAppendStartArray(&expr, mongo_operator, &child1);
 
 	/* Save array index */
 	saved_array_index = context->arrayIndex;
@@ -427,11 +429,11 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 		mongo_append_expr(lfirst(arg), &child1, context);
 	}
 
-	BsonAppendFinishArray(&expr, &child1);
+	bsonAppendFinishArray(&expr, &child1);
 	if (context->isBoolExpr)
-		BsonAppendFinishObject(&and_op, &expr);
+		bsonAppendFinishObject(&and_op, &expr);
 	else
-		BsonAppendFinishObject(child_doc, &expr);
+		bsonAppendFinishObject(child_doc, &expr);
 
 	/*
 	 * Add equality check for null values for columns involved in join-clauses.
@@ -442,24 +444,24 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 			continue;
 
 		if (context->isBoolExpr)
-			BsonAppendStartObject(&and_op, psprintf("%d", and_index++), &expr);
+			bsonAppendStartObject(&and_op, psprintf("%d", and_index++), &expr);
 		else
-			BsonAppendStartObject(child_doc,
+			bsonAppendStartObject(child_doc,
 								  psprintf("%d", context->arrayIndex++),
 								  &expr);
 
 		mongo_add_null_check(lfirst(arg), &expr, context);
 
 		if (context->isBoolExpr)
-			BsonAppendFinishObject(&and_op, &expr);
+			bsonAppendFinishObject(&and_op, &expr);
 		else
-			BsonAppendFinishObject(child_doc, &expr);
+			bsonAppendFinishObject(child_doc, &expr);
 	}
 
 	if (context->isBoolExpr == true)
 	{
-		BsonAppendFinishArray(&and_obj, &and_op);
-		BsonAppendFinishObject(child_doc, &and_obj);
+		bsonAppendFinishArray(&and_obj, &and_op);
+		bsonAppendFinishObject(child_doc, &and_obj);
 	}
 
 	/* Retain array index */
@@ -497,7 +499,7 @@ mongo_append_column_name(Var *column, BSON *child_doc, pipeline_cxt *context)
 	else
 		field = psprintf("$%s", columnInfo->colName);
 
-	BsonAppendUTF8(child_doc, psprintf("%d", context->arrayIndex), field);
+	bsonAppendUTF8(child_doc, psprintf("%d", context->arrayIndex), field);
 }
 
 /*
@@ -528,8 +530,8 @@ mongo_add_null_check(Var *column, BSON *expr, pipeline_cxt *context)
 	else
 		field = psprintf("$%s", columnInfo->colName);
 
-	BsonAppendStartArray(expr, "$ne", &ne_expr);
-	BsonAppendUTF8(&ne_expr, "0", field);
-	BsonAppendNull(&ne_expr, "1");
-	BsonAppendFinishArray(expr, &ne_expr);
+	bsonAppendStartArray(expr, "$ne", &ne_expr);
+	bsonAppendUTF8(&ne_expr, "0", field);
+	bsonAppendNull(&ne_expr, "1");
+	bsonAppendFinishArray(expr, &ne_expr);
 }
