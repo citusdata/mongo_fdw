@@ -182,7 +182,37 @@ BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 int32_t
 BsonIterInt32(BSON_ITERATOR *it)
 {
-	return bson_iterator_int(it);
+	switch (bson_iterator_type(it))
+	{
+		case BSON_DOUBLE:
+			{
+				double 		val = bson_iterator_double_raw(it);
+
+				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value \"%f\" is out of range for type integer",
+									val)));
+
+				return (int32) val;
+			}
+		case BSON_LONG:
+			{
+				int64 		val = bson_iterator_long_raw(it);
+
+				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value \"%ld\" is out of range for type integer",
+									val)));
+
+				return (int32) val;
+			}
+		case BSON_INT:
+			return bson_iterator_int_raw(it);
+		default:
+			return 0;
+	}
 }
 
 int64_t

@@ -17,6 +17,8 @@
 #include <mongoc.h>
 #include "mongo_wrapper.h"
 
+#define ITER_TYPE(i) ((bson_type_t) * ((i)->raw + (i)->type))
+
 /*
  * MongoConnect
  *		Connect to MongoDB server using Host/ip and Port number.
@@ -345,25 +347,58 @@ BsonIterSubObject(BSON_ITERATOR *it, BSON *b)
 int32_t
 BsonIterInt32(BSON_ITERATOR *it)
 {
-	return bson_iter_int32(it);
+	BSON_ASSERT(it);
+	switch ((int) ITER_TYPE(it))
+	{
+		case BSON_TYPE_BOOL:
+			return (int32) bson_iter_bool(it);
+		case BSON_TYPE_DOUBLE:
+			{
+				double 		val = bson_iter_double(it);
+
+				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value \"%f\" is out of range for type integer",
+									val)));
+
+				return (int32) val;
+			}
+		case BSON_TYPE_INT64:
+			{
+				int64		val = bson_iter_int64(it);
+
+				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value \"%ld\" is out of range for type integer",
+									val)));
+
+				return (int32) val;
+			}
+		case BSON_TYPE_INT32:
+			return bson_iter_int32(it);
+		default:
+			return 0;
+   }
 }
 
 int64_t
 BsonIterInt64(BSON_ITERATOR *it)
 {
-	return bson_iter_int64(it);
+	return bson_iter_as_int64(it);
 }
 
 double
 BsonIterDouble(BSON_ITERATOR *it)
 {
-	return bson_iter_double(it);
+	return bson_iter_as_double(it);
 }
 
 bool
 BsonIterBool(BSON_ITERATOR *it)
 {
-	return bson_iter_bool(it);
+	return bson_iter_as_bool(it);
 }
 
 const char *

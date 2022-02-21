@@ -12,6 +12,8 @@ use mongo_fdw_regress
 db.test_tbl1.drop();
 db.test_tbl2.drop();
 db.test_tbl3.drop();
+db.test_tbl4.drop();
+db.test_tbl5.drop();
 db.test1.drop();
 db.test2.drop();
 db.test3.drop();
@@ -78,4 +80,17 @@ db.test4.insertMany([
 db.test5.insertMany([
    {c1: 12.345678},
    {c1: -1.23}
+]);
+db.test_tbl4.insertMany([
+   {a: NumberInt(25)},
+   {a: NumberLong(9999999999)},
+   {a: 25},
+   {a: 25.09},
+   {a: false}
+]);
+db.test_tbl5.insertMany([
+   {a: NumberInt(25)},
+   {a: 25},
+   {a: 25.09},
+   {a: true}
 ]);

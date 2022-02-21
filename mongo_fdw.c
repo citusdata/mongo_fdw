@@ -1874,6 +1874,10 @@ ColumnTypesCompatible(BSON_TYPE bsonType, Oid columnTypeId)
 			if (bsonType == BSON_TYPE_INT32 || bsonType == BSON_TYPE_INT64 ||
 				bsonType == BSON_TYPE_DOUBLE)
 				compatibleTypes = true;
+#ifdef META_DRIVER
+			if (bsonType == BSON_TYPE_BOOL)
+				compatibleTypes = true;
+#endif
 			break;
 		case BOOLOID:
 			if (bsonType == BSON_TYPE_INT32 || bsonType == BSON_TYPE_INT64 ||

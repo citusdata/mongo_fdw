@@ -40,6 +40,14 @@ CREATE FOREIGN TABLE test_varchar ( __doc varchar)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'warehouse');
 CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
+CREATE FOREIGN TABLE f_test_tbl4 (_id NAME, a NUMERIC(12, 2))
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl4');
+CREATE FOREIGN TABLE f_test_tbl5 (_id NAME, a BOOLEAN)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl4');
+CREATE FOREIGN TABLE f_test_tbl6 (_id NAME, a INTEGER)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl5');
+CREATE FOREIGN TABLE f_test_tbl7 (_id NAME, a INTEGER)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl4');
 
 SET datestyle TO ISO;
 
@@ -314,6 +322,12 @@ CREATE FOREIGN TABLE f_test5 (_id NAME, c1 NUMERIC(3, 2))
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test5');
 SELECT c1 FROM f_test5 ORDER BY 1;
 
+-- FDW-418: Resolve data compatibility.
+SELECT a FROM f_test_tbl4 ORDER BY 1;
+SELECT a FROM f_test_tbl5 ORDER BY 1;
+SELECT a FROM f_test_tbl6 ORDER BY 1;
+SELECT a FROM f_test_tbl7 ORDER BY 1;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
@@ -335,6 +349,10 @@ DROP FOREIGN TABLE test_jsonb;
 DROP FOREIGN TABLE test_text;
 DROP FOREIGN TABLE test_varchar;
 DROP FOREIGN TABLE f_test5;
+DROP FOREIGN TABLE f_test_tbl4;
+DROP FOREIGN TABLE f_test_tbl5;
+DROP FOREIGN TABLE f_test_tbl6;
+DROP FOREIGN TABLE f_test_tbl7;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;
