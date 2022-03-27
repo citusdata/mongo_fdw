@@ -118,10 +118,6 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 
 	if (entry->conn == NULL)
 	{
-#if PG_VERSION_NUM < 90600
-		Oid			umoid;
-#endif
-
 		entry->conn = mongoConnect(opt);
 		elog(DEBUG3, "new mongo_fdw connection %p for server \"%s:%d\"",
 			 entry->conn, opt->svr_address, opt->svr_port);
@@ -135,25 +131,9 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 		entry->server_hashvalue =
 			GetSysCacheHashValue1(FOREIGNSERVEROID,
 								  ObjectIdGetDatum(server->serverid));
-#if PG_VERSION_NUM >= 90600
 		entry->mapping_hashvalue =
 			GetSysCacheHashValue1(USERMAPPINGOID,
 								  ObjectIdGetDatum(user->umid));
-#else
-		/* Pre-9.6, UserMapping doesn't store its OID, so look it up again */
-		umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
-								ObjectIdGetDatum(user->userid),
-								ObjectIdGetDatum(user->serverid));
-		if (!OidIsValid(umoid))
-		{
-			/* Not found for the specific user -- try PUBLIC */
-			umoid = GetSysCacheOid2(USERMAPPINGUSERSERVER,
-									ObjectIdGetDatum(InvalidOid),
-									ObjectIdGetDatum(user->serverid));
-		}
-		entry->mapping_hashvalue =
-			GetSysCacheHashValue1(USERMAPPINGOID, ObjectIdGetDatum(umoid));
-#endif
 	}
 
 #ifdef META_DRIVER

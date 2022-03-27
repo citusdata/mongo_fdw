@@ -692,11 +692,7 @@ append_param_value(BSON *queryDocument, const char *keyName, Param *paramNode,
 	param_expr = ExecInitExpr((Expr *) paramNode, (PlanState *) scanStateNode);
 
 	/* Evaluate the parameter expression */
-#if PG_VERSION_NUM >= 100000
 	param_value = ExecEvalExpr(param_expr, econtext, &isNull);
-#else
-	param_value = ExecEvalExpr(param_expr, econtext, &isNull, NULL);
-#endif
 
 	append_mongo_value(queryDocument, keyName, param_value, isNull,
 					   paramNode->paramtype);
@@ -1051,11 +1047,7 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 		else
 			columnList = list_append_unique(columnList, var);
 
-#if PG_VERSION_NUM >= 100000
 		if (IS_JOIN_REL(foreignrel))
-#else
-		if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 		{
 			MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 			char	   *columnName;

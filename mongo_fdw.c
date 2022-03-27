@@ -15,9 +15,7 @@
 #include "postgres.h"
 #include "mongo_wrapper.h"
 
-#if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
-#endif
 #if PG_VERSION_NUM < 120000
 #include "access/sysattr.h"
 #endif
@@ -459,17 +457,13 @@ mongoGetForeignPaths(PlannerInfo *root,
 
 	/* Create a foreign path node */
 	foreignPath = (Path *) create_foreignscan_path(root, baserel,
-#if PG_VERSION_NUM >= 90600
 												   NULL,	/* default pathtarget */
-#endif
 												   baserel->rows,
 												   startupCost,
 												   totalCost,
 												   NIL, /* no pathkeys */
 												   baserel->lateral_relids,
-#if PG_VERSION_NUM >= 90500
 												   NULL,	/* no extra plan */
-#endif
 												   NULL);	/* no fdw_private data */
 
 	/* Add foreign path as the only possible path */
@@ -538,14 +532,8 @@ mongoGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
-#if PG_VERSION_NUM >= 90600
 	scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
 									PVC_RECURSE_PLACEHOLDERS);
-#else
-	scan_var_list = pull_var_clause((Node *) foreignrel->reltargetlist,
-									PVC_RECURSE_AGGREGATES,
-									PVC_RECURSE_PLACEHOLDERS);
-#endif
 
 	/* System attributes are not allowed. */
 	foreach(lc, scan_var_list)
@@ -604,11 +592,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 									   pull_var_clause((Node *) local_exprs,
 													   PVC_RECURSE_PLACEHOLDERS));
 
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 	{
 		/*
 		 * For join relations, the planner needs a targetlist, which represents
@@ -676,11 +660,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 	 * is part of the outer relation or not.  This information would be useful
 	 * at the time of execution to prepare the MongoDB query.
 	 */
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 	{
 		/*
 		 * We use MongoJoinQualInfo to pass various information related to
@@ -734,11 +714,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 	 * information required to form a MongoDB query in the planning state and
 	 * passing it to the execution state through fdw_private.
 	 */
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(foreignrel))
-#else
-	if (foreignrel->reloptkind == RELOPT_JOINREL)
-#endif
 	{
 		fdw_private = lappend(fdw_private,
 							  makeString(fpinfo->relation_name->data));
@@ -761,11 +737,9 @@ mongoGetForeignPlan(PlannerInfo *root,
 								   scan_relid,
 								   NIL, /* No expressions to evaluate */
 								   fdw_private
-#if PG_VERSION_NUM >= 90500
 								   ,fdw_scan_tlist
 								   ,NIL
 								   ,outer_plan
-#endif
 		);
 
 	return foreignScan;
@@ -1085,11 +1059,7 @@ mongoPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
-#if PG_VERSION_NUM >= 90500
 		Bitmapset  *tmpset = bms_copy(rte->updatedCols);
-#else
-		Bitmapset  *tmpset = bms_copy(rte->modifiedCols);
-#endif
 		AttrNumber	col;
 
 		while ((col = bms_first_member(tmpset)) >= 0)
@@ -2868,24 +2838,12 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
 
 	/* If join pushdown is not enabled, honor it. */
-#if PG_VERSION_NUM >= 100000
 	if ((!IS_JOIN_REL(outerrel) && !fpinfo_o->options->enable_join_pushdown) ||
 		(!IS_JOIN_REL(innerrel) && !fpinfo_i->options->enable_join_pushdown))
-#else
-	if ((outerrel->reloptkind != RELOPT_JOINREL &&
-		 !fpinfo_o->options->enable_join_pushdown) ||
-		(innerrel->reloptkind != RELOPT_JOINREL &&
-		 !fpinfo_i->options->enable_join_pushdown))
-#endif
 		return false;
 
 	/* Recursive joins can't be pushed down */
-#if PG_VERSION_NUM >= 100000
 	if (IS_JOIN_REL(outerrel) || IS_JOIN_REL(innerrel))
-#else
-	if (outerrel->reloptkind == RELOPT_JOINREL ||
-		innerrel->reloptkind == RELOPT_JOINREL)
-#endif
 		return false;
 
 	/*
@@ -2904,14 +2862,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	if (fpinfo_o->local_conds || fpinfo_i->local_conds)
 		return false;
 
-#if PG_VERSION_NUM >= 90600
 	scan_var_list = pull_var_clause((Node *) joinrel->reltarget->exprs,
 									PVC_RECURSE_PLACEHOLDERS);
-#else
-	scan_var_list = pull_var_clause((Node *) joinrel->reltargetlist,
-									PVC_RECURSE_AGGREGATES,
-									PVC_RECURSE_PLACEHOLDERS);
-#endif
 
 	/*
 	 * Don't push-down join when whole row reference and/or full document
@@ -3001,12 +2953,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 		Relids		relids;
 
 		/* PlaceHolderInfo refers to parent relids, not child relids. */
-#if PG_VERSION_NUM >= 100000
 		relids = IS_OTHER_REL(joinrel) ?
 			joinrel->top_parent_relids : joinrel->relids;
-#else
-		relids = joinrel->relids;
-#endif			/* PG_VERSION_NUM >= 100000 */
 
 		if (bms_is_subset(phinfo->ph_eval_at, relids) &&
 			bms_nonempty_difference(relids, phinfo->ph_eval_at))

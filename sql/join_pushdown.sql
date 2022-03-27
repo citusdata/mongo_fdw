@@ -326,33 +326,14 @@ SELECT e.c1, d.c2
 -- Test partition-wise join
 SET enable_partitionwise_join TO on;
 
--- Create the partition table in plpgsql block as those are failing with
--- different error messages on back-branches.
--- All test cases related to partition-wise join gives an error on v96 as
--- partition syntax is not supported there.
-DO
-$$
-BEGIN
-  EXECUTE 'CREATE TABLE fprt1 (_id NAME, c1 INTEGER, c2 INTEGER, c3 TEXT) PARTITION BY RANGE(c1)';
-EXCEPTION WHEN others THEN
-  RAISE NOTICE 'syntax error';
-END;
-$$
-LANGUAGE plpgsql;
+-- Create the partition tables
+CREATE TABLE fprt1 (_id NAME, c1 INTEGER, c2 INTEGER, c3 TEXT) PARTITION BY RANGE(c1);
 CREATE FOREIGN TABLE ftprt1_p1 PARTITION OF fprt1 FOR VALUES FROM (1) TO (4)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test1');
 CREATE FOREIGN TABLE ftprt1_p2 PARTITION OF fprt1 FOR VALUES FROM (5) TO (8)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test2');
 
-DO
-$$
-BEGIN
-  EXECUTE 'CREATE TABLE fprt2 (_id NAME, c1 INTEGER, c2 INTEGER, c3 TEXT) PARTITION BY RANGE(c2)';
-EXCEPTION WHEN syntax_error THEN
-  RAISE NOTICE 'syntax error';
-END;
-$$
-LANGUAGE plpgsql;
+CREATE TABLE fprt2 (_id NAME, c1 INTEGER, c2 INTEGER, c3 TEXT) PARTITION BY RANGE(c2);
 CREATE FOREIGN TABLE ftprt2_p1 PARTITION OF fprt2 FOR VALUES FROM (1) TO (4)
   SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'test3');
 CREATE FOREIGN TABLE ftprt2_p2 PARTITION OF fprt2 FOR VALUES FROM (5) TO (8)
