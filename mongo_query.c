@@ -947,8 +947,13 @@ append_mongo_value(BSON *queryDocument, const char *keyName, Datum value,
 									  &typeVarLength);
 					valueString = OidOutputFunctionCall(outputFunctionId,
 														elem_values[i]);
+#ifdef META_DRIVER
+					status = bsonAppendUTF8(&childDocument, keyName,
+											valueString);
+#else
 					status = bsonAppendUTF8(queryDocument, keyName,
 											valueString);
+#endif
 				}
 				bsonAppendFinishArray(queryDocument, &childDocument);
 				pfree(elem_values);

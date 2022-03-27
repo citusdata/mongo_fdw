@@ -21,6 +21,8 @@ CREATE FOREIGN TABLE f_mongo_test2 (_id name, a int, b varchar) SERVER mongo_ser
 -- Creating foreign table without specifying database.
 CREATE FOREIGN TABLE f_mongo_test3 (_id name, a int, b varchar) SERVER mongo_server
   OPTIONS (collection 'mongo_test3');
+CREATE FOREIGN TABLE f_mongo_test6 (_id name, a int, b text[]) SERVER mongo_server
+  OPTIONS (database 'mongo_fdw_regress', collection 'test_tbl6');
 -- Verify the INSERT/UPDATE/DELETE operations on a collection (mongo_test)
 -- exist in a database (mongo_fdw_regress) in mongoDB.
 SELECT a,b FROM f_mongo_test ORDER BY 1, 2;
@@ -238,11 +240,33 @@ END;
 $$
 LANGUAGE plpgsql;
 NOTICE:  ERROR:  COPY and foreign partition routing not supported in mongo_fdw
+--FDW-466: Document update for array elements shouldn't lead to the crash
+INSERT INTO f_mongo_test6 VALUES (0, 1, ARRAY ['INSERT', 'DELETE']);
+SELECT a, b FROM f_mongo_test6 ORDER BY a;
+ a |        b        
+---+-----------------
+ 1 | {INSERT,DELETE}
+(1 row)
+
+UPDATE f_mongo_test6 SET b[1] = 'UPDATE' WHERE a = 1;
+SELECT a, b FROM f_mongo_test6 ORDER BY a;
+ a |        b        
+---+-----------------
+ 1 | {UPDATE,DELETE}
+(1 row)
+
+DELETE FROM f_mongo_test6 WHERE b[2] = 'DELETE';
+SELECT a, b FROM f_mongo_test6 ORDER BY a;
+ a | b 
+---+---
+(0 rows)
+
 -- Cleanup
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_mongo_test1;
 DROP FOREIGN TABLE f_mongo_test2;
 DROP FOREIGN TABLE f_mongo_test3;
+DROP FOREIGN TABLE f_mongo_test6;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;
 DROP EXTENSION mongo_fdw;
