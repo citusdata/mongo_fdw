@@ -1253,7 +1253,14 @@ mongoExecForeignInsert(EState *estate,
 			 * that column.
 			 */
 			if (attnum == 1)
+			{
+				ereport(DEBUG1,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot insert given data for \"_id\" column, skipping"),
+						 errhint("Let MongoDB insert the unique value for \"_id\" column.")));
+
 				continue;
+			}
 
 #if PG_VERSION_NUM < 110000
 			append_mongo_value(bsonDoc,
@@ -1374,7 +1381,15 @@ mongoExecForeignUpdate(EState *estate,
 	columnName = get_attname(foreignTableId, 1, false);
 #endif
 
+	/* First column of MongoDB's foreign table must be _id */
+	if (strcmp(columnName, "_id") != 0)
+		elog(ERROR, "first column of MongoDB's foreign table must be \"_id\"");
+
 	typoid = get_atttype(foreignTableId, 1);
+
+	/* The type of first column of MongoDB's foreign table must be NAME */
+	if (typoid != NAMEOID)
+		elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
 
 	document = bsonCreate();
 	bsonAppendStartObject(document, "$set", &set);
@@ -1416,7 +1431,7 @@ mongoExecForeignUpdate(EState *estate,
 	bsonFinish(document);
 
 	op = bsonCreate();
-	if (!append_mongo_value(op, columnName, datum, false, typoid))
+	if (!append_mongo_value(op, columnName, datum, isNull, typoid))
 	{
 		bsonDestroy(document);
 		return NULL;
@@ -1465,10 +1480,18 @@ mongoExecForeignDelete(EState *estate,
 	columnName = get_attname(foreignTableId, 1, false);
 #endif
 
+	/* First column of MongoDB's foreign table must be _id */
+	if (strcmp(columnName, "_id") != 0)
+		elog(ERROR, "first column of MongoDB's foreign table must be \"_id\"");
+
 	typoid = get_atttype(foreignTableId, 1);
 
+	/* The type of first column of MongoDB's foreign table must be NAME */
+	if (typoid != NAMEOID)
+		elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
+
 	document = bsonCreate();
-	if (!append_mongo_value(document, columnName, datum, false, typoid))
+	if (!append_mongo_value(document, columnName, datum, isNull, typoid))
 	{
 		bsonDestroy(document);
 		return NULL;
@@ -1869,14 +1892,23 @@ column_types_compatible(BSON_TYPE bsonType, Oid columnTypeId)
 #endif
 			break;
 		case NAMEOID:
+			/*
+			 * We currently error out on data types other than object
+			 * identifier.  MongoDB supports more data types for the _id field
+			 * but those are not yet handled in mongo_fdw.
+			 */
+			if (bsonType != BSON_TYPE_OID)
+				ereport(ERROR,
+						(errcode(ERRCODE_FDW_INVALID_DATA_TYPE),
+						 errmsg("cannot convert BSON type to column type"),
+						 errhint("Column type \"NAME\" is compatible only with BSON type \"ObjectId\".")));
 
 			/*
 			 * We currently overload the NAMEOID type to represent the BSON
 			 * object identifier.  We can safely overload this 64-byte data
 			 * type since it's reserved for internal use in PostgreSQL.
 			 */
-			if (bsonType == BSON_TYPE_OID)
-				compatibleTypes = true;
+			compatibleTypes = true;
 			break;
 		case DATEOID:
 		case TIMESTAMPOID:

@@ -345,6 +345,9 @@ db.warehouse.find
 -- insert row in table
 INSERT INTO warehouse VALUES (0, 2, 'Laptop', '2015-11-11T08:13:10Z');
 
+-- Note: The given value for "_id" column will be ignored and allows MongoDB to
+-- insert the unique value for the "_id" column.
+
 db.warehouse.insert
 (
 	{

@@ -14,6 +14,8 @@ db.test_tbl2.drop();
 db.test_tbl3.drop();
 db.test_tbl4.drop();
 db.test_tbl5.drop();
+db.test_tbl7.drop();
+db.test_tbl8.drop();
 db.test1.drop();
 db.test2.drop();
 db.test3.drop();
@@ -93,4 +95,12 @@ db.test_tbl5.insertMany([
    {a: 25},
    {a: 25.09},
    {a: true}
+]);
+db.test_tbl7.insertMany([
+   {_id: null, a: NumberInt(10), b: "ROW1"},
+   {a: NumberInt(20), b: "ROW2"}
+]);
+db.test_tbl8.insertMany([
+   {_id: NumberInt(1), a: NumberInt(2), b: "ROW1"},
+   {a: NumberInt(3), b: "ROW2"},
 ]);
