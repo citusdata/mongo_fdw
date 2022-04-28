@@ -80,14 +80,30 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 		/* If port option is given, error out if its value isn't an integer */
 		if (strncmp(optionName, OPTION_NAME_PORT, NAMEDATALEN) == 0)
 		{
-			int32 		port;
+			char	   *intString = defGetString(optionDef);
+			long		port;
+			char	   *endp;
 
-			port = pg_atoi(defGetString(optionDef), sizeof(int32), 0);
-			if (port < 0 || port > USHRT_MAX)
+			errno = 0;
+			port = strtol(intString, &endp, 10);
+
+			if (intString == endp)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid input syntax for type %s: \"%s\"",
+								"unsigned short", intString)));
+
+			if (errno == ERANGE || port < 0 || port > USHRT_MAX)
 				ereport(ERROR,
 						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-						 errmsg("port value \"%d\" is out of range for type %s",
-								port, "unsigned short")));
+						 errmsg("port value \"%s\" is out of range for type %s",
+								intString, "unsigned short")));
+
+			if (*endp && *endp != ' ')
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid input syntax for type %s: \"%s\"",
+								"unsigned short", intString)));
 		}
 		else if (strcmp(optionName, OPTION_NAME_USE_REMOTE_ESTIMATE) == 0
 #ifdef META_DRIVER

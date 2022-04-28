@@ -293,9 +293,15 @@ SELECT count(tableoid) FROM f_test_tbl1;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c2, t1 FROM f_test_tbl1 t1
   WHERE c1 = 100 ORDER BY 1;
+
+-- Force hash-join for consistent result.
+SET enable_mergejoin TO off;
+SET enable_nestloop TO off;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT d, d.c2, e.c1, e
   FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+RESET enable_mergejoin;
+RESET enable_nestloop;
 
 -- FDW-427: The numeric value should display correctly as per precision and
 -- scale defined.
