@@ -112,6 +112,7 @@ function create_config
 cleanup
 
 if [ "--with-legacy" = $1 ]; then
+	echo "Warning: The legacy driver support has been deprecated in mongo_fdw 5.4.0 and is expected to be removed entirely in a future release."
 	checkout_json_lib &&
 	checkout_legacy_branch &&
 	install_json_lib &&

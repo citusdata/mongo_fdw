@@ -27,7 +27,7 @@ respectively. If these variables are not set then these libraries will be
 installed in the default location. Please note that you need to have the
 required permissions on the directory where you want to install the libraries.
 
-Build with [MongoDB][1]'s legacy branch driver
+Build with [MongoDB][1]'s legacy branch driver (Deprecated in mongo_fdw 5.4.0)
    * autogen.sh --with-legacy
 
 Build [MongoDB][1]'s master branch driver
@@ -71,6 +71,11 @@ meta driver accordingly.
 For more details on installation of mongo-c driver, you can refer [here][5].
 
 #### Legacy driver
+
+Deprecation Notice:
+The legacy driver support has been deprecated in mongo_fdw 5.4.0 and is
+expected to be removed entirely in a future release.
+
 * Checkout, extract legacy branch
 
 	```sh
@@ -119,7 +124,7 @@ For meta,
 
 	cp Makefile.meta Makefile
 
-For legacy,
+For legacy (Deprecated in mongo_fdw 5.4.0),
 
 	cp Makefile.legacy Makefile
 
