@@ -178,6 +178,9 @@ static const char *escape_json_string(const char *string);
 static void bson_to_json_string(StringInfo output, BSON_ITERATOR iter,
 								bool isArray);
 #endif
+static void
+mongoEstimateCosts(RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
+				   Oid foreigntableid);
 
 /* The null action object used for pure validation */
 #if PG_VERSION_NUM < 130000
@@ -384,8 +387,8 @@ mongoGetForeignPaths(PlannerInfo *root,
 {
 	Path	   *foreignPath;
 	MongoFdwOptions *options;
-	Cost		startupCost = 0.0;
-	Cost		totalCost = 0.0;
+	Cost		startupCost;
+	Cost		totalCost;
 
 	/* Fetch options */
 	options = mongo_get_options(foreigntableid);
@@ -453,6 +456,11 @@ mongoGetForeignPaths(PlannerInfo *root,
 			ereport(DEBUG1,
 					(errmsg("could not retrieve document count for collection"),
 					 errhint("Falling back to default estimates in planning.")));
+	}
+	else
+	{
+		/* Estimate default costs */
+		mongoEstimateCosts(baserel, &startupCost, &totalCost, foreigntableid);
 	}
 
 	/* Create a foreign path node */
@@ -3078,3 +3086,26 @@ mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo)
 	}
 }
 #endif /* End of META_DRIVER */
+
+/*
+ * mongoEstimateCosts
+ * 		Estimate the remote query cost
+ */
+static void
+mongoEstimateCosts(RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
+				   Oid foreigntableid)
+{
+	MongoFdwOptions *options;
+
+	/* Fetch options */
+	options = mongo_get_options(foreigntableid);
+
+	/* Local databases are probably faster */
+	if (strcmp(options->svr_address, "127.0.0.1") == 0 ||
+		strcmp(options->svr_address, "localhost") == 0)
+		*startup_cost = 10;
+	else
+		*startup_cost = 25;
+
+	*total_cost = baserel->rows + *startup_cost;
+}

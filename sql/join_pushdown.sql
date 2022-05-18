@@ -135,12 +135,16 @@ SELECT d.c1, e.c1
 SELECT d.c1, e.c1
   FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
 
+SET enable_mergejoin TO OFF;
+SET enable_nestloop TO OFF;
 -- Local-Foreign table joins.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+RESET enable_mergejoin;
+RESET enable_nestloop;
 
 -- JOIN in sub-query, should be pushed down.
 EXPLAIN (COSTS OFF)
@@ -150,8 +154,6 @@ SELECT l.c1, l.c6, l.c8
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
     WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1, 3;
-SET enable_hashjoin TO OFF;
-SET enable_nestloop TO OFF;
 EXPLAIN (COSTS OFF)
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
@@ -166,8 +168,6 @@ SELECT l.c1, l.c6, l.c8
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
     WHERE l.c1 = (SELECT f1.c1 FROM f_test_tbl1 f1 INNER JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1) LIMIT 1) ORDER BY 1, 3;
-RESET enable_hashjoin;
-RESET enable_nestloop;
 
 -- Execute JOIN through PREPARE statement.
 PREPARE pre_stmt_left_join AS
