@@ -26,7 +26,7 @@ OBJS = connection.o option.o mongo_wrapper_meta.o mongo_fdw.o mongo_query.o depa
 EXTENSION = mongo_fdw
 DATA = mongo_fdw--1.0.sql  mongo_fdw--1.1.sql mongo_fdw--1.0--1.1.sql
 
-REGRESS = server_options connection_validation dml select pushdown join_pushdown
+REGRESS = server_options connection_validation dml select pushdown join_pushdown aggregate_pushdown
 REGRESS_OPTS = --load-extension=$(EXTENSION)
 
 #
