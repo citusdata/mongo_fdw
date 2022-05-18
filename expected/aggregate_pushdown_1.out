@@ -1133,6 +1133,155 @@ SELECT c1, count(t1) FROM fprt1 t1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 1;
 (8 rows)
 
 SET enable_partitionwise_aggregate TO OFF;
+-- Support enable_aggregate_pushdown option at server level and table level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_aggregate_pushdown 'non-bolean');
+ERROR:  enable_aggregate_pushdown requires a Boolean value
+-- Test the option at server level.
+ALTER SERVER mongo_server OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Sort
+   Output: (count(*)), c1
+   Sort Key: (count(*))
+   ->  HashAggregate
+         Output: count(*), c1
+         Group Key: fdw137_t1.c1
+         Filter: (min(fdw137_t1.c1) > 500)
+         ->  Foreign Scan on public.fdw137_t1
+               Output: _id, c1, c2, c3, c4, c5, c6, c7, c8
+               Foreign Namespace: mongo_fdw_regress.test_tbl1
+(10 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Output: (count(*)), c1
+   Sort Key: (count(*))
+   ->  Foreign Scan
+         Output: (count(*)), c1
+         Foreign Namespace: Aggregate on (mongo_fdw_regress.test_tbl1 fdw137_t1)
+(6 rows)
+
+-- Test the option at table level. Setting option at table level does not
+-- affect the setting at server level.
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Sort
+   Output: (count(*)), c1
+   Sort Key: (count(*))
+   ->  HashAggregate
+         Output: count(*), c1
+         Group Key: fdw137_t1.c1
+         Filter: (min(fdw137_t1.c1) > 500)
+         ->  Foreign Scan on public.fdw137_t1
+               Output: _id, c1, c2, c3, c4, c5, c6, c7, c8
+               Foreign Namespace: mongo_fdw_regress.test_tbl1
+(10 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Output: (count(*)), c1
+   Sort Key: (count(*))
+   ->  Foreign Scan
+         Output: (count(*)), c1
+         Foreign Namespace: Aggregate on (mongo_fdw_regress.test_tbl1 fdw137_t1)
+(6 rows)
+
+-- Test option for aggregation over join. Allow aggregation only if enabled for
+-- both the relations involved in the join.
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(t2.c1)), t1.c8
+   Sort Key: t1.c8
+   ->  HashAggregate
+         Output: sum(t2.c1), t1.c8
+         Group Key: t1.c8
+         ->  Foreign Scan
+               Output: t1.c8, t2.c1
+               Foreign Namespace: (mongo_fdw_regress.test_tbl1 t1) LEFT JOIN (mongo_fdw_regress.test_tbl2 t2)
+(9 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(t2.c1)), t1.c8
+   Sort Key: t1.c8
+   ->  HashAggregate
+         Output: sum(t2.c1), t1.c8
+         Group Key: t1.c8
+         ->  Foreign Scan
+               Output: t1.c8, t2.c1
+               Foreign Namespace: (mongo_fdw_regress.test_tbl1 t1) LEFT JOIN (mongo_fdw_regress.test_tbl2 t2)
+(9 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(t2.c1)), t1.c8
+   Sort Key: t1.c8
+   ->  Foreign Scan
+         Output: (sum(t2.c1)), t1.c8
+         Foreign Namespace: Aggregate on ((mongo_fdw_regress.test_tbl1 t1) LEFT JOIN (mongo_fdw_regress.test_tbl2 t2))
+(6 rows)
+
+-- Check when enable_join_pushdown is OFF and enable_aggregate_pushdown is ON.
+-- Shouldn't push down join as well as aggregation.
+ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ GroupAggregate
+   Output: sum(t2.c1), t1.c8
+   Group Key: t1.c8
+   ->  Merge Left Join
+         Output: t1.c8, t2.c1
+         Merge Cond: (t1.c8 = t2.c1)
+         ->  Sort
+               Output: t1.c8
+               Sort Key: t1.c8
+               ->  Foreign Scan on public.fdw137_t1 t1
+                     Output: t1.c8
+                     Foreign Namespace: mongo_fdw_regress.test_tbl1
+         ->  Sort
+               Output: t2.c1
+               Sort Key: t2.c1
+               ->  Foreign Scan on public.fdw137_t2 t2
+                     Output: t2.c1
+                     Foreign Namespace: mongo_fdw_regress.test_tbl2
+(18 rows)
+
 -- Cleanup
 DELETE FROM fdw137_t1 WHERE c8 IS NULL;
 DELETE FROM fdw137_t1 WHERE c8 = 60;

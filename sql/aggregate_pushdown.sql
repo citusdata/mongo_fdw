@@ -252,6 +252,57 @@ SELECT c1, count(t1) FROM fprt1 t1 GROUP BY c1 HAVING avg(c2) < 22 ORDER BY 1;
 
 SET enable_partitionwise_aggregate TO OFF;
 
+-- Support enable_aggregate_pushdown option at server level and table level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_aggregate_pushdown 'non-bolean');
+
+-- Test the option at server level.
+ALTER SERVER mongo_server OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+
+-- Test the option at table level. Setting option at table level does not
+-- affect the setting at server level.
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+
+-- Test option for aggregation over join. Allow aggregation only if enabled for
+-- both the relations involved in the join.
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (ADD enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+
+-- Check when enable_join_pushdown is OFF and enable_aggregate_pushdown is ON.
+-- Shouldn't push down join as well as aggregation.
+ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+
 -- Cleanup
 DELETE FROM fdw137_t1 WHERE c8 IS NULL;
 DELETE FROM fdw137_t1 WHERE c8 = 60;

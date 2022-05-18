@@ -3322,17 +3322,34 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 	PathTarget *grouping_target = root->upper_targets[UPPERREL_GROUP_AGG];
 #endif
 	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) grouped_rel->fdw_private;
-	MongoFdwRelationInfo *ofpinfo;
+	MongoFdwRelationInfo *ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
+	MongoFdwRelationInfo *ofpinfo_o;
+	MongoFdwRelationInfo *ofpinfo_i;
 	ListCell   *lc;
 	int			i;
 	List	   *tlist = NIL;
+	bool		is_join = false;
+
+	/*
+	 * If the underlying scan relation is the join relation then find the
+	 * fpinfo of each relation involved in the join.
+	 */
+	if (IS_JOIN_REL(fpinfo->outerrel))
+	{
+		ofpinfo_o = (MongoFdwRelationInfo *) ofpinfo->outerrel->fdw_private;
+		ofpinfo_i = (MongoFdwRelationInfo *) ofpinfo->innerrel->fdw_private;
+		is_join = true;
+	}
+
+	/* If aggregate pushdown is not enabled, honor it. */
+	if ((!is_join && !ofpinfo->options->enable_aggregate_pushdown) ||
+		((is_join && !ofpinfo_o->options->enable_aggregate_pushdown) ||
+		 (is_join && !ofpinfo_i->options->enable_aggregate_pushdown)))
+		return false;
 
 	/* Grouping Sets are not pushable */
 	if (query->groupingSets)
 		return false;
-
-	/* Get the fpinfo of the underlying scan relation. */
-	ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
 
 	/*
 	 * If underneath input relation has any local conditions, those conditions

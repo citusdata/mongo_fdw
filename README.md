@@ -274,6 +274,11 @@ The following options are only supported with meta driver:
 	join has set it to false then the join will not be pushed down. The
 	table-level value of the option takes precedence over the server-level
 	option value. Default is `true`.
+  * `enable_aggregate_pushdown`: If `true`, push aggregates to the remote
+	MongoDB server instead of fetching all of the rows and aggregating them
+	locally. This option can also be set for an individual table. The
+	table-level value of the option takes precedence over the server-level
+	option value. Default is `true`.
 
 The following parameters can be set on a MongoDB foreign table object:
 
@@ -283,6 +288,8 @@ The following parameters can be set on a MongoDB foreign table object:
     the foreign table name used in the relevant `CREATE` command.
   * `enable_join_pushdown`: Similar to the server-level option, but can be
     configured at table level as well. Default is `true`.
+  * `enable_aggregate_pushdown`: Similar to the server-level option, but
+    can be configured at table level as well. Default is `true`.
 
 The following parameters can be supplied while creating user mapping:
 

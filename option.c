@@ -109,7 +109,8 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 #ifdef META_DRIVER
 				 || strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0 ||
 				 strcmp(optionName, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0 ||
-				 strcmp(optionName, OPTION_NAME_SSL) == 0
+				 strcmp(optionName, OPTION_NAME_SSL) == 0 ||
+				 strcmp(optionName, OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0
 #endif
 				 )
 		{
@@ -186,6 +187,7 @@ mongo_get_options(Oid foreignTableId)
 	options->ssl = false;
 	options->weak_cert_validation = false;
 	options->enable_join_pushdown = true;
+	options->enable_aggregate_pushdown = true;
 #endif
 
 	/* Loop through the options */
@@ -226,6 +228,10 @@ mongo_get_options(Oid foreignTableId)
 
 		else if (strcmp(def->defname, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0)
 			options->enable_join_pushdown = defGetBoolean(def);
+
+		else if (strcmp(def->defname,
+						OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0)
+			options->enable_aggregate_pushdown = defGetBoolean(def);
 
 		else /* This is for continuation */
 #endif
