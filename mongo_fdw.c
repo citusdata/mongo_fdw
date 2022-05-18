@@ -64,6 +64,7 @@ PG_MODULE_MAGIC;
 #define CODE_VERSION   50300
 
 extern PGDLLEXPORT void _PG_init(void);
+
 PG_FUNCTION_INFO_V1(mongo_fdw_handler);
 PG_FUNCTION_INFO_V1(mongo_fdw_version);
 
@@ -172,12 +173,12 @@ static Datum column_value(BSON_ITERATOR *bsonIterator,
 						  Oid columnTypeId,
 						  int32 columnTypeMod);
 static void mongo_free_scan_state(MongoFdwModifyState *fmstate);
-static int mongo_acquire_sample_rows(Relation relation,
-									 int errorLevel,
-									 HeapTuple *sampleRows,
-									 int targetRowCount,
-									 double *totalRowCount,
-									 double *totalDeadRowCount);
+static int	mongo_acquire_sample_rows(Relation relation,
+									  int errorLevel,
+									  HeapTuple *sampleRows,
+									  int targetRowCount,
+									  double *totalRowCount,
+									  double *totalDeadRowCount);
 static void mongo_fdw_exit(int code, Datum arg);
 #ifdef META_DRIVER
 static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
@@ -206,9 +207,8 @@ static const char *escape_json_string(const char *string);
 static void bson_to_json_string(StringInfo output, BSON_ITERATOR iter,
 								bool isArray);
 #endif
-static void
-mongoEstimateCosts(RelOptInfo *baserel, Cost *startup_cost, Cost *total_cost,
-				   Oid foreigntableid);
+static void mongoEstimateCosts(RelOptInfo *baserel, Cost *startup_cost,
+							   Cost *total_cost, Oid foreigntableid);
 
 /* The null action object used for pure validation */
 #if PG_VERSION_NUM < 130000
@@ -319,9 +319,9 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	MongoFdwRelationInfo *fpinfo;
 	MongoFdwOptions *options;
 	ListCell   *lc;
-	char 	   *relname;
-	char       *database;
-	char       *refname;
+	char	   *relname;
+	char	   *database;
+	char	   *refname;
 
 	/*
 	 * We use MongoFdwRelationInfo to pass various information to subsequent
@@ -353,8 +353,8 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	options = mongo_get_options(foreigntableid);
 
 	/*
-	 * Retrieve exact document count for remote collection if asked, otherwise,
-	 * use default estimate in planning.
+	 * Retrieve exact document count for remote collection if asked,
+	 * otherwise, use default estimate in planning.
 	 */
 	if (options->use_remote_estimate)
 	{
@@ -381,7 +381,7 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	}
 
 	relname = options->collectionName;
-	database =  options->svr_database;
+	database = options->svr_database;
 	fpinfo->base_relname = relname;
 
 	/*
@@ -425,12 +425,12 @@ mongoGetForeignPaths(PlannerInfo *root,
 	options = mongo_get_options(foreigntableid);
 
 	/*
-	 * Retrieve exact document count for remote collection if asked, otherwise,
-	 * use default estimate in planning.
+	 * Retrieve exact document count for remote collection if asked,
+	 * otherwise, use default estimate in planning.
 	 */
 	if (options->use_remote_estimate)
 	{
-		double 		documentCount = foreign_table_document_count(foreigntableid);
+		double		documentCount = foreign_table_document_count(foreigntableid);
 
 		if (documentCount > 0.0)
 		{
@@ -459,10 +459,10 @@ mongoGetForeignPaths(PlannerInfo *root,
 			inputRowCount = clamp_row_est(documentCount * documentSelectivity);
 
 			/*
-			 * We estimate disk costs assuming a sequential scan over the data.
-			 * This is an inaccurate assumption as Mongo scatters the data over
-			 * disk pages, and may rely on an index to retrieve the data.
-			 * Still, this should at least give us a relative cost.
+			 * We estimate disk costs assuming a sequential scan over the
+			 * data. This is an inaccurate assumption as Mongo scatters the
+			 * data over disk pages, and may rely on an index to retrieve the
+			 * data. Still, this should at least give us a relative cost.
 			 */
 			documentWidth = get_relation_data_width(foreigntableid,
 													baserel->attr_widths);
@@ -477,7 +477,7 @@ mongoGetForeignPaths(PlannerInfo *root,
 			 */
 			cpuCostPerDoc = cpu_tuple_cost;
 			cpuCostPerRow = (cpu_tuple_cost * MONGO_TUPLE_COST_MULTIPLIER) + tupleFilterCost;
-			totalCpuCost = (cpuCostPerDoc * documentCount) +(cpuCostPerRow * inputRowCount);
+			totalCpuCost = (cpuCostPerDoc * documentCount) + (cpuCostPerRow * inputRowCount);
 
 			connectionCost = MONGO_CONNECTION_COST_MULTIPLIER * seq_page_cost;
 			startupCost = baserel->baserestrictcost.startup + connectionCost;
@@ -549,7 +549,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 		scan_relid = foreignrel->relid;
 	else
 	{
-		 /* Join/Upper relation - set scan_relid to 0. */
+		/* Join/Upper relation - set scan_relid to 0. */
 		scan_relid = 0;
 
 		Assert(!restrictionClauses);
@@ -603,12 +603,13 @@ mongoGetForeignPlan(PlannerInfo *root,
 	}
 
 	/*
-	 * Separate the restrictionClauses into those that can be executed remotely
-	 * and those that can't.  baserestrictinfo clauses that were previously
-	 * determined to be safe or unsafe are shown in fpinfo->remote_conds and
-	 * fpinfo->local_conds.  Anything else in the restrictionClauses list will
-	 * be a join clause, which we have to check for remote-safety.  Only the
-	 * OpExpr clauses are sent to the remote server.
+	 * Separate the restrictionClauses into those that can be executed
+	 * remotely and those that can't.  baserestrictinfo clauses that were
+	 * previously determined to be safe or unsafe are shown in
+	 * fpinfo->remote_conds and fpinfo->local_conds.  Anything else in the
+	 * restrictionClauses list will be a join clause, which we have to check
+	 * for remote-safety.  Only the OpExpr clauses are sent to the remote
+	 * server.
 	 */
 	foreach(lc, restrictionClauses)
 	{
@@ -646,8 +647,8 @@ mongoGetForeignPlan(PlannerInfo *root,
 	if (IS_JOIN_REL(foreignrel))
 	{
 		/*
-		 * For join relations, the planner needs a targetlist, which represents
-		 * the output of the ForeignScan node.
+		 * For join relations, the planner needs a targetlist, which
+		 * represents the output of the ForeignScan node.
 		 */
 		fdw_scan_tlist = add_to_flat_tlist(NIL, scan_var_list);
 
@@ -675,9 +676,9 @@ mongoGetForeignPlan(PlannerInfo *root,
 
 				/*
 				 * For an inner join, the local conditions of the foreign scan
-				 * plan can be part of the joinquals as well.  (They might also
-				 * be in the mergequals or hashquals, but we can't touch those
-				 * without breaking the plan.)
+				 * plan can be part of the joinquals as well.  (They might
+				 * also be in the mergequals or hashquals, but we can't touch
+				 * those without breaking the plan.)
 				 */
 				if (IsA(outer_plan, NestLoop) ||
 					IsA(outer_plan, MergeJoin) ||
@@ -703,8 +704,8 @@ mongoGetForeignPlan(PlannerInfo *root,
 	{
 		/*
 		 * scan_var_list should have expressions and not TargetEntry nodes.
-		 * However, grouped_tlist created has TLEs, and thus retrieve them into
-		 * scan_var_list.
+		 * However, grouped_tlist created has TLEs, and thus retrieve them
+		 * into scan_var_list.
 		 */
 		scan_var_list = list_concat_unique(NIL,
 										   get_tlist_exprs(fpinfo->grouped_tlist,
@@ -738,9 +739,10 @@ mongoGetForeignPlan(PlannerInfo *root,
 		mongofdwreltype = BASE_REL;
 
 #ifdef META_DRIVER
+
 	/*
-	 * Prepare separate lists of information.  This information would be useful
-	 * at the time of execution to prepare the MongoDB query.
+	 * Prepare separate lists of information.  This information would be
+	 * useful at the time of execution to prepare the MongoDB query.
 	 */
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
@@ -790,8 +792,9 @@ mongoGetForeignPlan(PlannerInfo *root,
 		qual_info->isHavingList = NIL;
 
 		/*
-		 * Extract required data of columns involved in join clauses and append
-		 * it into the various lists required to pass it to the executor.
+		 * Extract required data of columns involved in join clauses and
+		 * append it into the various lists required to pass it to the
+		 * executor.
 		 *
 		 * Check and extract data for outer relation and its join clauses in
 		 * case of aggregation on top of the join operation.
@@ -857,6 +860,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 	fdw_private = lappend(fdw_private, makeInteger(mongofdwreltype));
 
 #ifdef META_DRIVER
+
 	/*
 	 * Unlike postgres_fdw, remote query formation is done in the execution
 	 * state.  There is NO way to get the correct information required to form
@@ -1003,8 +1007,8 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 	UserMapping *user;
 	ForeignTable *table;
 	int			rtindex;
-	List 	   *colNameList = NIL;
-	List 	   *colIsInnerList = NIL;
+	List	   *colNameList = NIL;
+	List	   *colIsInnerList = NIL;
 
 	/* If Explain with no Analyze, do nothing */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -1014,8 +1018,9 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/*
 	 * Identify which user to do the remote access as.  This should match what
-	 * ExecCheckRTEPerms() does. In the case of a join, use the lowest-numbered
-	 * member RTE as a representative; we would get the same result from any.
+	 * ExecCheckRTEPerms() does. In the case of a join, use the
+	 * lowest-numbered member RTE as a representative; we would get the same
+	 * result from any.
 	 */
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
@@ -1034,8 +1039,8 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 	options = mongo_get_options(rte->relid);
 
 	/*
-	 * Get connection to the foreign server.  Connection manager will establish
-	 * new connection if necessary.
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
 	 */
 	mongoConnection = mongo_get_connection(server, user, options);
 
@@ -1087,7 +1092,7 @@ mongoIterateForeignScan(ForeignScanState *node)
 		char	   *collectionName;
 
 		/*
-		 * We construct the query document to have MongoDB filter its rows.  We
+		 * We construct the query document to have MongoDB filter its rows. We
 		 * could also construct a column name document here to retrieve only
 		 * the needed columns.  However, we found this optimization to degrade
 		 * performance on the MongoDB server-side, so we instead filter out
@@ -1706,7 +1711,7 @@ foreign_table_document_count(Oid foreignTableId)
 	MongoFdwOptions *options;
 	MONGO_CONN *mongoConnection;
 	const BSON *emptyQuery = NULL;
-	double 		documentCount;
+	double		documentCount;
 	Oid			userid = GetUserId();
 	ForeignServer *server;
 	UserMapping *user;
@@ -1749,8 +1754,8 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 	HTAB	   *columnMappingHash;
 	HASHCTL		hashInfo;
 	uint32		attnum = 0;
-	Index      	listIndex = 0;
-	Index       aggIndex = 0;
+	Index		listIndex = 0;
+	Index		aggIndex = 0;
 
 	memset(&hashInfo, 0, sizeof(hashInfo));
 	hashInfo.keysize = NAMEDATALEN;
@@ -1778,12 +1783,12 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 			columnName = strVal(list_nth(colNameList, listIndex++));
 
 			/*
-			 * In MongoDB, columns involved in join result-set from inner table
-			 * prefixed with Join result name.  Uses hard-coded string
+			 * In MongoDB, columns involved in join result-set from inner
+			 * table prefixed with Join result name.  Uses hard-coded string
 			 * "Join Result" to be prefixed to form the hash key to read the
-			 * joined result set.  This same prefix needs to be given as joined
-			 * result set name in the $lookup stage when building the remote
-			 * query.
+			 * joined result set.  This same prefix needs to be given as
+			 * joined result set name in the $lookup stage when building the
+			 * remote query.
 			 *
 			 * For a simple relation scan, the column name would be the hash
 			 * key.
@@ -1803,13 +1808,13 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 
 		/*
 		 * In MongoDB, columns involved in upper result-set named as
-		 * "_id.column_name_variable" not the actual column names.  Use this as
-		 * hashKey to match the bson key we get at the time of fetching the
+		 * "_id.column_name_variable" not the actual column names.  Use this
+		 * as hashKey to match the bson key we get at the time of fetching the
 		 * column values.
 		 *
 		 * Use the hard-coded string v_agg* to get the aggregation result.
-		 * This same name needs to be given as an aggregation result name while
-		 * building the remote query.
+		 * This same name needs to be given as an aggregation result name
+		 * while building the remote query.
 		 */
 		else if (relType == UPPER_REL || relType == UPPER_JOIN_REL)
 		{
@@ -1829,9 +1834,9 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 					columnName = strVal(list_nth(colNameList, listIndex++));
 
 				/*
-				 * Keep variable name same as a column name.  Use the same name
-				 * while building the MongoDB query in the mongo_query_document
-				 * function.
+				 * Keep variable name same as a column name.  Use the same
+				 * name while building the MongoDB query in the
+				 * mongo_query_document function.
 				 */
 				hashKey = psprintf("_id.%s", columnName);
 			}
@@ -1872,7 +1877,7 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 		if ((relType == UPPER_REL || relType == UPPER_JOIN_REL) &&
 			!strncmp(hashKey, "AGG_RESULT_KEY", 5))
 		{
-			Aggref		   *agg = (Aggref *) lfirst(columnCell);
+			Aggref	   *agg = (Aggref *) lfirst(columnCell);
 
 			columnMapping->columnTypeId = agg->aggtype;
 			columnMapping->columnTypeMod = agg->aggcollid;
@@ -1990,7 +1995,7 @@ fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		bool		is_agg = false;
 
 		if (!strncmp(bsonKey, "AGG_RESULT_KEY", 5) && bsonType == BSON_TYPE_INT32)
-			is_agg  = true;
+			is_agg = true;
 
 		columnMapping = NULL;
 		if (bsonDocumentKey != NULL)
@@ -2112,6 +2117,7 @@ column_types_compatible(BSON_TYPE bsonType, Oid columnTypeId)
 #endif
 			break;
 		case NAMEOID:
+
 			/*
 			 * We currently error out on data types other than object
 			 * identifier.  MongoDB supports more data types for the _id field
@@ -2146,6 +2152,7 @@ column_types_compatible(BSON_TYPE bsonType, Oid columnTypeId)
 				compatibleTypes = true;
 			break;
 		default:
+
 			/*
 			 * We currently error out on other data types.  Some types such as
 			 * byte arrays are easy to add, but they need testing.
@@ -2647,7 +2654,7 @@ mongoAnalyzeForeignTable(Relation relation,
 	int32	   *attributeWidths;
 	Oid			foreignTableId;
 	int32		documentWidth;
-	double 		documentCount;
+	double		documentCount;
 	double		foreignTableSize;
 
 	foreignTableId = RelationGetRelid(relation);
@@ -2758,8 +2765,8 @@ mongo_acquire_sample_rows(Relation relation,
 	options = mongo_get_options(foreignTableId);
 
 	/*
-	 * Get connection to the foreign server.  Connection manager will establish
-	 * new connection if necessary.
+	 * Get connection to the foreign server.  Connection manager will
+	 * establish new connection if necessary.
 	 */
 	mongoConnection = mongo_get_connection(server, user, options);
 
@@ -2966,8 +2973,8 @@ mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	ForeignPath *joinpath;
 	Cost		startup_cost;
 	Cost		total_cost;
-	Path	   *epq_path = NULL; /* Path to create plan to be executed when
-								  * EvalPlanQual gets triggered. */
+	Path	   *epq_path = NULL;	/* Path to create plan to be executed when
+									 * EvalPlanQual gets triggered. */
 
 	/*
 	 * Skip if this join combination has been considered already.
@@ -3031,15 +3038,15 @@ mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	 */
 #if PG_VERSION_NUM >= 120000
 	joinpath = create_foreign_join_path(root,
-									   joinrel,
-									   NULL,
-									   joinrel->rows,
-									   startup_cost,
-									   total_cost,
-									   NIL,		/* no pathkeys */
-									   joinrel->lateral_relids,
-									   epq_path,
-									   NULL);	/* no fdw_private */
+										joinrel,
+										NULL,
+										joinrel->rows,
+										startup_cost,
+										total_cost,
+										NIL,	/* no pathkeys */
+										joinrel->lateral_relids,
+										epq_path,
+										NULL);	/* no fdw_private */
 #else
 	joinpath = create_foreignscan_path(root,
 									   joinrel,
@@ -3108,8 +3115,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 
 	/*
 	 * If joining relations have local conditions, those conditions are
-	 * required to be applied before joining the relations.  Hence the join can
-	 * not be pushed down.
+	 * required to be applied before joining the relations.  Hence the join
+	 * can not be pushed down.
 	 */
 	if (fpinfo_o->local_conds || fpinfo_i->local_conds)
 		return false;
@@ -3183,8 +3190,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 				 * clauses to remote_conds, instead keep the join clauses
 				 * separate.  Currently, we are providing limited operator
 				 * push-ability support for join pushdown, hence we keep those
-				 * clauses separate to avoid INNER JOIN not getting pushdown if
-				 * any of the WHERE clauses are not shippable as per join
+				 * clauses separate to avoid INNER JOIN not getting pushdown
+				 * if any of the WHERE clauses are not shippable as per join
 				 * pushdown shippability.
 				 */
 				joinclauses = lappend(joinclauses, rinfo);
@@ -3469,7 +3476,8 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 #else
 	if (root->hasHavingQual && query->havingQual)
 	{
-		ListCell	*lc;
+		ListCell   *lc;
+
 		foreach(lc, (List *) query->havingQual)
 #endif
 		{
@@ -3710,7 +3718,7 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	/* Add generated path into grouped_rel by add_path(). */
 	add_path(grouped_rel, (Path *) grouppath);
 }
-#endif /* End of META_DRIVER */
+#endif							/* End of META_DRIVER */
 
 /*
  * mongoEstimateCosts

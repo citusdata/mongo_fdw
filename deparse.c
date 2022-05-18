@@ -89,12 +89,12 @@ mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info)
 			mongo_check_qual(((RelabelType *) node)->arg, qual_info);
 			break;
 		case T_BoolExpr:
-			mongo_check_qual((Expr *)((BoolExpr *) node)->args, qual_info);
+			mongo_check_qual((Expr *) ((BoolExpr *) node)->args, qual_info);
 			break;
 		case T_Aggref:
 			{
 				ListCell   *lc;
-				char 	   *func_name = get_func_name(((Aggref *) node)->aggfnoid);
+				char	   *func_name = get_func_name(((Aggref *) node)->aggfnoid);
 
 				/* Save aggregation operation name */
 				qual_info->aggTypeList = lappend(qual_info->aggTypeList,
@@ -118,7 +118,7 @@ mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info)
 				 * For aggregation over the column, add required information
 				 * into the column information lists.
 				 */
-				if (((Aggref *)node)->aggstar)
+				if (((Aggref *) node)->aggstar)
 				{
 					qual_info->colNameList = lappend(qual_info->colNameList,
 													 makeString("*"));
@@ -225,7 +225,7 @@ mongo_check_var(Var *column, MongoRelQualInfo *qual_info)
 
 	if (!(bms_is_member(column->varno, qual_info->foreignRel->relids) &&
 		  column->varlevelsup == 0))
-		return;				/* Var does not belong to foreign table */
+		return;					/* Var does not belong to foreign table */
 
 	Assert(!IS_SPECIAL_VARNO(column->varno));
 
@@ -247,7 +247,7 @@ mongo_check_var(Var *column, MongoRelQualInfo *qual_info)
 	key.varno = column->varno;
 	key.varattno = column->varattno;
 
-	hash_search(qual_info->exprColHash, (void *)&key, HASH_ENTER, &found);
+	hash_search(qual_info->exprColHash, (void *) &key, HASH_ENTER, &found);
 
 	/*
 	 * Add aggregated column in the aggColList even if it's already available
@@ -390,7 +390,7 @@ mongo_append_bool_expr(BoolExpr *node, BSON *child_doc, pipeline_cxt *context)
 	/* Reset to zero to be used for nested arrays */
 	context->arrayIndex = reset_index;
 
-	 /* Save join expression type boolean "TRUE" */
+	/* Save join expression type boolean "TRUE" */
 	context->isBoolExpr = true;
 
 	foreach(lc, node->args)
@@ -436,9 +436,9 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 	char	   *mongo_operator;
 	int			saved_array_index;
 	int			reset_index = 0;
-	int         and_index = 0;
-	BSON       	and_op;
-	BSON       	and_obj;
+	int			and_index = 0;
+	BSON		and_op;
+	BSON		and_obj;
 
 	/* Retrieve information about the operator from the system catalog. */
 	tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
@@ -501,7 +501,8 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 		bsonAppendFinishObject(child_doc, &expr);
 
 	/*
-	 * Add equality check for null values for columns involved in join-clauses.
+	 * Add equality check for null values for columns involved in
+	 * join-clauses.
 	 */
 	foreach(arg, node->args)
 	{
@@ -574,7 +575,7 @@ mongo_append_column_name(Var *column, BSON *child_doc, pipeline_cxt *context)
 static void
 mongo_add_null_check(Var *column, BSON *expr, pipeline_cxt *context)
 {
-	BSON        ne_expr;
+	BSON		ne_expr;
 	bool		found = false;
 	ColInfoHashKey key;
 	ColInfoHashEntry *columnInfo;

@@ -22,10 +22,10 @@
  */
 typedef struct pipeline_cxt
 {
-	struct HTAB *colInfoHash;   /* columns information hash */
-	unsigned int arrayIndex;    /* Index of the various arrays in the pipeline,
-								   starting from zero */
-	bool         isBoolExpr;    /* is join expression boolean? */
+	struct HTAB *colInfoHash;	/* columns information hash */
+	unsigned int arrayIndex;	/* Index of the various arrays in the
+								 * pipeline, starting from zero */
+	bool		isBoolExpr;		/* is join expression boolean? */
 } pipeline_cxt;
 
 /*
@@ -40,7 +40,7 @@ typedef struct ColInfoHashKey
 } ColInfoHashKey;
 typedef struct ColInfoEntry
 {
-	ColInfoHashKey key;    /* Hash key */
+	ColInfoHashKey key;			/* Hash key */
 	char	   *colName;
 	bool		isOuter;
 } ColInfoHashEntry;

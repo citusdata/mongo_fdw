@@ -112,7 +112,7 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 				 strcmp(optionName, OPTION_NAME_SSL) == 0 ||
 				 strcmp(optionName, OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0
 #endif
-				 )
+			)
 		{
 			/* These accept only boolean values */
 			(void) defGetBoolean(optionDef);
@@ -233,7 +233,7 @@ mongo_get_options(Oid foreignTableId)
 						OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0)
 			options->enable_aggregate_pushdown = defGetBoolean(def);
 
-		else /* This is for continuation */
+		else					/* This is for continuation */
 #endif
 
 		if (strcmp(def->defname, OPTION_NAME_ADDRESS) == 0)
@@ -269,7 +269,7 @@ mongo_get_options(Oid foreignTableId)
 		options->svr_database = pstrdup(DEFAULT_DATABASE_NAME);
 
 	if (!options->collectionName)
-		options->collectionName= get_rel_name(foreignTableId);
+		options->collectionName = get_rel_name(foreignTableId);
 
 	return options;
 }

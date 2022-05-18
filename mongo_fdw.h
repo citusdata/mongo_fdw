@@ -175,9 +175,9 @@
 
 /* Macro for list API backporting. */
 #if PG_VERSION_NUM < 130000
-	#define mongo_list_concat(l1, l2) list_concat(l1, list_copy(l2))
+#define mongo_list_concat(l1, l2) list_concat(l1, list_copy(l2))
 #else
-	#define mongo_list_concat(l1, l2) list_concat((l1), (l2))
+#define mongo_list_concat(l1, l2) list_concat((l1), (l2))
 #endif
 
 /* Macro for hard-coded aggregation result key */
@@ -267,8 +267,8 @@ typedef struct MongoFdwOptions
 	char	   *ca_dir;
 	char	   *crl_file;
 	bool		weak_cert_validation;
-	bool        enable_join_pushdown;
-	bool        enable_aggregate_pushdown;
+	bool		enable_join_pushdown;
+	bool		enable_aggregate_pushdown;
 #endif
 } MongoFdwOptions;
 
@@ -294,11 +294,11 @@ typedef struct MongoFdwModifyState
 	BSON	   *queryDocument;	/* Bson Document */
 
 	MongoFdwOptions *options;
-	AttrNumber	rowidAttno; 	/* attnum of resjunk rowid column */
+	AttrNumber	rowidAttno;		/* attnum of resjunk rowid column */
 
 	/* Join/Upper relation information */
-	uint32	    relType;		/* relation type.  Base, Join, Upper, or
-								 * Upper on join */
+	uint32		relType;		/* relation type.  Base, Join, Upper, or Upper
+								 * on join */
 	char	   *outerRelName;	/* Outer relation name */
 } MongoFdwModifyState;
 
@@ -352,10 +352,10 @@ typedef struct MongoFdwRelationInfo
 	RelOptInfo *innerrel;
 	JoinType	jointype;
 	List	   *joinclauses;
-	char       *inner_relname;
+	char	   *inner_relname;
 	char	   *outer_relname;
 
-	MongoFdwOptions *options;  /* Options applicable for this relation */
+	MongoFdwOptions *options;	/* Options applicable for this relation */
 
 	/* Grouping information */
 	List	   *grouped_tlist;
@@ -427,15 +427,15 @@ typedef struct MongoRelQualInfo
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignRel;		/* the foreign relation we are planning for */
-	Relids      outerRelids;    /* set of base relids of outer relation */
-	List 	   *colNameList;
+	Relids		outerRelids;	/* set of base relids of outer relation */
+	List	   *colNameList;
 	List	   *colNumList;
 	List	   *rtiList;
 	List	   *isOuterList;
 	struct HTAB *exprColHash;
 	/* For upper-relation */
-	bool		is_agg_column; /* is column aggregated or not? */
-	bool		is_having;	   /* is it part of HAVING clause or not? */
+	bool		is_agg_column;	/* is column aggregated or not? */
+	bool		is_having;		/* is it part of HAVING clause or not? */
 	List	   *aggTypeList;
 	List	   *aggColList;
 	List	   *isHavingList;
@@ -443,8 +443,8 @@ typedef struct MongoRelQualInfo
 
 typedef struct ColumnHashKey
 {
-	int		varno;
-	int		varattno;
+	int			varno;
+	int			varattno;
 } ColumnHashKey;
 
 /*
@@ -477,7 +477,7 @@ extern void mongo_release_connection(MONGO_CONN *conn);
 extern BSON *mongo_query_document(ForeignScanState *scanStateNode);
 extern List *mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 								   List *scan_var_list, List **colNameList,
-								   List **colIsInnerList );
+								   List **colIsInnerList);
 extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
 								  Expr *expression, bool is_join_cond,
 								  bool is_having_cond);

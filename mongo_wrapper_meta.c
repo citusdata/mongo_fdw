@@ -354,7 +354,7 @@ bsonIterInt32(BSON_ITERATOR *it)
 			return (int32) bson_iter_bool(it);
 		case BSON_TYPE_DOUBLE:
 			{
-				double 		val = bson_iter_double(it);
+				double		val = bson_iter_double(it);
 
 				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
 					ereport(ERROR,
@@ -380,7 +380,7 @@ bsonIterInt32(BSON_ITERATOR *it)
 			return bson_iter_int32(it);
 		default:
 			return 0;
-   }
+	}
 }
 
 int64_t

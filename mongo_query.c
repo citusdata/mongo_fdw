@@ -239,7 +239,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 #ifdef META_DRIVER
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanStateNode->fdw_state;
 	BSON		root_pipeline;
-	int 		root_index = 0;
+	int			root_index = 0;
 	List	   *joinclauses;
 	List	   *colname_list = NIL;
 	List	   *isouter_list = NIL;
@@ -310,9 +310,9 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			relationId = 0;
 
 		/*
-		 * We distinguish between equality expressions and others since we need
-		 * to insert the latter (<, >, <=, >=, <>) as separate sub-documents
-		 * into the BSON query object.
+		 * We distinguish between equality expressions and others since we
+		 * need to insert the latter (<, >, <=, >=, <>) as separate
+		 * sub-documents into the BSON query object.
 		 */
 		equalityOperatorList = equality_operator_list(opExpressionList);
 		comparisonOperatorList = list_difference(opExpressionList,
@@ -464,7 +464,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	}
 
 #ifdef META_DRIVER
-	if (fmstate->relType == JOIN_REL ||  fmstate->relType == UPPER_JOIN_REL)
+	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
 		BSON		inner_pipeline;
 		BSON		lookup_object;
@@ -491,12 +491,12 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		bsonAppendStartObject(&lookup, "let", &let_exprs);
 		forboth(cell1, colname_list, cell2, isouter_list)
 		{
-			char	*colname = strVal(lfirst(cell1));
-			bool	 is_outer = lfirst_int(cell2);
+			char	   *colname = strVal(lfirst(cell1));
+			bool		is_outer = lfirst_int(cell2);
 
 			/*
 			 * Ignore column name with "*" because this is not the name of any
-			 * particular column and is not allowed in the let operator.  While
+			 * particular column and is not allowed in the let operator. While
 			 * deparsing the COUNT(*) aggregation operation, this column name
 			 * is added to lists to maintain the length of column information.
 			 */
@@ -505,16 +505,16 @@ mongo_query_document(ForeignScanState *scanStateNode)
 				/*
 				 * Add prefix "v_" to column name to form variable name.  Need
 				 * to prefix with any lowercase letter because variable names
-				 * must begin with only a lowercase ASCII letter or a non-ASCII
-				 * character.
+				 * must begin with only a lowercase ASCII letter or a
+				 * non-ASCII character.
 				 */
-				char	*varname = psprintf("v_%s", colname);
-				char	*field = psprintf("$%s", colname);
+				char	   *varname = psprintf("v_%s", colname);
+				char	   *field = psprintf("$%s", colname);
 
 				bsonAppendUTF8(&let_exprs, varname, field);
 			}
 		}
-		bsonAppendFinishObject(&lookup, &let_exprs); /* End "let" */
+		bsonAppendFinishObject(&lookup, &let_exprs);	/* End "let" */
 
 		/* Form inner pipeline required in $lookup stage to execute $match */
 		bsonAppendStartArray(inner_pipeline_doc, "pipeline", &inner_pipeline);
@@ -525,14 +525,14 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			context.colInfoHash = columnInfoHash;
 			context.isBoolExpr = false;
 
-			 /* Form equivalent join qual clauses in MongoDB */
+			/* Form equivalent join qual clauses in MongoDB */
 			mongo_prepare_inner_pipeline(joinclauses, &inner_pipeline,
 										 &context);
 			bsonAppendFinishArray(inner_pipeline_doc, &inner_pipeline);
 		}
 
 		/* Append inner pipeline to $lookup stage */
-		bson_append_array(&lookup, "pipeline", (int) strlen ("pipeline"),
+		bson_append_array(&lookup, "pipeline", (int) strlen("pipeline"),
 						  &inner_pipeline);
 
 		bsonAppendUTF8(&lookup, "as", "Join_Result");
@@ -564,7 +564,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	}
 	else
 	{
-		BSON	    match_stage;
+		BSON		match_stage;
 
 		/* $match stage.  This is to add a filter for the WHERE clause */
 		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
@@ -576,10 +576,10 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	/* Add $group stage for upper relation */
 	if (fmstate->relType == UPPER_JOIN_REL || fmstate->relType == UPPER_REL)
 	{
-		List 	   *func_list;
-		List 	   *agg_col_list;
-		List 	   *groupby_col_list;
-		List 	   *having_expr;
+		List	   *func_list;
+		List	   *agg_col_list;
+		List	   *groupby_col_list;
+		List	   *having_expr;
 		BSON		groupby_expr;
 		BSON		group_stage;
 		BSON		group_expr;
@@ -587,8 +587,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		ListCell   *cell1;
 		ListCell   *cell2;
 		ListCell   *cell3;
-		List 	   *is_having_list;
-		Index      	aggIndex = 0;
+		List	   *is_having_list;
+		Index		aggIndex = 0;
 
 		func_list = list_nth(PrivateList, mongoFdwPrivateAggType);
 		agg_col_list = list_nth(PrivateList, mongoFdwPrivateAggColList);
@@ -603,9 +603,9 @@ mongo_query_document(ForeignScanState *scanStateNode)
 
 		/*
 		 * Add columns from the GROUP BY clause in the "_id" field of $group
-		 * stage.  In case of aggregation on join result, a column of the inner
-		 * table needs to be accessed by prefixing it using "Join_Result",
-		 * which is been hardcoded.
+		 * stage.  In case of aggregation on join result, a column of the
+		 * inner table needs to be accessed by prefixing it using
+		 * "Join_Result", which is been hardcoded.
 		 */
 		if (groupby_col_list)
 		{
@@ -637,7 +637,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 												columnInfo->colName));
 				}
 			}
-			bsonAppendFinishObject(&group, &groupby_expr); /* End "_id" */
+			bsonAppendFinishObject(&group, &groupby_expr);	/* End "_id" */
 		}
 		else
 		{
@@ -653,7 +653,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			bool		found = false;
 			char	   *func_name = strVal(lfirst(cell1));
 			Var		   *column = (Var *) lfirst(cell2);
-			bool	    is_having_agg = lfirst_int(cell3);
+			bool		is_having_agg = lfirst_int(cell3);
 
 			if (is_having_agg)
 				bsonAppendStartObject(&group, "v_having", &group_expr);
@@ -670,6 +670,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 														  (void *) &key,
 														  HASH_FIND,
 														  &found);
+
 			/*
 			 * The aggregation operation in MongoDB other than COUNT has the
 			 * same name as PostgreSQL but COUNT needs to be performed using
@@ -696,8 +697,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			else
 			{
 				/*
-				 * The COUNT(*) in PostgreSQL is equivalent to {$sum: 1} in the
-				 * MongoDB.
+				 * The COUNT(*) in PostgreSQL is equivalent to {$sum: 1} in
+				 * the MongoDB.
 				 */
 				bsonAppendInt32(&group_expr, psprintf("$%s", "sum"), 1);
 			}
@@ -711,7 +712,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		/* Add HAVING operation */
 		if (having_expr)
 		{
-			BSON	    match_stage;
+			BSON		match_stage;
 			BSON	   *filter = bsonCreate();
 			List	   *equalityOperatorList;
 			List	   *comparisonOperatorList;
@@ -1225,6 +1226,7 @@ append_mongo_value(BSON *queryDocument, const char *keyName, Datum value,
 			}
 			break;
 		default:
+
 			/*
 			 * We currently error out on other data types. Some types such as
 			 * byte arrays are easy to add, but they need testing.
@@ -1277,7 +1279,7 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 	{
 		Var		   *var = (Var *) lfirst(lc);
 		RangeTblEntry *rte = planner_rt_fetch(var->varno, root);
-		int		    is_innerrel = false;
+		int			is_innerrel = false;
 
 		/*
 		 * Add aggregation target also in the needed column list.  This would
@@ -1440,9 +1442,9 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				Const	   *c = (Const *) node;
 
 				/*
-				 * We don't push down operators where the constant is an array,
-				 * since conditional operators for arrays in MongoDB aren't
-				 * properly defined.
+				 * We don't push down operators where the constant is an
+				 * array, since conditional operators for arrays in MongoDB
+				 * aren't properly defined.
 				 */
 				if (OidIsValid(get_element_type(c->consttype)))
 					return false;
@@ -1635,10 +1637,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					return false;
 
 				if (!(strcmp(func_name, "min") == 0 ||
-					strcmp(func_name, "max") == 0 ||
-					strcmp(func_name, "sum") == 0 ||
-					strcmp(func_name, "avg") == 0 ||
-					strcmp(func_name, "count") == 0))
+					  strcmp(func_name, "max") == 0 ||
+					  strcmp(func_name, "sum") == 0 ||
+					  strcmp(func_name, "avg") == 0 ||
+					  strcmp(func_name, "count") == 0))
 					return false;
 
 				/*
@@ -1683,8 +1685,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/*
 				 * Detect whether the node is introducing a collation not
 				 * derived from a foreign Var.  (If so, we just mark it unsafe
-				 * for now rather than immediately returning false, since th
-				 * e parent node might not care.)
+				 * for now rather than immediately returning false, since th e
+				 * parent node might not care.)
 				 */
 				collation = agg->aggcollid;
 				if (collation == InvalidOid)
@@ -1779,7 +1781,8 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
 	/*
 	 * For an upper relation, use relids from its underneath scan relation,
 	 * because the upperrel's own relids currently aren't set to anything
-	 * meaningful by the core code.  For other relations, use their own relids.
+	 * meaningful by the core code.  For other relations, use their own
+	 * relids.
 	 */
 	if (IS_UPPER_REL(baserel))
 		glob_cxt.relids = fpinfo->outerrel->relids;
@@ -1891,7 +1894,7 @@ column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
 	ListCell   *l4;
 
 	memset(&hashInfo, 0, sizeof(hashInfo));
-	hashInfo.keysize = sizeof(ColInfoHashKey );
+	hashInfo.keysize = sizeof(ColInfoHashKey);
 	hashInfo.entrysize = sizeof(ColInfoHashEntry);
 	hashInfo.hcxt = CurrentMemoryContext;
 
@@ -1909,15 +1912,15 @@ column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
 	{
 		ColInfoHashEntry *columnInfo;
 		char	   *columnName = strVal(lfirst(l1));
-		int		    columnNum = lfirst_int(l2);
-		int		    varNo = lfirst_int(l3);
+		int			columnNum = lfirst_int(l2);
+		int			varNo = lfirst_int(l3);
 		bool		isOuter = lfirst_int(l4);
 
 		key.varNo = varNo;
 		key.varAttno = columnNum;
 
 		columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
-													  (void *)&key,
+													  (void *) &key,
 													  HASH_ENTER,
 													  NULL);
 		Assert(columnInfo != NULL);
@@ -1963,11 +1966,11 @@ mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
 							 pipeline_cxt *context)
 {
 	BSON	   *and_query_doc = bsonCreate();
-	BSON	    match_object;
-	BSON	    match_stage;
-	BSON	    expr;
-	BSON	    and_op;
-	int 	    inner_pipeline_index = 0;
+	BSON		match_object;
+	BSON		match_stage;
+	BSON		expr;
+	BSON		and_op;
+	int			inner_pipeline_index = 0;
 
 	bsonAppendStartObject(inner_pipeline,
 						  psprintf("%d", inner_pipeline_index++),
@@ -1983,7 +1986,7 @@ mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
 	mongo_append_joinclauses_to_inner_pipeline(joinclause, &and_op, context);
 
 	/* Append $and array to $expr */
-	bson_append_array(&expr, "$and", (int) strlen ("$and"), &and_op);
+	bson_append_array(&expr, "$and", (int) strlen("$and"), &and_op);
 
 	bsonAppendFinishArray(and_query_doc, &and_op);
 	bsonAppendFinishObject(&match_stage, &expr);

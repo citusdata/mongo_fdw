@@ -44,7 +44,7 @@ typedef struct ConnCacheEntry
 	MONGO_CONN *conn;			/* connection to foreign server, or NULL */
 	bool		invalidated;	/* true if reconnect is pending */
 	uint32		server_hashvalue;	/* hash value of foreign server OID */
-	uint32		mapping_hashvalue;  /* hash value of user mapping OID */
+	uint32		mapping_hashvalue;	/* hash value of user mapping OID */
 } ConnCacheEntry;
 
 /*
@@ -141,11 +141,11 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 	if (entry->conn != NULL)
 	{
 		bson_error_t error;
-		bool 		retval;
-		bson_t 	   *command;
+		bool		retval;
+		bson_t	   *command;
 
 		/* Ping the database using "ping" command */
-		command = BCON_NEW("ping", BCON_INT32 (1));
+		command = BCON_NEW("ping", BCON_INT32(1));
 		retval = mongoc_client_command_simple(entry->conn, opt->svr_database,
 											  command, NULL, NULL, &error);
 		if (!retval)

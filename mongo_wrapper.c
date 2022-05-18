@@ -186,7 +186,7 @@ bsonIterInt32(BSON_ITERATOR *it)
 	{
 		case BSON_DOUBLE:
 			{
-				double 		val = bson_iterator_double_raw(it);
+				double		val = bson_iterator_double_raw(it);
 
 				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
 					ereport(ERROR,
@@ -198,7 +198,7 @@ bsonIterInt32(BSON_ITERATOR *it)
 			}
 		case BSON_LONG:
 			{
-				int64 		val = bson_iterator_long_raw(it);
+				int64		val = bson_iterator_long_raw(it);
 
 				if (val < PG_INT32_MIN || val > PG_INT32_MAX)
 					ereport(ERROR,
