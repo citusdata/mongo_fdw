@@ -44,8 +44,8 @@
  * Functions to gather information related to columns involved in the given
  * query, which is useful at the time of execution to prepare MongoDB query.
  */
-static void mongo_check_op_expr(OpExpr *node, MongoJoinQualInfo *jqinfo);
-static void mongo_check_var(Var *column, MongoJoinQualInfo *jqinfo);
+static void mongo_check_op_expr(OpExpr *node, MongoRelQualInfo *qual_info);
+static void mongo_check_var(Var *column, MongoRelQualInfo *qual_info);
 
 /* Helper functions to form MongoDB query document. */
 static void mongo_append_bool_expr(BoolExpr *node, BSON *queryDoc,
@@ -64,7 +64,7 @@ static void mongo_add_null_check(Var *column, BSON *expr,
  *		required information from it.
  */
 void
-mongo_check_qual(Expr *node, MongoJoinQualInfo *jqinfo)
+mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info)
 {
 	if (node == NULL)
 		return;
@@ -72,24 +72,24 @@ mongo_check_qual(Expr *node, MongoJoinQualInfo *jqinfo)
 	switch (nodeTag(node))
 	{
 		case T_Var:
-			mongo_check_var((Var *) node, jqinfo);
+			mongo_check_var((Var *) node, qual_info);
 			break;
 		case T_OpExpr:
-			mongo_check_op_expr((OpExpr *) node, jqinfo);
+			mongo_check_op_expr((OpExpr *) node, qual_info);
 			break;
 		case T_List:
 			{
 				ListCell   *lc;
 
 				foreach(lc, (List *) node)
-					mongo_check_qual((Expr *) lfirst(lc), jqinfo);
+					mongo_check_qual((Expr *) lfirst(lc), qual_info);
 			}
 			break;
 		case T_RelabelType:
-			mongo_check_qual(((RelabelType *) node)->arg, jqinfo);
+			mongo_check_qual(((RelabelType *) node)->arg, qual_info);
 			break;
 		case T_BoolExpr:
-			mongo_check_qual((Expr *)((BoolExpr *) node)->args, jqinfo);
+			mongo_check_qual((Expr *)((BoolExpr *) node)->args, qual_info);
 			break;
 		case T_Const:
 		case T_Param:
@@ -107,7 +107,7 @@ mongo_check_qual(Expr *node, MongoJoinQualInfo *jqinfo)
  *		Check given operator expression.
  */
 static void
-mongo_check_op_expr(OpExpr *node, MongoJoinQualInfo *jqinfo)
+mongo_check_op_expr(OpExpr *node, MongoRelQualInfo *qual_info)
 {
 	HeapTuple	tuple;
 	Form_pg_operator form;
@@ -131,14 +131,14 @@ mongo_check_op_expr(OpExpr *node, MongoJoinQualInfo *jqinfo)
 	if (oprkind == 'r' || oprkind == 'b')
 	{
 		arg = list_head(node->args);
-		mongo_check_qual(lfirst(arg), jqinfo);
+		mongo_check_qual(lfirst(arg), qual_info);
 	}
 
 	/* Deparse right operand. */
 	if (oprkind == 'l' || oprkind == 'b')
 	{
 		arg = list_tail(node->args);
-		mongo_check_qual(lfirst(arg), jqinfo);
+		mongo_check_qual(lfirst(arg), qual_info);
 	}
 
 	ReleaseSysCache(tuple);
@@ -149,29 +149,26 @@ mongo_check_op_expr(OpExpr *node, MongoJoinQualInfo *jqinfo)
  *		Check the given Var and append required information related to columns
  *		involved in qual clauses to separate lists in context.
  *
- * Save required information in the form of a list in MongoJoinQualInfo
+ * Save required information in the form of a list in MongoRelQualInfo
  * structure.  Prepare a hash table to avoid duplication of entry if one column
  * is involved in the multiple qual expressions.
  */
 static void
-mongo_check_var(Var *column, MongoJoinQualInfo *jqinfo)
+mongo_check_var(Var *column, MongoRelQualInfo *qual_info)
 {
 	RangeTblEntry *rte;
 	char	   *colname;
-	char	   *tabname;
-	ListCell   *lc;
-	ForeignTable *table;
 	ColumnHashKey key;
 	bool		found;
 	bool		is_outerrel = false;
 
-	if (!(bms_is_member(column->varno, jqinfo->foreignRel->relids) &&
+	if (!(bms_is_member(column->varno, qual_info->foreignRel->relids) &&
 		  column->varlevelsup == 0))
 		return;				/* Var does not belong to foreign table */
 
 	Assert(!IS_SPECIAL_VARNO(column->varno));
 
-	if (!jqinfo->joinExprColHash)
+	if (!qual_info->exprColHash)
 	{
 		HASHCTL		hashInfo;
 
@@ -180,21 +177,21 @@ mongo_check_var(Var *column, MongoJoinQualInfo *jqinfo)
 		hashInfo.entrysize = sizeof(ColumnHashKey);
 		hashInfo.hcxt = CurrentMemoryContext;
 
-		jqinfo->joinExprColHash = hash_create("Join Expression Column Hash",
-											  MaxHashTableSize,
-											  &hashInfo,
-											  (HASH_ELEM | HASH_BLOBS | HASH_CONTEXT));
+		qual_info->exprColHash = hash_create("Join Expression Column Hash",
+											 MaxHashTableSize,
+											 &hashInfo,
+											 (HASH_ELEM | HASH_BLOBS | HASH_CONTEXT));
 	}
 
 	key.varno = column->varno;
 	key.varattno = column->varattno;
 
-	hash_search(jqinfo->joinExprColHash, (void *)&key, HASH_ENTER, &found);
+	hash_search(qual_info->exprColHash, (void *)&key, HASH_ENTER, &found);
 	if (found)
 		return;
 
 	/* Get RangeTblEntry from array in PlannerInfo. */
-	rte = planner_rt_fetch(column->varno, jqinfo->root);
+	rte = planner_rt_fetch(column->varno, qual_info->root);
 
 #if PG_VERSION_NUM >= 110000
 	colname = get_attname(rte->relid, column->varattno, false);
@@ -202,27 +199,15 @@ mongo_check_var(Var *column, MongoJoinQualInfo *jqinfo)
 	colname = get_relid_attribute_name(rte->relid, column->varattno);
 #endif
 
-	table = GetForeignTable(rte->relid);
-	foreach(lc, table->options)
-	{
-		DefElem    *def = (DefElem *) lfirst(lc);
-
-		if (strcmp(def->defname, "collection") == 0)
-			tabname = defGetString(def);
-	}
-
-	if (tabname == NULL)
-		tabname = get_rel_name(rte->relid);
-
 	/* Is relation inner or outer? */
-	if (bms_is_member(column->varno, jqinfo->outerRelids))
+	if (bms_is_member(column->varno, qual_info->outerRelids))
 		is_outerrel = true;
 
 	/* Fill the lists with elements */
-	jqinfo->colNameList = lappend(jqinfo->colNameList, makeString(colname));
-	jqinfo->colNumList = lappend_int(jqinfo->colNumList, column->varattno);
-	jqinfo->rtiList = lappend_int(jqinfo->rtiList, column->varno);
-	jqinfo->isOuterList = lappend_int(jqinfo->isOuterList, is_outerrel);
+	qual_info->colNameList = lappend(qual_info->colNameList, makeString(colname));
+	qual_info->colNumList = lappend_int(qual_info->colNumList, column->varattno);
+	qual_info->rtiList = lappend_int(qual_info->rtiList, column->varno);
+	qual_info->isOuterList = lappend_int(qual_info->isOuterList, is_outerrel);
 }
 
 /*

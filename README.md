@@ -208,8 +208,8 @@ SEMI, and ANTI join. Moreover, only joins between two tables are pushed
 down and not when either inner or outer relation is the join itself.
 
 ### New MongoDB C Driver Support
-The third enhancement is to add a new [MongoDB][1]' C driver. The
-current implementation is based on the legacy driver of MongoDB. But
+This enhancement is to add a new [MongoDB][1]' C driver. The current
+implementation is based on the legacy driver of MongoDB. But
 [MongoDB][1] is provided completely new library for driver called
 MongoDB's meta driver. Added support for the same. Now compile time
 option is available to use legacy and meta driver.

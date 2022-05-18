@@ -351,7 +351,7 @@ typedef struct MongoFdwRelationInfo
 } MongoFdwRelationInfo;
 
 /*
- * MongoJoinQualInfo contains column name, varno, varattno, and its relation
+ * MongoRelQualInfo contains column name, varno, varattno, and its relation
  * name of columns involved in the join quals which is passed to execution
  * state through fdw_private.
  *
@@ -371,7 +371,7 @@ typedef struct MongoFdwRelationInfo
  * 			(T1.a = T2.x AND T1.b > T2.y)
  *
  * then as columns a, b, x, and y are involved in the join clause, we need to
- * form the following 4 lists as part of MongoJoinQualInfo:
+ * form the following 4 lists as part of MongoRelQualInfo:
  *
  * 1. colNameList: List of column names
  * 			a->x->b->y
@@ -388,7 +388,7 @@ typedef struct MongoFdwRelationInfo
  * To avoid duplicate entry of columns, we use a hash table having a unique
  * hash key as a set of varno and varattno.
  */
-typedef struct MongoJoinQualInfo
+typedef struct MongoRelQualInfo
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignRel;		/* the foreign relation we are planning for */
@@ -397,8 +397,8 @@ typedef struct MongoJoinQualInfo
 	List	   *colNumList;
 	List	   *rtiList;
 	List	   *isOuterList;
-	struct HTAB *joinExprColHash;
-} MongoJoinQualInfo;
+	struct HTAB *exprColHash;
+} MongoRelQualInfo;
 
 typedef struct ColumnHashKey
 {
@@ -432,7 +432,7 @@ extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);
 extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
 
 /* deparse.c headers */
-extern void mongo_check_qual(Expr *node, MongoJoinQualInfo *jqinfo);
+extern void mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info);
 extern const char *mongo_get_jointype_name(JoinType jointype);
 
 #endif							/* MONGO_FDW_H */

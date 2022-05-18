@@ -171,7 +171,7 @@ static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 								  JoinType jointype, RelOptInfo *outerrel,
 								  RelOptInfo *innerrel,
 								  JoinPathExtraData *extra);
-static void mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo);
+static void mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info);
 #endif
 #ifndef META_DRIVER
 static const char *escape_json_string(const char *string);
@@ -507,12 +507,11 @@ mongoGetForeignPlan(PlannerInfo *root,
 	List	   *column_name_list = NIL;
 	List	   *is_inner_column_list = NIL;
 #ifdef META_DRIVER
-	MongoJoinQualInfo *jqinfo;
+	MongoRelQualInfo *qual_info;
 #endif
 
 	/* Set scan relation id */
-	if (foreignrel->reloptkind == RELOPT_BASEREL ||
-		foreignrel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+	if (IS_SIMPLE_REL(foreignrel))
 		scan_relid = foreignrel->relid;
 	else
 	{
@@ -671,21 +670,21 @@ mongoGetForeignPlan(PlannerInfo *root,
 	if (IS_JOIN_REL(foreignrel))
 	{
 		/*
-		 * We use MongoJoinQualInfo to pass various information related to
+		 * We use MongoRelQualInfo to pass various information related to
 		 * joining quals to fdw_private which is used to form equivalent
 		 * MongoDB query during the execution phase.
 		 */
-		jqinfo = (MongoJoinQualInfo *) palloc(sizeof(MongoJoinQualInfo));
+		qual_info = (MongoRelQualInfo *) palloc(sizeof(MongoRelQualInfo));
 
-		jqinfo->root = root;
-		jqinfo->foreignRel = foreignrel;
-		jqinfo->outerRelids = fpinfo->outerrel->relids;
-		jqinfo->joinExprColHash = NULL;
+		qual_info->root = root;
+		qual_info->foreignRel = foreignrel;
+		qual_info->outerRelids = fpinfo->outerrel->relids;
+		qual_info->exprColHash = NULL;
 		/* Initialize all lists */
-		jqinfo->colNameList = NIL;
-		jqinfo->colNumList = NIL;
-		jqinfo->rtiList = NIL;
-		jqinfo->isOuterList = NIL;
+		qual_info->colNameList = NIL;
+		qual_info->colNumList = NIL;
+		qual_info->rtiList = NIL;
+		qual_info->isOuterList = NIL;
 
 		/*
 		 * Extract required data of columns involved in join clauses and append
@@ -693,7 +692,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 		 * Also, save join type in the list.
 		 */
 		if (fpinfo->joinclauses)
-			mongo_prepare_qual_info(fpinfo->joinclauses, jqinfo);
+			mongo_prepare_qual_info(fpinfo->joinclauses, qual_info);
 
 		/*
 		 * Extract required data of columns involved in the WHERE clause and
@@ -701,10 +700,10 @@ mongoGetForeignPlan(PlannerInfo *root,
 		 * executor.
 		 */
 		if (fpinfo->remote_conds)
-			mongo_prepare_qual_info(fpinfo->remote_conds, jqinfo);
+			mongo_prepare_qual_info(fpinfo->remote_conds, qual_info);
 
 		/* Destroy hash table used to get unique column info */
-		hash_destroy(jqinfo->joinExprColHash);
+		hash_destroy(qual_info->exprColHash);
 	}
 #endif
 
@@ -729,10 +728,10 @@ mongoGetForeignPlan(PlannerInfo *root,
 		fdw_private = lappend(fdw_private, column_name_list);
 		fdw_private = lappend(fdw_private, is_inner_column_list);
 		fdw_private = lappend(fdw_private, fpinfo->joinclauses);
-		fdw_private = lappend(fdw_private, jqinfo->colNameList);
-		fdw_private = lappend(fdw_private, jqinfo->colNumList);
-		fdw_private = lappend(fdw_private, jqinfo->rtiList);
-		fdw_private = lappend(fdw_private, jqinfo->isOuterList);
+		fdw_private = lappend(fdw_private, qual_info->colNameList);
+		fdw_private = lappend(fdw_private, qual_info->colNumList);
+		fdw_private = lappend(fdw_private, qual_info->rtiList);
+		fdw_private = lappend(fdw_private, qual_info->isOuterList);
 		fdw_private = lappend(fdw_private,
 							  list_make2(makeString(fpinfo->inner_relname),
 										 makeString(fpinfo->outer_relname)));
@@ -3066,7 +3065,7 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
  *		clause from each qual and process it further using mongo_check_qual().
  */
 static void
-mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo)
+mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info)
 {
 	ListCell   *lc;
 
@@ -3082,7 +3081,7 @@ mongo_prepare_qual_info(List *quals, MongoJoinQualInfo *jqinfo)
 			expr = ri->clause;
 		}
 
-		mongo_check_qual(expr, jqinfo);
+		mongo_check_qual(expr, qual_info);
 	}
 }
 #endif /* End of META_DRIVER */

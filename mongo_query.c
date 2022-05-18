@@ -97,8 +97,6 @@ static HTAB *column_info_hash(List *colname_list, List *colnum_list,
 							  List *rti_list, List *isouter_list);
 static void mongo_prepare_inner_pipeline(List *joinclause,
 										 BSON *inner_pipeline,
-										 List *colname_list,
-										 List *isouter_list,
 										 pipeline_cxt *context);
 static void mongo_append_joinclauses_to_inner_pipeline(List *joinclause,
 													   BSON *child_doc,
@@ -492,7 +490,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 
 			 /* Form equivalent join qual clauses in MongoDB */
 			mongo_prepare_inner_pipeline(joinclauses, &inner_pipeline,
-										 colname_list, isouter_list, &context);
+										 &context);
 			bsonAppendFinishArray(inner_pipeline_doc, &inner_pipeline);
 		}
 
@@ -524,11 +522,6 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			bsonAppendBool(&unwind, "preserveNullAndEmptyArrays", true);
 		bsonAppendFinishObject(&unwind_stage, &unwind);
 		bsonAppendFinishObject(&root_pipeline, &unwind_stage);
-
-		if (!bsonFinish(queryDocument))
-			ereport(ERROR,
-					(errmsg("could not create document for query"),
-					 errhint("BSON flags: %d", queryDocument->flags)));
 
 		fmstate->outerRelName = outer_relname;
 	}
@@ -1417,9 +1410,12 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
 	if (!foreign_expr_walker((Node *) expression, &glob_cxt, &loc_cxt))
 		return false;
 
-	/* Expressions examined here should be boolean, i.e. noncollatable */
-	Assert(loc_cxt.collation == InvalidOid);
-	Assert(loc_cxt.state == FDW_COLLATE_NONE);
+	/*
+	 * If the expression has a valid collation that does not arise from a
+	 * foreign var, the expression can not be sent over.
+	 */
+	if (loc_cxt.state == FDW_COLLATE_UNSAFE)
+		return false;
 
 	/* OK to evaluate on the remote server */
 	return true;
@@ -1579,7 +1575,6 @@ column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
  */
 static void
 mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
-							 List *colname_list, List *isouter_list,
 							 pipeline_cxt *context)
 {
 	BSON	   *and_query_doc = bsonCreate();
