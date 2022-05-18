@@ -60,6 +60,7 @@ typedef struct foreign_glob_cxt
 	Relids		relids;			/* relids of base relations in the underlying
 								 * scan */
 	bool		is_join_cond;	/* "true" for join relations */
+	bool		is_having_cond; /* "true" for HAVING clause condition */
 } foreign_glob_cxt;
 
 /*
@@ -134,9 +135,10 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
 
 /*
  * mongo_query_document
- *		Takes in the applicable operator expressions for relation and also the
- *		join clauses for join relation and converts these expressions and join
- *		clauses into equivalent queries in MongoDB.
+ *		Takes in the applicable operator expressions for relation, the join
+ *		clauses for join relation, and grouping targets for upper relation and
+ *		converts these expressions, join clauses, and grouping targets into
+ *		equivalent queries in MongoDB.
  *
  * For join clauses, transforms simple comparison expressions along with a
  * comparison between two vars and nested operator expressions as well.
@@ -200,6 +202,30 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  * expressions in a BSON document.  For example, simple expressions:
  * "l_shipdate >= date '1994-01-01' AND l_shipdate < date '1995-01-01'" becomes
  * "l_shipdate: { $gte: new Date(757382400000), $lt: new Date(788918400000) }".
+ *
+ * For grouping target, add $group stage on the base relation or join relation.
+ * The HAVING clause is nothing but a post $match stage.
+ *
+ * Example: Consider above table t1:
+ *
+ * SQL query:
+ *    SELECT name, SUM(age) FROM t1 GROUP BY name HAVING MIN(name) = 'xyz';
+ *
+ * Equivalent MongoDB query:
+ *
+ *     db.t1.aggregate([
+ *       {
+ *         "$group":
+ *         {
+ *           "_id": {"name": "$name"},
+ *           "v_agg0": {"$sum": "$age"},
+ *           "v_having": {"$min": "$name"}
+ *         }
+ *       },
+ *       {
+ *         "$match": {"v_having": "xyz"}
+ *       }
+ *     ])
  */
 BSON *
 mongo_query_document(ForeignScanState *scanStateNode)
@@ -225,12 +251,9 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	/* Prepare array of stages */
 	bsonAppendStartArray(queryDocument, "pipeline", &root_pipeline);
 
-	if (fmstate->isJoinRel)
+	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
-		List	   *colnum_list;
-		List	   *rti_list;
 		List	   *innerouter_relname;
-		int			natts;
 
 		joinclauses = list_nth(PrivateList, mongoFdwPrivateJoinClauseList);
 		if (joinclauses)
@@ -240,6 +263,14 @@ mongo_query_document(ForeignScanState *scanStateNode)
 									  mongoFdwPrivateJoinInnerOuterRelName);
 		inner_relname = strVal(list_nth(innerouter_relname, 0));
 		outer_relname = strVal(list_nth(innerouter_relname, 1));
+	}
+
+	if (fmstate->relType != BASE_REL)
+	{
+		List	   *colnum_list;
+		List	   *rti_list;
+		int			natts;
+
 		colname_list = list_nth(PrivateList,
 								mongoFdwPrivateJoinClauseColNameList);
 		colnum_list = list_nth(PrivateList,
@@ -433,7 +464,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	}
 
 #ifdef META_DRIVER
-	if (fmstate->isJoinRel)
+	if (fmstate->relType == JOIN_REL ||  fmstate->relType == UPPER_JOIN_REL)
 	{
 		BSON		inner_pipeline;
 		BSON		lookup_object;
@@ -463,7 +494,13 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			char	*colname = strVal(lfirst(cell1));
 			bool	 is_outer = lfirst_int(cell2);
 
-			if (is_outer)
+			/*
+			 * Ignore column name with "*" because this is not the name of any
+			 * particular column and is not allowed in the let operator.  While
+			 * deparsing the COUNT(*) aggregation operation, this column name
+			 * is added to lists to maintain the length of column information.
+			 */
+			if (is_outer && strcmp(colname, "*") != 0)
 			{
 				/*
 				 * Add prefix "v_" to column name to form variable name.  Need
@@ -534,6 +571,219 @@ mongo_query_document(ForeignScanState *scanStateNode)
 							  &match_stage);
 		bsonAppendBson(&match_stage, "$match", filter);
 		bsonAppendFinishObject(&root_pipeline, &match_stage);
+	}
+
+	/* Add $group stage for upper relation */
+	if (fmstate->relType == UPPER_JOIN_REL || fmstate->relType == UPPER_REL)
+	{
+		List 	   *func_list;
+		List 	   *agg_col_list;
+		List 	   *groupby_col_list;
+		List 	   *having_expr;
+		BSON		groupby_expr;
+		BSON		group_stage;
+		BSON		group_expr;
+		BSON		group;
+		ListCell   *cell1;
+		ListCell   *cell2;
+		ListCell   *cell3;
+		List 	   *is_having_list;
+		Index      	aggIndex = 0;
+
+		func_list = list_nth(PrivateList, mongoFdwPrivateAggType);
+		agg_col_list = list_nth(PrivateList, mongoFdwPrivateAggColList);
+		groupby_col_list = list_nth(PrivateList, mongoFdwPrivateGroupByColList);
+		having_expr = list_nth(PrivateList, mongoFdwPrivateHavingExpr);
+		is_having_list = list_nth(PrivateList, mongoFdwPrivateIsHavingList);
+
+		/* $group stage. */
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+							  &group_stage);
+		bsonAppendStartObject(&group_stage, "$group", &group);
+
+		/*
+		 * Add columns from the GROUP BY clause in the "_id" field of $group
+		 * stage.  In case of aggregation on join result, a column of the inner
+		 * table needs to be accessed by prefixing it using "Join_Result",
+		 * which is been hardcoded.
+		 */
+		if (groupby_col_list)
+		{
+			ListCell   *columnCell;
+
+			bsonAppendStartObject(&group, "_id", &groupby_expr);
+			foreach(columnCell, groupby_col_list)
+			{
+				Var		   *column = (Var *) lfirst(columnCell);
+				bool		found = false;
+				ColInfoHashKey key;
+				ColInfoHashEntry *columnInfo;
+
+				key.varNo = column->varno;
+				key.varAttno = column->varattno;
+
+				columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
+															  (void *) &key,
+															  HASH_FIND,
+															  &found);
+				if (found)
+				{
+					if (columnInfo->isOuter)
+						bsonAppendUTF8(&groupby_expr, columnInfo->colName,
+									   psprintf("$%s", columnInfo->colName));
+					else
+						bsonAppendUTF8(&groupby_expr, columnInfo->colName,
+									   psprintf("$Join_Result.%s",
+												columnInfo->colName));
+				}
+			}
+			bsonAppendFinishObject(&group, &groupby_expr); /* End "_id" */
+		}
+		else
+		{
+			/* If no GROUP BY clause then append null to the _id. */
+			bsonAppendNull(&group, "_id");
+		}
+
+		/* Add grouping operation */
+		forthree(cell1, func_list, cell2, agg_col_list, cell3, is_having_list)
+		{
+			ColInfoHashKey key;
+			ColInfoHashEntry *columnInfo;
+			bool		found = false;
+			char	   *func_name = strVal(lfirst(cell1));
+			Var		   *column = (Var *) lfirst(cell2);
+			bool	    is_having_agg = lfirst_int(cell3);
+
+			if (is_having_agg)
+				bsonAppendStartObject(&group, "v_having", &group_expr);
+			else
+				bsonAppendStartObject(&group,
+									  psprintf("AGG_RESULT_KEY%d",
+											   aggIndex++),
+									  &group_expr);
+
+			key.varNo = column->varno;
+			key.varAttno = column->varattno;
+
+			columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
+														  (void *) &key,
+														  HASH_FIND,
+														  &found);
+			/*
+			 * The aggregation operation in MongoDB other than COUNT has the
+			 * same name as PostgreSQL but COUNT needs to be performed using
+			 * the $sum operator because MongoDB doesn't have a direct $count
+			 * operator for the currently supported version (i.e. v4.4).
+			 *
+			 * There is no syntax in MongoDB to provide column names for COUNT
+			 * operation but for other supported operations, we can do so.
+			 *
+			 * In case of aggregation over the join, the resulted columns of
+			 * inner relation need to be accessed by prefixing it with
+			 * "Join_Result".
+			 */
+			if (found && strcmp(func_name, "count") != 0)
+			{
+				if (columnInfo->isOuter)
+					bsonAppendUTF8(&group_expr, psprintf("$%s", func_name),
+								   psprintf("$%s", columnInfo->colName));
+				else
+					bsonAppendUTF8(&group_expr, psprintf("$%s", func_name),
+								   psprintf("$Join_Result.%s",
+											columnInfo->colName));
+			}
+			else
+			{
+				/*
+				 * The COUNT(*) in PostgreSQL is equivalent to {$sum: 1} in the
+				 * MongoDB.
+				 */
+				bsonAppendInt32(&group_expr, psprintf("$%s", "sum"), 1);
+			}
+
+			bsonAppendFinishObject(&group, &group_expr);
+		}
+
+		bsonAppendFinishObject(&group_stage, &group);
+		bsonAppendFinishObject(&root_pipeline, &group_stage);
+
+		/* Add HAVING operation */
+		if (having_expr)
+		{
+			BSON	    match_stage;
+			BSON	   *filter = bsonCreate();
+			List	   *equalityOperatorList;
+			List	   *comparisonOperatorList;
+			ListCell   *equalityOperatorCell;
+			ListCell   *comparisonoperatorCell;
+
+			/* $match stage.  Add a filter for the HAVING clause */
+			bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+								  &match_stage);
+
+			equalityOperatorList = equality_operator_list(having_expr);
+			comparisonOperatorList = list_difference(having_expr,
+													 equalityOperatorList);
+			/* Append equality expressions to the query */
+			foreach(equalityOperatorCell, equalityOperatorList)
+			{
+				OpExpr	   *equalityOperator;
+				Const	   *constant;
+				List	   *argumentList;
+
+				equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
+				argumentList = equalityOperator->args;
+				constant = (Const *) find_argument_of_type(argumentList,
+														   T_Const);
+
+				if (constant != NULL)
+					append_constant_value(filter, "v_having", constant);
+			}
+
+			foreach(comparisonoperatorCell, comparisonOperatorList)
+			{
+				BSON		childDocument;
+				OpExpr	   *operator;
+				List	   *argumentList;
+				Const	   *constant;
+				char	   *operatorName;
+				char	   *mongoOperatorName;
+
+				/* For comparison expressions, start a sub-document */
+				bsonAppendStartObject(filter, "v_having", &childDocument);
+
+				operator = (OpExpr *) lfirst(comparisonoperatorCell);
+				argumentList = operator->args;
+				constant = (Const *) find_argument_of_type(argumentList,
+														   T_Const);
+				operatorName = get_opname(operator->opno);
+				mongoOperatorName = mongo_operator_name(operatorName);
+#ifdef META_DRIVER
+				append_constant_value(&childDocument, mongoOperatorName,
+									  constant);
+#else
+				append_constant_value(filter, mongoOperatorName, constant);
+#endif
+				bsonAppendFinishObject(filter, &childDocument);
+			}
+
+			bsonAppendBson(&match_stage, "$match", filter);
+			bsonAppendFinishObject(&root_pipeline, &match_stage);
+
+			if (!bsonFinish(filter))
+			{
+#ifdef META_DRIVER
+				ereport(ERROR,
+						(errmsg("could not create document for query"),
+						 errhint("BSON flags: %d", queryDocument->flags)));
+#else
+				ereport(ERROR,
+						(errmsg("could not create document for query"),
+						 errhint("BSON error: %d", queryDocument->err)));
+#endif
+			}
+		}
 	}
 
 	bsonAppendFinishArray(queryDocument, &root_pipeline);
@@ -1008,6 +1258,20 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 {
 	List	   *columnList = NIL;
 	ListCell   *lc;
+	RelOptInfo *scanrel;
+#if PG_VERSION_NUM >= 100000
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
+	MongoFdwRelationInfo *ofpinfo;
+#endif
+
+#if PG_VERSION_NUM >= 100000
+	scanrel = IS_UPPER_REL(foreignrel) ? fpinfo->outerrel : foreignrel;
+#else
+	scanrel = foreignrel;
+#endif
+
+	if (IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel))
+		ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
 
 	foreach(lc, scan_var_list)
 	{
@@ -1015,10 +1279,21 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 		RangeTblEntry *rte = planner_rt_fetch(var->varno, root);
 		int		    is_innerrel = false;
 
-		Assert(IsA(var, Var));
+		/*
+		 * Add aggregation target also in the needed column list.  This would
+		 * be handled in the function column_mapping_hash.
+		 */
+		if (IsA(var, Aggref))
+		{
+			columnList = list_append_unique(columnList, var);
+			continue;
+		}
+
+		if (!IsA(var, Var))
+			continue;
 
 		/* Var belongs to foreign table? */
-		if (!bms_is_member(var->varno, foreignrel->relids))
+		if (!bms_is_member(var->varno, scanrel->relids))
 			continue;
 
 		/* Is whole-row reference requested? */
@@ -1045,7 +1320,8 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 		else
 			columnList = list_append_unique(columnList, var);
 
-		if (IS_JOIN_REL(foreignrel))
+		if (IS_JOIN_REL(foreignrel) ||
+			(IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel)))
 		{
 			MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 			char	   *columnName;
@@ -1057,7 +1333,11 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 #endif
 			*column_name_list = lappend(*column_name_list,
 										makeString(columnName));
-			if (bms_is_member(var->varno, fpinfo->innerrel->relids))
+			if (IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel) &&
+				bms_is_member(var->varno, ofpinfo->innerrel->relids))
+				is_innerrel = true;
+			else if (IS_JOIN_REL(foreignrel) &&
+					 bms_is_member(var->varno, fpinfo->innerrel->relids))
 				is_innerrel = true;
 
 			*is_inner_column_list = lappend_int(*is_inner_column_list,
@@ -1209,6 +1489,11 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				OpExpr	   *oe = (OpExpr *) node;
 				char	   *oname = get_opname(oe->opno);
 
+				/* Don't support operator expression in grouping targets */
+				if (IS_UPPER_REL(glob_cxt->foreignrel) &&
+					!glob_cxt->is_having_cond)
+					return false;
+
 				/* Increment the operator expression count */
 				glob_cxt->opexprcount++;
 
@@ -1326,6 +1611,94 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				state = FDW_COLLATE_NONE;
 			}
 			break;
+#ifdef META_DRIVER
+		case T_Aggref:
+			{
+				Aggref	   *agg = (Aggref *) node;
+				ListCell   *lc;
+				const char *func_name = get_func_name(agg->aggfnoid);
+
+				/* Not safe to pushdown when not in a grouping context */
+				if (!IS_UPPER_REL(glob_cxt->foreignrel))
+					return false;
+
+				/* Only non-split aggregates are pushable. */
+				if (agg->aggsplit != AGGSPLIT_SIMPLE)
+					return false;
+
+				/*
+				 * Aggregates with the order, FILTER, VARIADIC, and DISTINCT
+				 * are not supported on MongoDB.
+				 */
+				if (agg->aggorder || agg->aggfilter || agg->aggvariadic ||
+					agg->aggdistinct)
+					return false;
+
+				if (!(strcmp(func_name, "min") == 0 ||
+					strcmp(func_name, "max") == 0 ||
+					strcmp(func_name, "sum") == 0 ||
+					strcmp(func_name, "avg") == 0 ||
+					strcmp(func_name, "count") == 0))
+					return false;
+
+				/*
+				 * Don't push down when the count is on the column.  This
+				 * restriction is due to the unavailability of syntax in the
+				 * MongoDB to provide a count of the particular column.
+				 */
+				if (!strcmp(func_name, "count") && agg->args)
+					return false;
+
+				/*
+				 * Recurse to input args. aggdirectargs, aggorder, and
+				 * aggdistinct are all present in args, so no need to check
+				 * their shippability explicitly.
+				 */
+				foreach(lc, agg->args)
+				{
+					Node	   *n = (Node *) lfirst(lc);
+
+					/* If TargetEntry, extract the expression from it. */
+					if (IsA(n, TargetEntry))
+					{
+						TargetEntry *tle = (TargetEntry *) n;
+
+						n = (Node *) tle->expr;
+					}
+
+					if (!foreign_expr_walker(n, glob_cxt, &inner_cxt))
+						return false;
+				}
+
+				/*
+				 * If aggregate's input collation is not derived from a
+				 * foreign Var, it can't be sent to remote.
+				 */
+				if (agg->inputcollid == InvalidOid)
+					 /* OK, inputs are all noncollatable */ ;
+				else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+						 agg->inputcollid != inner_cxt.collation)
+					return false;
+
+				/*
+				 * Detect whether the node is introducing a collation not
+				 * derived from a foreign Var.  (If so, we just mark it unsafe
+				 * for now rather than immediately returning false, since th
+				 * e parent node might not care.)
+				 */
+				collation = agg->aggcollid;
+				if (collation == InvalidOid)
+					state = FDW_COLLATE_NONE;
+				else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+						 collation == inner_cxt.collation)
+					state = FDW_COLLATE_SAFE;
+				else if (collation == DEFAULT_COLLATION_OID)
+					state = FDW_COLLATE_NONE;
+				else
+					state = FDW_COLLATE_UNSAFE;
+			}
+			break;
+#endif
 		default:
 
 			/*
@@ -1390,10 +1763,11 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
  */
 bool
 mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
-					  bool is_join_cond)
+					  bool is_join_cond, bool is_having_cond)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) baserel->fdw_private;
 
 	/*
 	 * Check that the expression consists of nodes that are safe to execute
@@ -1401,10 +1775,21 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
 	 */
 	glob_cxt.root = root;
 	glob_cxt.foreignrel = baserel;
-	glob_cxt.relids = baserel->relids;
+
+	/*
+	 * For an upper relation, use relids from its underneath scan relation,
+	 * because the upperrel's own relids currently aren't set to anything
+	 * meaningful by the core code.  For other relations, use their own relids.
+	 */
+	if (IS_UPPER_REL(baserel))
+		glob_cxt.relids = fpinfo->outerrel->relids;
+	else
+		glob_cxt.relids = baserel->relids;
+
 	glob_cxt.varcount = 0;
 	glob_cxt.opexprcount = 0;
 	glob_cxt.is_join_cond = is_join_cond;
+	glob_cxt.is_having_cond = is_having_cond;
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
 	if (!foreign_expr_walker((Node *) expression, &glob_cxt, &loc_cxt))
@@ -1632,5 +2017,45 @@ mongo_append_joinclauses_to_inner_pipeline(List *joinclause, BSON *child_doc,
 		mongo_append_expr(expr, child_doc, context);
 		context->arrayIndex++;
 	}
+}
+
+/*
+ * mongo_is_foreign_param
+ * 		Returns true if given expr is something we'd have to send the
+ * 		value of to the foreign server.
+ */
+bool
+mongo_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel, Expr *expr)
+{
+	if (expr == NULL)
+		return false;
+
+	switch (nodeTag(expr))
+	{
+		case T_Var:
+			{
+				/* It would have to be sent unless it's a foreign Var. */
+				Var		   *var = (Var *) expr;
+				Relids		relids;
+				MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) (baserel->fdw_private);
+
+				if (IS_UPPER_REL(baserel))
+					relids = fpinfo->outerrel->relids;
+				else
+					relids = baserel->relids;
+
+				if (bms_is_member(var->varno, relids) && var->varlevelsup == 0)
+					return false;	/* foreign Var, so not a param. */
+				else
+					return true;	/* it'd have to be a param. */
+				break;
+			}
+		case T_Param:
+			/* Params always have to be sent to the foreign server. */
+			return true;
+		default:
+			break;
+	}
+	return false;
 }
 #endif

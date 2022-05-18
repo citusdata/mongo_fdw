@@ -63,7 +63,38 @@ enum mongoFdwScanPrivateIndex
 	/* Expressions to execute remotely */
 	mongoFdwPrivateRemoteExprList,
 
+	/* Relation Type (BASE/JOIN/UPPER/UPPER_JOIN) */
+	mongoFdwPrivateRelType,
+
 	/* Join information */
+
+	/*
+	 * List of column name, attribute number, range table index, and whether
+	 * this column is of outer relation or not.
+	 *
+	 * The columns which are part of the join clauses are listed.
+	 */
+	mongoFdwPrivateJoinClauseColNameList,
+	mongoFdwPrivareJoinClauseColNumList,
+	mongoFdwPrivateJoinClauseRtiList,
+	mongoFdwPrivateJoinClauseIsOuterList,
+
+	/* Upper relation information */
+
+	/* Upper relation grouping operation name list */
+	mongoFdwPrivateAggType,
+
+	/* List of column names involved in grouping operation list */
+	mongoFdwPrivateAggColList,
+
+	/* GROUP BY clause expression */
+	mongoFdwPrivateGroupByColList,
+
+	/* Having expression */
+	mongoFdwPrivateHavingExpr,
+
+	/* Is the grouping expression part of HAVING expression or not?  */
+	mongoFdwPrivateIsHavingList,
 
 	/*
 	 * String describing join i.e. names of relations being joined and types
@@ -77,28 +108,13 @@ enum mongoFdwScanPrivateIndex
 	 * means those are part of target and restriction columns.
 	 */
 	mongoFdwPrivateColNameList,
-
 	mongoFdwPrivateColIsInnerList,
-
-	/* List of join clauses to form a pipeline */
-	mongoFdwPrivateJoinClauseList,
-
-	/*
-	 * List of column name, attribute number, range table index, and whether
-	 * this column is of outer relation or not.
-	 *
-	 * The columns which are part of the join clauses are listed.
-	 */
-	mongoFdwPrivateJoinClauseColNameList,
-
-	mongoFdwPrivareJoinClauseColNumList,
-
-	mongoFdwPrivateJoinClauseRtiList,
-
-	mongoFdwPrivateJoinClauseIsOuterList,
 
 	/* Inner and Outer relation names */
 	mongoFdwPrivateJoinInnerOuterRelName,
+
+	/* List of join clauses to form a pipeline */
+	mongoFdwPrivateJoinClauseList,
 
 	/* Join-type  */
 	mongoFdwPrivateJoinType

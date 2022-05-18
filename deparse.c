@@ -91,6 +91,66 @@ mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info)
 		case T_BoolExpr:
 			mongo_check_qual((Expr *)((BoolExpr *) node)->args, qual_info);
 			break;
+		case T_Aggref:
+			{
+				ListCell   *lc;
+				char 	   *func_name = get_func_name(((Aggref *) node)->aggfnoid);
+
+				/* Save aggregation operation name */
+				qual_info->aggTypeList = lappend(qual_info->aggTypeList,
+												 makeString(func_name));
+
+				qual_info->is_agg_column = true;
+
+				/* Save information whether this is a HAVING clause or not */
+				if (qual_info->is_having)
+					qual_info->isHavingList = lappend_int(qual_info->isHavingList,
+														  true);
+				else
+					qual_info->isHavingList = lappend_int(qual_info->isHavingList,
+														  false);
+
+				/*
+				 * The aggregation over '*' doesn't need column information.
+				 * Hence, only to maintain the length of column information
+				 * lists add dummy members into it.
+				 *
+				 * For aggregation over the column, add required information
+				 * into the column information lists.
+				 */
+				if (((Aggref *)node)->aggstar)
+				{
+					qual_info->colNameList = lappend(qual_info->colNameList,
+													 makeString("*"));
+					qual_info->colNumList = lappend_int(qual_info->colNumList,
+														0);
+					qual_info->rtiList = lappend_int(qual_info->rtiList, 0);
+					qual_info->isOuterList = lappend_int(qual_info->isOuterList,
+														 0);
+					/* Append dummy var */
+					qual_info->aggColList = lappend(qual_info->aggColList,
+													makeVar(0, 0, 0, 0, 0, 0));
+					qual_info->is_agg_column = false;
+				}
+				else
+				{
+					foreach(lc, ((Aggref *) node)->args)
+					{
+						Node	   *n = (Node *) lfirst(lc);
+
+						/* If TargetEntry, extract the expression from it */
+						if (IsA(n, TargetEntry))
+						{
+							TargetEntry *tle = (TargetEntry *) n;
+
+							n = (Node *) tle->expr;
+						}
+
+						mongo_check_qual((Expr *) n, qual_info);
+					}
+				}
+			}
+			break;
 		case T_Const:
 		case T_Param:
 			/* Nothing to do here because we are looking only for Var's */
@@ -147,7 +207,8 @@ mongo_check_op_expr(OpExpr *node, MongoRelQualInfo *qual_info)
 /*
  * mongo_check_var
  *		Check the given Var and append required information related to columns
- *		involved in qual clauses to separate lists in context.
+ *		involved in qual clauses to separate lists in context. Prepare separate
+ *		list for aggregated columns directly (not related information).
  *
  * Save required information in the form of a list in MongoRelQualInfo
  * structure.  Prepare a hash table to avoid duplication of entry if one column
@@ -187,6 +248,25 @@ mongo_check_var(Var *column, MongoRelQualInfo *qual_info)
 	key.varattno = column->varattno;
 
 	hash_search(qual_info->exprColHash, (void *)&key, HASH_ENTER, &found);
+
+	/*
+	 * Add aggregated column in the aggColList even if it's already available
+	 * in the hash table.  This is because multiple aggregation operations can
+	 * be done on the same column.  So, to maintain the same length of
+	 * aggregation functions and their columns, add each aggregation column.
+	 */
+	if (qual_info->is_agg_column)
+	{
+		qual_info->aggColList = lappend(qual_info->aggColList, column);
+		qual_info->is_agg_column = false;
+		if (found)
+			return;
+	}
+
+	/*
+	 * Don't add the duplicate column.  The Aggregated column is already taken
+	 * care of.
+	 */
 	if (found)
 		return;
 

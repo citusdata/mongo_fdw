@@ -207,6 +207,15 @@ INNER and LEFT/RIGHT OUTER joins are supported, and not the FULL OUTER,
 SEMI, and ANTI join. Moreover, only joins between two tables are pushed
 down and not when either inner or outer relation is the join itself.
 
+### AGGREGATE push-down
+mongo_fdw now also supports aggregate push-down. Push aggregates to the
+remote MongoDB server instead of fetching all of the rows and aggregating
+them locally. This gives a very good performance boost for the cases
+where aggregates can be pushed down. The push-down is currently limited
+to aggregate functions min, max, sum, avg, and count, to avoid pushing
+down the functions that are not present on the MongoDB server. The
+aggregate filters, orders, variadic and distinct are not pushed down.
+
 ### New MongoDB C Driver Support
 This enhancement is to add a new [MongoDB][1]' C driver. The current
 implementation is based on the legacy driver of MongoDB. But

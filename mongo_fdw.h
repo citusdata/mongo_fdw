@@ -179,6 +179,9 @@
 	#define mongo_list_concat(l1, l2) list_concat((l1), (l2))
 #endif
 
+/* Macro for hard-coded aggregation result key */
+#define AGG_RESULT_KEY		 				"v_agg"
+
 /*
  * We build a hash table that stores the column details.  However, a table can
  * have maximum MaxHeapAttributeNumber columns.  And since we allow join only
@@ -289,8 +292,9 @@ typedef struct MongoFdwModifyState
 	MongoFdwOptions *options;
 	AttrNumber	rowidAttno; 	/* attnum of resjunk rowid column */
 
-	/* Join information */
-	bool	    isJoinRel;		/* Is this JOIN operation? */
+	/* Join/Upper relation information */
+	uint32	    relType;		/* relation type.  Base, Join, Upper, or
+								 * Upper on join */
 	char	   *outerRelName;	/* Outer relation name */
 } MongoFdwModifyState;
 
@@ -348,12 +352,18 @@ typedef struct MongoFdwRelationInfo
 	char	   *outer_relname;
 
 	MongoFdwOptions *options;  /* Options applicable for this relation */
+
+	/* Grouping information */
+	List	   *grouped_tlist;
+	List	   *groupbyColList;
 } MongoFdwRelationInfo;
 
 /*
  * MongoRelQualInfo contains column name, varno, varattno, and its relation
- * name of columns involved in the join quals which is passed to execution
- * state through fdw_private.
+ * name of columns involved in the join quals which is passed to the execution
+ * state through fdw_private.  For upper relation, it also includes aggregate
+ * type, aggregate column name, and whether the aggregate is in target or in
+ * having clause details.
  *
  * Unlike postgres_fdw, remote query formation is done in the execution state.
  * The information, mainly the varno i.e. range table index, we get at the
@@ -362,6 +372,7 @@ typedef struct MongoFdwRelationInfo
  * required to form a MongoDB query in the planning state and passing it to the
  * executor.
  *
+ * For join relation:
  * Assume, we have the following two tables with RTI 1 and 2 respectively:
  * 			T1(a int, b int)
  * 			T2(x int, y int)
@@ -387,6 +398,26 @@ typedef struct MongoFdwRelationInfo
  *
  * To avoid duplicate entry of columns, we use a hash table having a unique
  * hash key as a set of varno and varattno.
+ *
+ * For upper relation:
+ * Assume, we have to calculate the sum of column 'a' and the average of column
+ * 'b' of the above table 'T1' where the minimum of a is greater than 1.  This
+ * can be done by the following SQL query:
+ *
+ * 			SELECT SUM(a), AVG(b) FROM T1 HAVING MIN(a) > 1;
+ *
+ * Here, there are two aggregation types SUM and MIN, and two aggregation
+ * columns i.e. 'a' and 'b'.  To differentiate between two aggregation
+ * operations, we need to save information about whether the aggregation
+ * operation is part of a target list or having clause.  So, we need to form
+ * the following three lists as a part of MongoRelQualInfo:
+ *
+ * 1. aggTypeList: List of aggregation operations
+ * 			SUM->AVG->MIN
+ * 2. aggColList: List of aggregated columns
+ * 			a->b->a
+ * 3. isHavingList: Is aggregation operation part of HAVING clause or not?
+ * 			0->0->1
  */
 typedef struct MongoRelQualInfo
 {
@@ -398,6 +429,12 @@ typedef struct MongoRelQualInfo
 	List	   *rtiList;
 	List	   *isOuterList;
 	struct HTAB *exprColHash;
+	/* For upper-relation */
+	bool		is_agg_column; /* is column aggregated or not? */
+	bool		is_having;	   /* is it part of HAVING clause or not? */
+	List	   *aggTypeList;
+	List	   *aggColList;
+	List	   *isHavingList;
 } MongoRelQualInfo;
 
 typedef struct ColumnHashKey
@@ -405,6 +442,19 @@ typedef struct ColumnHashKey
 	int		varno;
 	int		varattno;
 } ColumnHashKey;
+
+/*
+ * Indexes for relation type. The RelOptKind could be used but there is no
+ * kind called UPPER_JOIN_REL. The UPPER_JOIN_REL is nothing but UPPER_REL but
+ * for our use case, we are differentiating these two types.
+ */
+typedef enum MongoFdwRelType
+{
+	BASE_REL,
+	JOIN_REL,
+	UPPER_REL,
+	UPPER_JOIN_REL
+} MongoFdwRelType;
 
 /* options.c */
 extern MongoFdwOptions *mongo_get_options(Oid foreignTableId);
@@ -425,7 +475,10 @@ extern List *mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 								   List *scan_var_list, List **colNameList,
 								   List **colIsInnerList );
 extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-								  Expr *expression, bool is_join_cond);
+								  Expr *expression, bool is_join_cond,
+								  bool is_having_cond);
+extern bool mongo_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
+								   Expr *expr);
 
 /* Function declarations for foreign data wrapper */
 extern Datum mongo_fdw_handler(PG_FUNCTION_ARGS);

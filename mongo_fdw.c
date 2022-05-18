@@ -51,6 +51,7 @@
 #include "utils/jsonfuncs.h"
 #endif
 #include "utils/rel.h"
+#include "utils/selfuncs.h"
 #include "utils/syscache.h"
 
 /* Declarations for dynamic loading */
@@ -138,6 +139,18 @@ static void mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 									 RelOptInfo *innerrel,
 									 JoinType jointype,
 									 JoinPathExtraData *extra);
+#if PG_VERSION_NUM >= 110000
+static void mongoGetForeignUpperPaths(PlannerInfo *root,
+									  UpperRelationKind stage,
+									  RelOptInfo *input_rel,
+									  RelOptInfo *output_rel,
+									  void *extra);
+#else
+static void mongoGetForeignUpperPaths(PlannerInfo *root,
+									  UpperRelationKind stage,
+									  RelOptInfo *input_rel,
+									  RelOptInfo *output_rel);
+#endif
 #endif
 
 /*
@@ -146,13 +159,13 @@ static void mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 static double foreign_table_document_count(Oid foreignTableId);
 static HTAB *column_mapping_hash(Oid foreignTableId, List *columnList,
 								 List *colNameList, List *colIsInnerList,
-								 bool isJoin);
+								 uint32 relType);
 static void fill_tuple_slot(const BSON *bsonDocument,
 							const char *bsonDocumentKey,
 							HTAB *columnMappingHash,
 							Datum *columnValues,
 							bool *columnNulls,
-							bool isJoin);
+							uint32 relType);
 static bool column_types_compatible(BSON_TYPE bsonType, Oid columnTypeId);
 static Datum column_value_array(BSON_ITERATOR *bsonIterator, Oid valueTypeId);
 static Datum column_value(BSON_ITERATOR *bsonIterator,
@@ -172,6 +185,21 @@ static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 								  RelOptInfo *innerrel,
 								  JoinPathExtraData *extra);
 static void mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info);
+#if PG_VERSION_NUM >= 110000
+static bool mongo_foreign_grouping_ok(PlannerInfo *root,
+									  RelOptInfo *grouped_rel,
+									  Node *havingQual);
+static void mongo_add_foreign_grouping_paths(PlannerInfo *root,
+											 RelOptInfo *input_rel,
+											 RelOptInfo *grouped_rel,
+											 GroupPathExtraData *extra);
+#else
+static bool mongo_foreign_grouping_ok(PlannerInfo *root,
+									  RelOptInfo *grouped_rel);
+static void mongo_add_foreign_grouping_paths(PlannerInfo *root,
+											 RelOptInfo *input_rel,
+											 RelOptInfo *grouped_rel);
+#endif
 #endif
 #ifndef META_DRIVER
 static const char *escape_json_string(const char *string);
@@ -256,6 +284,9 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 #ifdef META_DRIVER
 	/* Support function for join push-down */
 	fdwRoutine->GetForeignJoinPaths = mongoGetForeignJoinPaths;
+
+	/* Support functions for upper relation push-down */
+	fdwRoutine->GetForeignUpperPaths = mongoGetForeignUpperPaths;
 #endif
 
 	PG_RETURN_POINTER(fdwRoutine);
@@ -309,7 +340,7 @@ mongoGetForeignRelSize(PlannerInfo *root,
 		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
 
 		if (IsA(ri->clause, OpExpr) &&
-			mongo_is_foreign_expr(root, baserel, ri->clause, false))
+			mongo_is_foreign_expr(root, baserel, ri->clause, false, false))
 			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
 		else
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
@@ -506,8 +537,11 @@ mongoGetForeignPlan(PlannerInfo *root,
 	List	   *fdw_scan_tlist = NIL;
 	List	   *column_name_list = NIL;
 	List	   *is_inner_column_list = NIL;
+	List	   *quals = NIL;
+	MongoFdwRelType mongofdwreltype;
 #ifdef META_DRIVER
 	MongoRelQualInfo *qual_info;
+	MongoFdwRelationInfo *ofpinfo;
 #endif
 
 	/* Set scan relation id */
@@ -515,7 +549,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 		scan_relid = foreignrel->relid;
 	else
 	{
-		 /* Join relation - set scan_relid to 0. */
+		 /* Join/Upper relation - set scan_relid to 0. */
 		scan_relid = 0;
 
 		Assert(!restrictionClauses);
@@ -539,8 +573,12 @@ mongoGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
-	scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
-									PVC_RECURSE_PLACEHOLDERS);
+	if (IS_UPPER_REL(foreignrel))
+		scan_var_list = pull_var_clause((Node *) fpinfo->grouped_tlist,
+										PVC_RECURSE_AGGREGATES);
+	else
+		scan_var_list = pull_var_clause((Node *) foreignrel->reltarget->exprs,
+										PVC_RECURSE_PLACEHOLDERS);
 
 	/* System attributes are not allowed. */
 	foreach(lc, scan_var_list)
@@ -587,7 +625,8 @@ mongoGetForeignPlan(PlannerInfo *root,
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
 		else if (IsA(rinfo->clause, OpExpr) &&
-				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause, false))
+				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause, false,
+									   false))
 			remote_exprs = lappend(remote_exprs, rinfo->clause);
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);
@@ -595,9 +634,14 @@ mongoGetForeignPlan(PlannerInfo *root,
 
 	/* Add local expression Var nodes to scan_var_list. */
 	scan_var_list = list_concat_unique(NIL, scan_var_list);
-	scan_var_list = list_concat_unique(scan_var_list,
-									   pull_var_clause((Node *) local_exprs,
-													   PVC_RECURSE_PLACEHOLDERS));
+	if (IS_UPPER_REL(foreignrel))
+		scan_var_list = list_concat_unique(scan_var_list,
+										   pull_var_clause((Node *) local_exprs,
+														   PVC_RECURSE_AGGREGATES));
+	else
+		scan_var_list = list_concat_unique(scan_var_list,
+										   pull_var_clause((Node *) local_exprs,
+														   PVC_RECURSE_PLACEHOLDERS));
 
 	if (IS_JOIN_REL(foreignrel))
 	{
@@ -655,63 +699,162 @@ mongoGetForeignPlan(PlannerInfo *root,
 												best_path->path.parallel_safe);
 		}
 	}
+	else if (IS_UPPER_REL(foreignrel))
+	{
+		/*
+		 * scan_var_list should have expressions and not TargetEntry nodes.
+		 * However, grouped_tlist created has TLEs, and thus retrieve them into
+		 * scan_var_list.
+		 */
+		scan_var_list = list_concat_unique(NIL,
+										   get_tlist_exprs(fpinfo->grouped_tlist,
+														   false));
+
+		/*
+		 * The targetlist computed while assessing push-down safety represents
+		 * the result we expect from the foreign server.
+		 */
+		fdw_scan_tlist = fpinfo->grouped_tlist;
+		local_exprs = extract_actual_clauses(fpinfo->local_conds, false);
+	}
 
 	/* Form column list required for query execution from scan_var_list. */
 	columnList = mongo_get_column_list(root, foreignrel, scan_var_list,
 									   &column_name_list,
 									   &is_inner_column_list);
 
+
+	/*
+	 * Identify the relation type.  We can have a simple base rel, join rel,
+	 * upper rel, and upper rel with join rel inside.  Find out that.
+	 */
+	if (IS_UPPER_REL(foreignrel) && IS_JOIN_REL(fpinfo->outerrel))
+		mongofdwreltype = UPPER_JOIN_REL;
+	else if (IS_UPPER_REL(foreignrel))
+		mongofdwreltype = UPPER_REL;
+	else if (IS_JOIN_REL(foreignrel))
+		mongofdwreltype = JOIN_REL;
+	else
+		mongofdwreltype = BASE_REL;
+
 #ifdef META_DRIVER
 	/*
-	 * Prepare separate lists of column names, varno, varattno, and whether it
-	 * is part of the outer relation or not.  This information would be useful
+	 * Prepare separate lists of information.  This information would be useful
 	 * at the time of execution to prepare the MongoDB query.
 	 */
-	if (IS_JOIN_REL(foreignrel))
+	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
+		ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
+
 		/*
 		 * We use MongoRelQualInfo to pass various information related to
-		 * joining quals to fdw_private which is used to form equivalent
-		 * MongoDB query during the execution phase.
+		 * joining quals and grouping target to fdw_private which is used to
+		 * form equivalent MongoDB query during the execution phase.
 		 */
 		qual_info = (MongoRelQualInfo *) palloc(sizeof(MongoRelQualInfo));
 
 		qual_info->root = root;
-		qual_info->foreignRel = foreignrel;
-		qual_info->outerRelids = fpinfo->outerrel->relids;
+
+		/*
+		 * Save foreign relation and relid's of an outer relation involved in
+		 * the join depending on the relation type.
+		 */
+		if (mongofdwreltype == UPPER_JOIN_REL)
+		{
+			/* For aggregation over join relation */
+			qual_info->foreignRel = fpinfo->outerrel;
+			qual_info->outerRelids = ofpinfo->outerrel->relids;
+		}
+		else if (mongofdwreltype == UPPER_REL)
+		{
+			/* For aggregation relation */
+			qual_info->foreignRel = fpinfo->outerrel;
+			qual_info->outerRelids = fpinfo->outerrel->relids;
+		}
+		else
+		{
+			/* For baserel */
+			Assert(mongofdwreltype == JOIN_REL);
+			qual_info->foreignRel = foreignrel;
+			qual_info->outerRelids = fpinfo->outerrel->relids;
+		}
 		qual_info->exprColHash = NULL;
-		/* Initialize all lists */
 		qual_info->colNameList = NIL;
 		qual_info->colNumList = NIL;
 		qual_info->rtiList = NIL;
 		qual_info->isOuterList = NIL;
+		qual_info->is_having = false;
+		qual_info->is_agg_column = false;
+		qual_info->aggTypeList = NIL;
+		qual_info->aggColList = NIL;
+		qual_info->isHavingList = NIL;
 
 		/*
 		 * Extract required data of columns involved in join clauses and append
 		 * it into the various lists required to pass it to the executor.
-		 * Also, save join type in the list.
+		 *
+		 * Check and extract data for outer relation and its join clauses in
+		 * case of aggregation on top of the join operation.
 		 */
-		if (fpinfo->joinclauses)
+		if (IS_JOIN_REL(foreignrel) && fpinfo->joinclauses)
 			mongo_prepare_qual_info(fpinfo->joinclauses, qual_info);
+		else if (IS_JOIN_REL(fpinfo->outerrel) && ofpinfo->joinclauses)
+			mongo_prepare_qual_info(ofpinfo->joinclauses, qual_info);
 
 		/*
 		 * Extract required data of columns involved in the WHERE clause and
 		 * append it into the various lists required to pass it to the
 		 * executor.
 		 */
-		if (fpinfo->remote_conds)
+		if (IS_JOIN_REL(foreignrel) && fpinfo->remote_conds)
 			mongo_prepare_qual_info(fpinfo->remote_conds, qual_info);
+
+		/* Gather required information of an upper relation */
+		if (IS_UPPER_REL(foreignrel))
+		{
+			/* Extract remote expressions from the remote conditions */
+			foreach(lc, ofpinfo->remote_conds)
+			{
+				RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+				Assert(IsA(rinfo, RestrictInfo));
+				quals = lappend(quals, rinfo->clause);
+			}
+
+			/* Extract WHERE clause column information */
+			mongo_prepare_qual_info(quals, qual_info);
+
+			/*
+			 * Extract grouping target information i.e grouping operation and
+			 * grouping clause.
+			 */
+			mongo_prepare_qual_info(scan_var_list, qual_info);
+
+			/* Extract HAVING clause information */
+			if (fpinfo->remote_conds)
+			{
+				qual_info->is_having = true;
+				mongo_prepare_qual_info(fpinfo->remote_conds, qual_info);
+			}
+		}
+		else
+			quals = remote_exprs;
 
 		/* Destroy hash table used to get unique column info */
 		hash_destroy(qual_info->exprColHash);
 	}
+	else
 #endif
+		quals = remote_exprs;
 
 	/*
 	 * Build the fdw_private list that will be available to the executor.
 	 * Items in the list must match enum mongoFdwScanPrivateIndex.
 	 */
-	fdw_private = list_make2(columnList, remote_exprs);
+	fdw_private = list_make2(columnList, quals);
+
+	/* Append relation type */
+	fdw_private = lappend(fdw_private, makeInteger(mongofdwreltype));
 
 #ifdef META_DRIVER
 	/*
@@ -721,21 +864,38 @@ mongoGetForeignPlan(PlannerInfo *root,
 	 * information required to form a MongoDB query in the planning state and
 	 * passing it to the execution state through fdw_private.
 	 */
-	if (IS_JOIN_REL(foreignrel))
+	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
-		fdw_private = lappend(fdw_private,
-							  makeString(fpinfo->relation_name->data));
-		fdw_private = lappend(fdw_private, column_name_list);
-		fdw_private = lappend(fdw_private, is_inner_column_list);
-		fdw_private = lappend(fdw_private, fpinfo->joinclauses);
 		fdw_private = lappend(fdw_private, qual_info->colNameList);
 		fdw_private = lappend(fdw_private, qual_info->colNumList);
 		fdw_private = lappend(fdw_private, qual_info->rtiList);
 		fdw_private = lappend(fdw_private, qual_info->isOuterList);
+		fdw_private = lappend(fdw_private, qual_info->aggTypeList);
+		fdw_private = lappend(fdw_private, qual_info->aggColList);
+		fdw_private = lappend(fdw_private, ofpinfo->groupbyColList);
+		fdw_private = lappend(fdw_private, remote_exprs);
+		fdw_private = lappend(fdw_private, qual_info->isHavingList);
 		fdw_private = lappend(fdw_private,
-							  list_make2(makeString(fpinfo->inner_relname),
-										 makeString(fpinfo->outer_relname)));
-		fdw_private = lappend(fdw_private, makeInteger(fpinfo->jointype));
+							  makeString(fpinfo->relation_name->data));
+		fdw_private = lappend(fdw_private, column_name_list);
+		fdw_private = lappend(fdw_private, is_inner_column_list);
+
+		if (mongofdwreltype == JOIN_REL)
+		{
+			fdw_private = lappend(fdw_private,
+								  list_make2(makeString(fpinfo->inner_relname),
+											 makeString(fpinfo->outer_relname)));
+			fdw_private = lappend(fdw_private, fpinfo->joinclauses);
+			fdw_private = lappend(fdw_private, makeInteger(fpinfo->jointype));
+		}
+		else if (mongofdwreltype == UPPER_JOIN_REL)
+		{
+			fdw_private = lappend(fdw_private,
+								  list_make2(makeString(ofpinfo->inner_relname),
+											 makeString(ofpinfo->outer_relname)));
+			fdw_private = lappend(fdw_private, ofpinfo->joinclauses);
+			fdw_private = lappend(fdw_private, makeInteger(ofpinfo->jointype));
+		}
 	}
 #endif
 
@@ -858,15 +1018,10 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 	 * member RTE as a representative; we would get the same result from any.
 	 */
 	if (fsplan->scan.scanrelid > 0)
-	{
 		rtindex = fsplan->scan.scanrelid;
-		fmstate->isJoinRel = false;
-	}
 	else
-	{
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
-		fmstate->isJoinRel = true;
-	}
+
 	rte = rt_fetch(rtindex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
@@ -885,8 +1040,9 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 	mongoConnection = mongo_get_connection(server, user, options);
 
 	columnList = list_nth(fdw_private, mongoFdwPrivateColumnList);
+	fmstate->relType = intVal(list_nth(fdw_private, mongoFdwPrivateRelType));
 
-	if (fmstate->isJoinRel == true)
+	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
 		colNameList = list_nth(fdw_private, mongoFdwPrivateColNameList);
 		colIsInnerList = list_nth(fdw_private, mongoFdwPrivateColIsInnerList);
@@ -894,7 +1050,7 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 
 	columnMappingHash = column_mapping_hash(rte->relid, columnList,
 											colNameList, colIsInnerList,
-											fmstate->isJoinRel);
+											fmstate->relType);
 
 	/* Create and set foreign execution state */
 	fmstate->columnMappingHash = columnMappingHash;
@@ -943,7 +1099,8 @@ mongoIterateForeignScan(ForeignScanState *node)
 		 * Decide input collection to the aggregation.  In case of join, outer
 		 * relation should be given as input collection to the aggregation.
 		 */
-		if (fmstate->isJoinRel)
+		if (fmstate->relType == JOIN_REL ||
+			fmstate->relType == UPPER_JOIN_REL)
 			collectionName = fmstate->outerRelName;
 		else
 			collectionName = fmstate->options->collectionName;
@@ -975,7 +1132,7 @@ mongoIterateForeignScan(ForeignScanState *node)
 		const char *bsonDocumentKey = NULL; /* Top level document */
 
 		fill_tuple_slot(bsonDocument, bsonDocumentKey, columnMappingHash,
-						columnValues, columnNulls, fmstate->isJoinRel);
+						columnValues, columnNulls, fmstate->relType);
 
 		ExecStoreVirtualTuple(tupleSlot);
 	}
@@ -1586,13 +1743,14 @@ foreign_table_document_count(Oid foreignTableId)
  */
 static HTAB *
 column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
-					List *colIsInnerList, bool isJoin)
+					List *colIsInnerList, uint32 relType)
 {
 	ListCell   *columnCell;
 	HTAB	   *columnMappingHash;
 	HASHCTL		hashInfo;
 	uint32		attnum = 0;
 	Index      	listIndex = 0;
+	Index       aggIndex = 0;
 
 	memset(&hashInfo, 0, sizeof(hashInfo));
 	hashInfo.keysize = NAMEDATALEN;
@@ -1613,7 +1771,7 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 		bool		handleFound = false;
 		void	   *hashKey;
 
-		if (isJoin)
+		if (relType == JOIN_REL)
 		{
 			int			is_innerrel = list_nth_int(colIsInnerList, listIndex);
 
@@ -1642,6 +1800,44 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 			else
 				hashKey = (void *) columnName;
 		}
+
+		/*
+		 * In MongoDB, columns involved in upper result-set named as
+		 * "_id.column_name_variable" not the actual column names.  Use this as
+		 * hashKey to match the bson key we get at the time of fetching the
+		 * column values.
+		 *
+		 * Use the hard-coded string v_agg* to get the aggregation result.
+		 * This same name needs to be given as an aggregation result name while
+		 * building the remote query.
+		 */
+		else if (relType == UPPER_REL || relType == UPPER_JOIN_REL)
+		{
+			if (IsA(column, Var))
+			{
+				if (relType == UPPER_REL)
+				{
+#if PG_VERSION_NUM < 110000
+					columnName = get_relid_attribute_name(foreignTableId,
+														  column->varattno);
+#else
+					columnName = get_attname(foreignTableId, column->varattno,
+											 false);
+#endif
+				}
+				else
+					columnName = strVal(list_nth(colNameList, listIndex++));
+
+				/*
+				 * Keep variable name same as a column name.  Use the same name
+				 * while building the MongoDB query in the mongo_query_document
+				 * function.
+				 */
+				hashKey = psprintf("_id.%s", columnName);
+			}
+			else
+				hashKey = psprintf("AGG_RESULT_KEY%d", aggIndex++);
+		}
 		else
 		{
 #if PG_VERSION_NUM < 110000
@@ -1661,10 +1857,10 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 
 		/*
 		 * Save attribute number of the current column in the resulting tuple.
-		 * For join relation, it is continuously increasing integers starting
-		 * from 0, and for simple relation, it's varattno.
+		 * For join/upper relation, it is continuously increasing integers
+		 * starting from 0, and for simple relation, it's varattno.
 		 */
-		if(isJoin)
+		if (relType != BASE_REL)
 		{
 			columnMapping->columnIndex = attnum;
 			attnum++;
@@ -1673,9 +1869,21 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 			columnMapping->columnIndex = column->varattno - 1;
 
 		/* Save other information */
-		columnMapping->columnTypeId = column->vartype;
-		columnMapping->columnTypeMod = column->vartypmod;
-		columnMapping->columnArrayTypeId = get_element_type(column->vartype);
+		if ((relType == UPPER_REL || relType == UPPER_JOIN_REL) &&
+			!strncmp(hashKey, "AGG_RESULT_KEY", 5))
+		{
+			Aggref		   *agg = (Aggref *) lfirst(columnCell);
+
+			columnMapping->columnTypeId = agg->aggtype;
+			columnMapping->columnTypeMod = agg->aggcollid;
+			columnMapping->columnArrayTypeId = InvalidOid;
+		}
+		else
+		{
+			columnMapping->columnTypeId = column->vartype;
+			columnMapping->columnTypeMod = column->vartypmod;
+			columnMapping->columnArrayTypeId = get_element_type(column->vartype);
+		}
 	}
 
 	return columnMappingHash;
@@ -1694,7 +1902,7 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 static void
 fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 				HTAB *columnMappingHash, Datum *columnValues,
-				bool *columnNulls, bool isJoin)
+				bool *columnNulls, uint32 relType)
 {
 	ColumnMapping *columnMapping;
 	bool		handleFound = false;
@@ -1779,6 +1987,10 @@ fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		const char *bsonFullKey;
 		void	   *hashKey;
 		int32		attnum;
+		bool		is_agg = false;
+
+		if (!strncmp(bsonKey, "AGG_RESULT_KEY", 5) && bsonType == BSON_TYPE_INT32)
+			is_agg  = true;
 
 		columnMapping = NULL;
 		if (bsonDocumentKey != NULL)
@@ -1817,17 +2029,17 @@ fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 
 				bsonIterSubObject(&bsonIterator, &subObject);
 				fill_tuple_slot(&subObject, bsonFullKey, columnMappingHash,
-								columnValues, columnNulls, isJoin);
+								columnValues, columnNulls, relType);
 				continue;
 			}
 		}
 
 		/* If no corresponding column or null BSON value, continue */
-		if (columnMapping == NULL || bsonType == BSON_TYPE_NULL)
+		if (!is_agg && (columnMapping == NULL || bsonType == BSON_TYPE_NULL))
 			continue;
 
 		/* Check if columns have compatible types */
-		if (OidIsValid(columnArrayTypeId) && bsonType == BSON_TYPE_ARRAY)
+		if ((OidIsValid(columnArrayTypeId) && bsonType == BSON_TYPE_ARRAY))
 			compatibleTypes = true;
 		else
 			compatibleTypes = column_types_compatible(bsonType, columnTypeId);
@@ -1836,7 +2048,8 @@ fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		if (!compatibleTypes)
 			continue;
 
-		attnum = columnMapping->columnIndex;
+		if (columnMapping != NULL)
+			attnum = columnMapping->columnIndex;
 
 		/* Fill in corresponding column value and null flag */
 		if (OidIsValid(columnArrayTypeId))
@@ -2567,7 +2780,7 @@ mongo_acquire_sample_rows(Relation relation,
 	mongoCursor = mongoCursorCreate(mongoConnection, options->svr_database,
 									options->collectionName, queryDocument);
 	columnMappingHash = column_mapping_hash(foreignTableId, columnList, NIL,
-											NIL, false);
+											NIL, BASE_REL);
 
 	/*
 	 * Use per-tuple memory context to prevent leak of memory used to read
@@ -2610,7 +2823,7 @@ mongo_acquire_sample_rows(Relation relation,
 			MemoryContextSwitchTo(tupleContext);
 
 			fill_tuple_slot(bsonDocument, bsonDocumentKey, columnMappingHash,
-							columnValues, columnNulls, false);
+							columnValues, columnNulls, BASE_REL);
 
 			MemoryContextSwitchTo(oldContext);
 		}
@@ -2951,7 +3164,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 		bool		is_remote_clause = mongo_is_foreign_expr(root,
 															 joinrel,
 															 rinfo->clause,
-															 true);
+															 true,
+															 false);
 
 		if (IS_OUTER_JOIN(jointype) &&
 			!RINFO_IS_PUSHED_DOWN(rinfo, joinrel->relids))
@@ -3061,7 +3275,7 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 
 /*
  * mongo_prepare_qual_info
- *		Gather information of columns involved in the join quals by extracting
+ *		Gather information of columns involved in the quals by extracting
  *		clause from each qual and process it further using mongo_check_qual().
  */
 static void
@@ -3083,6 +3297,401 @@ mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info)
 
 		mongo_check_qual(expr, qual_info);
 	}
+}
+
+/*
+ * mongo_foreign_grouping_ok
+ * 		Assess whether the aggregation, grouping and having operations can
+ * 		be pushed down to the foreign server.  As a side effect, save
+ * 		information we obtain in this function to MongoFdwRelationInfo of
+ * 		the input relation.
+ */
+#if PG_VERSION_NUM >= 110000
+static bool
+mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
+						  Node *havingQual)
+#else
+static bool
+mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
+#endif
+{
+	Query	   *query = root->parse;
+#if PG_VERSION_NUM >= 110000
+	PathTarget *grouping_target = grouped_rel->reltarget;
+#else
+	PathTarget *grouping_target = root->upper_targets[UPPERREL_GROUP_AGG];
+#endif
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) grouped_rel->fdw_private;
+	MongoFdwRelationInfo *ofpinfo;
+	ListCell   *lc;
+	int			i;
+	List	   *tlist = NIL;
+
+	/* Grouping Sets are not pushable */
+	if (query->groupingSets)
+		return false;
+
+	/* Get the fpinfo of the underlying scan relation. */
+	ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
+
+	/*
+	 * If underneath input relation has any local conditions, those conditions
+	 * are required to be applied before performing aggregation.  Hence the
+	 * aggregate cannot be pushed down.
+	 */
+	if (ofpinfo->local_conds)
+		return false;
+
+	/*
+	 * Evaluate grouping targets and check whether they are safe to push down
+	 * to the foreign side.  All GROUP BY expressions will be part of the
+	 * grouping target and thus there is no need to evaluate them separately.
+	 * While doing so, add required expressions into the target list which can
+	 * then be used to pass to a foreign server.
+	 */
+	i = 0;
+	foreach(lc, grouping_target->exprs)
+	{
+		Expr	   *expr = (Expr *) lfirst(lc);
+		Index		sgref = get_pathtarget_sortgroupref(grouping_target, i);
+		ListCell   *l;
+
+		/* Check whether this expression is part of GROUP BY clause */
+		if (sgref && get_sortgroupref_clause_noerr(sgref, query->groupClause))
+		{
+			TargetEntry *tle;
+
+			/*
+			 * If any of the GROUP BY expression is not shippable we can not
+			 * push down aggregation to the foreign server.
+			 */
+			if (!mongo_is_foreign_expr(root, grouped_rel, expr, false, false))
+				return false;
+
+			/* Add column in group by column list */
+			ofpinfo->groupbyColList = lappend(ofpinfo->groupbyColList, expr);
+
+			/*
+			 * If it would be a foreign param, we can't put it into the tlist,
+			 * so we have to fail.
+			 */
+			if (mongo_is_foreign_param(root, grouped_rel, expr))
+				return false;
+
+			/*
+			 * Pushable, so add to tlist.  We need to create a TLE for this
+			 * expression and apply the sortgroupref to it.  We cannot use
+			 * add_to_flat_tlist() here because that avoids making duplicate
+			 * entries in the tlist.  If there are duplicate entries with
+			 * distinct sortgrouprefs, we have to duplicate that situation in
+			 * the output tlist.
+			 */
+			tle = makeTargetEntry(expr, list_length(tlist) + 1, NULL, false);
+			tle->ressortgroupref = sgref;
+			tlist = lappend(tlist, tle);
+		}
+		else
+		{
+			/* Check entire expression whether it is pushable or not */
+			if (mongo_is_foreign_expr(root, grouped_rel, expr, false, false) &&
+				!mongo_is_foreign_param(root, grouped_rel, expr))
+			{
+				/* Pushable, add to tlist */
+				tlist = add_to_flat_tlist(tlist, list_make1(expr));
+			}
+			else
+			{
+				List	   *aggvars;
+
+				/* Not matched exactly, pull the var with aggregates then */
+				aggvars = pull_var_clause((Node *) expr,
+										  PVC_INCLUDE_AGGREGATES);
+
+				/*
+				 * If any aggregate expression is not shippable, then we
+				 * cannot push down aggregation to the foreign server.
+				 */
+				if (!mongo_is_foreign_expr(root, grouped_rel, (Expr *) aggvars,
+										   false, false))
+					return false;
+
+				/*
+				 * Add aggregates, if any, into the targetlist.  Plain var
+				 * nodes should be either same as some GROUP BY expression or
+				 * part of some GROUP BY expression. In later case, the query
+				 * cannot refer plain var nodes without the surrounding
+				 * expression.  In both the cases, they are already part of
+				 * the targetlist and thus no need to add them again.  In fact
+				 * adding pulled plain var nodes in SELECT clause will cause
+				 * an error on the foreign server if they are not same as some
+				 * GROUP BY expression.
+				 */
+				foreach(l, aggvars)
+				{
+					Expr	   *expr = (Expr *) lfirst(l);
+
+					if (IsA(expr, Aggref))
+						tlist = add_to_flat_tlist(tlist, list_make1(expr));
+				}
+			}
+		}
+
+		i++;
+	}
+
+	/*
+	 * Classify the pushable and non-pushable having clauses and save them in
+	 * remote_conds and local_conds of the grouped rel's fpinfo.
+	 */
+#if PG_VERSION_NUM >= 110000
+	if (havingQual)
+	{
+		ListCell   *lc;
+
+		foreach(lc, (List *) havingQual)
+#else
+	if (root->hasHavingQual && query->havingQual)
+	{
+		ListCell	*lc;
+		foreach(lc, (List *) query->havingQual)
+#endif
+		{
+			Expr	   *expr = (Expr *) lfirst(lc);
+			RestrictInfo *rinfo;
+
+			/*
+			 * Currently, the core code doesn't wrap havingQuals in
+			 * RestrictInfos, so we must make our own.
+			 */
+			Assert(!IsA(expr, RestrictInfo));
+#if PG_VERSION_NUM >= 140000
+			rinfo = make_restrictinfo(root,
+									  expr,
+									  true,
+									  false,
+									  false,
+									  root->qual_security_level,
+									  grouped_rel->relids,
+									  NULL,
+									  NULL);
+#else
+			rinfo = make_restrictinfo(expr,
+									  true,
+									  false,
+									  false,
+									  root->qual_security_level,
+									  grouped_rel->relids,
+									  NULL,
+									  NULL);
+#endif
+
+			if (!mongo_is_foreign_expr(root, grouped_rel, expr, false, true))
+				fpinfo->local_conds = lappend(fpinfo->local_conds, rinfo);
+			else
+				fpinfo->remote_conds = lappend(fpinfo->remote_conds, rinfo);
+		}
+	}
+
+	/*
+	 * If there are any local conditions, pull Vars and aggregates from it and
+	 * check whether they are safe to pushdown or not.
+	 */
+	if (fpinfo->local_conds)
+	{
+		List	   *aggvars = NIL;
+		ListCell   *lc;
+
+		foreach(lc, fpinfo->local_conds)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+
+			aggvars = list_concat(aggvars,
+								  pull_var_clause((Node *) rinfo->clause,
+												  PVC_INCLUDE_AGGREGATES));
+		}
+
+		foreach(lc, aggvars)
+		{
+			Expr	   *expr = (Expr *) lfirst(lc);
+
+			/*
+			 * If aggregates within local conditions are not safe to push
+			 * down, then we cannot push down the query.  Vars are already
+			 * part of GROUP BY clause which are checked above, so no need to
+			 * access them again here.
+			 */
+			if (IsA(expr, Aggref))
+			{
+				if (!mongo_is_foreign_expr(root, grouped_rel, expr, true,
+										   false))
+					return false;
+
+				tlist = add_to_flat_tlist(tlist, list_make1(expr));
+			}
+		}
+	}
+
+	/* Store generated targetlist */
+	fpinfo->grouped_tlist = tlist;
+
+	/* Safe to pushdown */
+	fpinfo->pushdown_safe = true;
+
+	/*
+	 * Set the string describing this grouped relation to be used in EXPLAIN
+	 * output of corresponding ForeignScan.
+	 */
+	fpinfo->relation_name = makeStringInfo();
+	appendStringInfo(fpinfo->relation_name, "Aggregate on (%s)",
+					 ofpinfo->relation_name->data);
+
+	return true;
+}
+
+/*
+ * mongoGetForeignUpperPaths
+ *		Add paths for post-join operations like aggregation, grouping etc. if
+ *		corresponding operations are safe to push down.
+ *
+ * Right now, we only support aggregate, grouping and having clause pushdown.
+ */
+#if PG_VERSION_NUM >= 110000
+static void
+mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
+						  RelOptInfo *input_rel, RelOptInfo *output_rel,
+						  void *extra)
+#else
+static void
+mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
+						  RelOptInfo *input_rel, RelOptInfo *output_rel)
+#endif
+{
+	MongoFdwRelationInfo *fpinfo;
+
+	/*
+	 * If input rel is not safe to pushdown, then simply return as we cannot
+	 * perform any post-join operations on the foreign server.
+	 */
+	if (!input_rel->fdw_private ||
+		!((MongoFdwRelationInfo *) input_rel->fdw_private)->pushdown_safe)
+		return;
+
+	/* Ignore stages we don't support; and skip any duplicate calls. */
+	if (stage != UPPERREL_GROUP_AGG || output_rel->fdw_private)
+		return;
+
+	fpinfo = (MongoFdwRelationInfo *) palloc0(sizeof(MongoFdwRelationInfo));
+	fpinfo->pushdown_safe = false;
+	output_rel->fdw_private = fpinfo;
+
+#if PG_VERSION_NUM >= 110000
+	mongo_add_foreign_grouping_paths(root, input_rel, output_rel,
+									 (GroupPathExtraData *) extra);
+#else
+	mongo_add_foreign_grouping_paths(root, input_rel, output_rel);
+#endif
+}
+
+/*
+ * mongo_add_foreign_grouping_paths
+ *		Add foreign path for grouping and/or aggregation.
+ *
+ * Given input_rel represents the underlying scan.  The paths are added to the
+ * given grouped_rel.
+ */
+#if PG_VERSION_NUM >= 110000
+static void
+mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
+								 RelOptInfo *grouped_rel,
+								 GroupPathExtraData *extra)
+#else
+static void
+mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
+								 RelOptInfo *grouped_rel)
+#endif
+{
+	Query	   *parse = root->parse;
+	MongoFdwRelationInfo *fpinfo = grouped_rel->fdw_private;
+	ForeignPath *grouppath;
+	Cost		startup_cost;
+	Cost		total_cost;
+	double		num_groups;
+
+	/* Nothing to be done, if there is no grouping or aggregation required. */
+	if (!parse->groupClause && !parse->groupingSets && !parse->hasAggs &&
+		!root->hasHavingQual)
+		return;
+
+	/* Save the input_rel as outerrel in fpinfo */
+	fpinfo->outerrel = input_rel;
+
+	/* Assess if it is safe to push down aggregation and grouping. */
+#if PG_VERSION_NUM >= 110000
+	if (!mongo_foreign_grouping_ok(root, grouped_rel, extra->havingQual))
+#else
+	if (!mongo_foreign_grouping_ok(root, grouped_rel))
+#endif
+		return;
+
+	/*
+	 * TODO: Put accurate estimates here.
+	 *
+	 * Cost used here is minimum of the cost estimated for base and join
+	 * relation.
+	 */
+	startup_cost = 15;
+	total_cost = 10 + startup_cost;
+
+	/* Estimate output tuples which should be same as number of groups */
+#if PG_VERSION_NUM >= 140000
+	num_groups = estimate_num_groups(root,
+									 get_sortgrouplist_exprs(root->parse->groupClause,
+															 fpinfo->grouped_tlist),
+									 input_rel->rows, NULL, NULL);
+#else
+	num_groups = estimate_num_groups(root,
+									 get_sortgrouplist_exprs(root->parse->groupClause,
+															 fpinfo->grouped_tlist),
+									 input_rel->rows, NULL);
+#endif
+
+	/* Create and add foreign path to the grouping relation. */
+#if PG_VERSION_NUM >= 120000
+	grouppath = create_foreign_upper_path(root,
+										  grouped_rel,
+										  grouped_rel->reltarget,
+										  num_groups,
+										  startup_cost,
+										  total_cost,
+										  NIL,	/* no pathkeys */
+										  NULL,
+										  NIL); /* no fdw_private */
+#elif PG_VERSION_NUM >= 110000
+	grouppath = create_foreignscan_path(root,
+										grouped_rel,
+										grouped_rel->reltarget,
+										num_groups,
+										startup_cost,
+										total_cost,
+										NIL,	/* no pathkeys */
+										grouped_rel->lateral_relids,
+										NULL,
+										NIL);	/* no fdw_private */
+#else
+	grouppath = create_foreignscan_path(root,
+										grouped_rel,
+										root->upper_targets[UPPERREL_GROUP_AGG],
+										num_groups,
+										startup_cost,
+										total_cost,
+										NIL,	/* no pathkeys */
+										grouped_rel->lateral_relids,
+										NULL,
+										NIL);	/* no fdw_private */
+#endif
+
+	/* Add generated path into grouped_rel by add_path(). */
+	add_path(grouped_rel, (Path *) grouppath);
 }
 #endif /* End of META_DRIVER */
 
