@@ -59,9 +59,9 @@ PG_MODULE_MAGIC;
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 5.3.0 so number will be 50300
+ * our version is 5.4.0 so number will be 50400
  */
-#define CODE_VERSION   50300
+#define CODE_VERSION   50400
 
 extern PGDLLEXPORT void _PG_init(void);
 
