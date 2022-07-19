@@ -30,7 +30,7 @@ if ! [ -x "$(command -v cmake3)" ]; then
 fi
 
 ###
-# Pull the latest version of Monggo C Driver's master branch
+# Pull the latest version of Mongo C Driver's master branch
 #
 function checkout_mongo_driver
 {
@@ -42,7 +42,7 @@ function checkout_mongo_driver
 }
 
 ###
-# Pull the legacy branch from the Mongo C Driver's
+# Pull the legacy branch of the Mongo C Driver
 #
 function checkout_legacy_branch
 {
