@@ -433,18 +433,30 @@ mongo_query_document(ForeignScanState *scanStateNode)
 				char	   *mongoOperatorName;
 				List	   *argumentList;
 				Const	   *constant;
+				Param	   *paramNode;
 
 				columnOperator = (OpExpr *) lfirst(columnOperatorCell);
 				argumentList = columnOperator->args;
 				constant = (Const *) find_argument_of_type(argumentList,
 														   T_Const);
+				paramNode = (Param *) find_argument_of_type(argumentList,
+															T_Param);
 				operatorName = get_opname(columnOperator->opno);
 				mongoOperatorName = mongo_operator_name(operatorName);
+
 #ifdef META_DRIVER
-				append_constant_value(&childDocument, mongoOperatorName,
-									  constant);
+				if (constant != NULL)
+					append_constant_value(&childDocument, mongoOperatorName,
+										  constant);
+				else
+					append_param_value(&childDocument, mongoOperatorName, paramNode,
+									   scanStateNode);
 #else
-				append_constant_value(filter, mongoOperatorName, constant);
+				if (constant != NULL)
+					append_constant_value(filter, mongoOperatorName, constant);
+				else
+					append_param_value(filter, mongoOperatorName, paramNode,
+									   scanStateNode);
 #endif
 			}
 			bsonAppendFinishObject(filter, &childDocument);

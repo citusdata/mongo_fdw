@@ -334,6 +334,29 @@ SELECT a FROM f_test_tbl5 ORDER BY 1;
 SELECT a FROM f_test_tbl6 ORDER BY 1;
 SELECT a FROM f_test_tbl7 ORDER BY 1;
 
+
+-- FDW-529: Fix server crash caused due to missed handling of Param node for
+-- comparison expressions while preparing query filter.
+
+CREATE OR REPLACE FUNCTION fdw529_test_param_where() RETURNS int AS $$
+DECLARE
+  val1 INT := 5;
+  val2 INT := 10;
+  cnt INT;
+BEGIN
+  SELECT count(*) INTO cnt FROM f_mongo_test WHERE a > val1 AND a < val2;
+  RETURN cnt;
+END
+$$ LANGUAGE plpgsql;
+
+SELECT fdw529_test_param_where();
+SELECT fdw529_test_param_where();
+SELECT fdw529_test_param_where();
+SELECT fdw529_test_param_where();
+SELECT fdw529_test_param_where();
+-- This should not crash
+SELECT fdw529_test_param_where();
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DROP TABLE l_test_tbl1;
@@ -344,6 +367,7 @@ DROP VIEW comp_vw;
 DROP VIEW temp_vw;
 DROP VIEW mul_tbl_view;
 DROP FUNCTION test_param_where();
+DROP FUNCTION fdw529_test_param_where();
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;
