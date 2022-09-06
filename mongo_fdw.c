@@ -339,8 +339,12 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	{
 		RestrictInfo *ri = (RestrictInfo *) lfirst(lc);
 
+#ifndef META_DRIVER
 		if (IsA(ri->clause, OpExpr) &&
-			mongo_is_foreign_expr(root, baserel, ri->clause, false, false))
+			mongo_is_foreign_expr(root, baserel, ri->clause, false))
+#else
+		if (mongo_is_foreign_expr(root, baserel, ri->clause, false))
+#endif
 			fpinfo->remote_conds = lappend(fpinfo->remote_conds, ri);
 		else
 			fpinfo->local_conds = lappend(fpinfo->local_conds, ri);
@@ -626,8 +630,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 		else if (list_member_ptr(fpinfo->local_conds, rinfo))
 			local_exprs = lappend(local_exprs, rinfo->clause);
 		else if (IsA(rinfo->clause, OpExpr) &&
-				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause, false,
-									   false))
+				 mongo_is_foreign_expr(root, foreignrel, rinfo->clause, false))
 			remote_exprs = lappend(remote_exprs, rinfo->clause);
 		else
 			local_exprs = lappend(local_exprs, rinfo->clause);
@@ -739,6 +742,24 @@ mongoGetForeignPlan(PlannerInfo *root,
 		mongofdwreltype = BASE_REL;
 
 #ifdef META_DRIVER
+	/*
+	 * We use MongoRelQualInfo to pass various information related to joining
+	 * quals and grouping target to fdw_private which is used to form
+	 * equivalent MongoDB query during the execution phase.
+	 */
+	qual_info = (MongoRelQualInfo *) palloc(sizeof(MongoRelQualInfo));
+
+	qual_info->root = root;
+	qual_info->exprColHash = NULL;
+	qual_info->colNameList = NIL;
+	qual_info->colNumList = NIL;
+	qual_info->rtiList = NIL;
+	qual_info->isOuterList = NIL;
+	qual_info->is_having = false;
+	qual_info->is_agg_column = false;
+	qual_info->aggTypeList = NIL;
+	qual_info->aggColList = NIL;
+	qual_info->isHavingList = NIL;
 
 	/*
 	 * Prepare separate lists of information.  This information would be
@@ -747,15 +768,6 @@ mongoGetForeignPlan(PlannerInfo *root,
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
 		ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
-
-		/*
-		 * We use MongoRelQualInfo to pass various information related to
-		 * joining quals and grouping target to fdw_private which is used to
-		 * form equivalent MongoDB query during the execution phase.
-		 */
-		qual_info = (MongoRelQualInfo *) palloc(sizeof(MongoRelQualInfo));
-
-		qual_info->root = root;
 
 		/*
 		 * Save foreign relation and relid's of an outer relation involved in
@@ -775,21 +787,10 @@ mongoGetForeignPlan(PlannerInfo *root,
 		}
 		else
 		{
-			/* For baserel */
 			Assert(mongofdwreltype == JOIN_REL);
 			qual_info->foreignRel = foreignrel;
 			qual_info->outerRelids = fpinfo->outerrel->relids;
 		}
-		qual_info->exprColHash = NULL;
-		qual_info->colNameList = NIL;
-		qual_info->colNumList = NIL;
-		qual_info->rtiList = NIL;
-		qual_info->isOuterList = NIL;
-		qual_info->is_having = false;
-		qual_info->is_agg_column = false;
-		qual_info->aggTypeList = NIL;
-		qual_info->aggColList = NIL;
-		qual_info->isHavingList = NIL;
 
 		/*
 		 * Extract required data of columns involved in join clauses and
@@ -842,13 +843,35 @@ mongoGetForeignPlan(PlannerInfo *root,
 		}
 		else
 			quals = remote_exprs;
-
-		/* Destroy hash table used to get unique column info */
-		hash_destroy(qual_info->exprColHash);
 	}
 	else
-#endif
+	{
 		quals = remote_exprs;
+
+		/* For baserel */
+		qual_info->foreignRel = foreignrel;
+		qual_info->outerRelids = NULL;
+
+		/*
+		 * Extract required data of columns involved in WHERE clause of the
+		 * simple relation.
+		 */
+		mongo_prepare_qual_info(quals, qual_info);
+	}
+
+	/* Destroy hash table used to get unique column info */
+	hash_destroy(qual_info->exprColHash);
+#else
+	quals = remote_exprs;
+#endif
+
+	/*
+	 * Unlike postgres_fdw, remote query formation is done in the execution
+	 * state.  There is NO way to get the correct information required to form
+	 * a remote query during the execution state.  So, we are gathering
+	 * information required to form a MongoDB query in the planning state and
+	 * passing it to the execution state through fdw_private.
+	 */
 
 	/*
 	 * Build the fdw_private list that will be available to the executor.
@@ -860,20 +883,14 @@ mongoGetForeignPlan(PlannerInfo *root,
 	fdw_private = lappend(fdw_private, makeInteger(mongofdwreltype));
 
 #ifdef META_DRIVER
-
-	/*
-	 * Unlike postgres_fdw, remote query formation is done in the execution
-	 * state.  There is NO way to get the correct information required to form
-	 * a remote query during the execution state.  So, we are gathering
-	 * information required to form a MongoDB query in the planning state and
-	 * passing it to the execution state through fdw_private.
-	 */
+	fdw_private = lappend(fdw_private, qual_info->colNameList);
+	fdw_private = lappend(fdw_private, qual_info->colNumList);
+	fdw_private = lappend(fdw_private, qual_info->rtiList);
+	fdw_private = lappend(fdw_private, qual_info->isOuterList);
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
-		fdw_private = lappend(fdw_private, qual_info->colNameList);
-		fdw_private = lappend(fdw_private, qual_info->colNumList);
-		fdw_private = lappend(fdw_private, qual_info->rtiList);
-		fdw_private = lappend(fdw_private, qual_info->isOuterList);
+		MongoFdwRelationInfo *tfpinfo = NULL;
+
 		fdw_private = lappend(fdw_private, qual_info->aggTypeList);
 		fdw_private = lappend(fdw_private, qual_info->aggColList);
 		fdw_private = lappend(fdw_private, ofpinfo->groupbyColList);
@@ -885,20 +902,17 @@ mongoGetForeignPlan(PlannerInfo *root,
 		fdw_private = lappend(fdw_private, is_inner_column_list);
 
 		if (mongofdwreltype == JOIN_REL)
-		{
-			fdw_private = lappend(fdw_private,
-								  list_make2(makeString(fpinfo->inner_relname),
-											 makeString(fpinfo->outer_relname)));
-			fdw_private = lappend(fdw_private, fpinfo->joinclauses);
-			fdw_private = lappend(fdw_private, makeInteger(fpinfo->jointype));
-		}
+			tfpinfo = fpinfo;
 		else if (mongofdwreltype == UPPER_JOIN_REL)
+			tfpinfo = ofpinfo;
+
+		if (tfpinfo)
 		{
 			fdw_private = lappend(fdw_private,
-								  list_make2(makeString(ofpinfo->inner_relname),
-											 makeString(ofpinfo->outer_relname)));
-			fdw_private = lappend(fdw_private, ofpinfo->joinclauses);
-			fdw_private = lappend(fdw_private, makeInteger(ofpinfo->jointype));
+								  list_make2(makeString(tfpinfo->inner_relname),
+											 makeString(tfpinfo->outer_relname)));
+			fdw_private = lappend(fdw_private, tfpinfo->joinclauses);
+			fdw_private = lappend(fdw_private, makeInteger(tfpinfo->jointype));
 		}
 	}
 #endif
@@ -3171,7 +3185,6 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 		bool		is_remote_clause = mongo_is_foreign_expr(root,
 															 joinrel,
 															 rinfo->clause,
-															 true,
 															 false);
 
 		if (IS_OUTER_JOIN(jointype) &&
@@ -3389,7 +3402,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 			 * If any of the GROUP BY expression is not shippable we can not
 			 * push down aggregation to the foreign server.
 			 */
-			if (!mongo_is_foreign_expr(root, grouped_rel, expr, false, false))
+			if (!mongo_is_foreign_expr(root, grouped_rel, expr, false))
 				return false;
 
 			/* Add column in group by column list */
@@ -3417,7 +3430,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 		else
 		{
 			/* Check entire expression whether it is pushable or not */
-			if (mongo_is_foreign_expr(root, grouped_rel, expr, false, false) &&
+			if (mongo_is_foreign_expr(root, grouped_rel, expr, false) &&
 				!mongo_is_foreign_param(root, grouped_rel, expr))
 			{
 				/* Pushable, add to tlist */
@@ -3436,7 +3449,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 				 * cannot push down aggregation to the foreign server.
 				 */
 				if (!mongo_is_foreign_expr(root, grouped_rel, (Expr *) aggvars,
-										   false, false))
+										   false))
 					return false;
 
 				/*
@@ -3510,7 +3523,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 									  NULL);
 #endif
 
-			if (!mongo_is_foreign_expr(root, grouped_rel, expr, false, true))
+			if (!mongo_is_foreign_expr(root, grouped_rel, expr, true))
 				fpinfo->local_conds = lappend(fpinfo->local_conds, rinfo);
 			else
 				fpinfo->remote_conds = lappend(fpinfo->remote_conds, rinfo);
@@ -3547,8 +3560,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 			 */
 			if (IsA(expr, Aggref))
 			{
-				if (!mongo_is_foreign_expr(root, grouped_rel, expr, true,
-										   false))
+				if (!mongo_is_foreign_expr(root, grouped_rel, expr, false))
 					return false;
 
 				tlist = add_to_flat_tlist(tlist, list_make1(expr));

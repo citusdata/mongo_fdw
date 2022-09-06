@@ -479,8 +479,7 @@ extern List *mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 								   List *scan_var_list, List **colNameList,
 								   List **colIsInnerList);
 extern bool mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel,
-								  Expr *expression, bool is_join_cond,
-								  bool is_having_cond);
+								  Expr *expression, bool is_having_cond);
 extern bool mongo_is_foreign_param(PlannerInfo *root, RelOptInfo *baserel,
 								   Expr *expr);
 

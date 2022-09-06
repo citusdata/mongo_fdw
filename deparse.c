@@ -346,6 +346,13 @@ mongo_append_expr(Expr *node, BSON *child_doc, pipeline_cxt *context)
 		case T_BoolExpr:
 			mongo_append_bool_expr((BoolExpr *) node, child_doc, context);
 			break;
+		case T_Param:
+			append_param_value(child_doc, psprintf("%d", context->arrayIndex),
+							   (Param *) node, context->scanStateNode);
+			break;
+		case T_Aggref:
+			bsonAppendUTF8(child_doc, "0", "$v_having");
+			break;
 		default:
 			elog(ERROR, "unsupported expression type to append: %d",
 				 (int) nodeTag(node));
@@ -419,7 +426,7 @@ mongo_append_bool_expr(BoolExpr *node, BSON *child_doc, pipeline_cxt *context)
  *
  * In MongoDB, (null = null), (null < 1) is TRUE but that is FALSE in Postgres.
  * To eliminate null value rows, add equality check for null values for columns
- * involved in join-clauses.  E.g. add the following syntax:
+ * involved in JOIN and WHERE clauses.  E.g. add the following syntax:
  *
  * 	    {"$ne": [ "$$v_age", null ]},
  *	    {"$ne": [ "$old", null ]}
@@ -439,6 +446,9 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 	int			and_index = 0;
 	BSON		and_op;
 	BSON		and_obj;
+
+	/* Increament operator expression count */
+	context->opExprCount++;
 
 	/* Retrieve information about the operator from the system catalog. */
 	tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(node->opno));
@@ -494,6 +504,9 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 		mongo_append_expr(lfirst(arg), &child1, context);
 	}
 
+	/* Decreament operator expression count */
+	context->opExprCount--;
+
 	bsonAppendFinishArray(&expr, &child1);
 	if (context->isBoolExpr)
 		bsonAppendFinishObject(&and_op, &expr);
@@ -501,27 +514,35 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 		bsonAppendFinishObject(child_doc, &expr);
 
 	/*
-	 * Add equality check for null values for columns involved in
-	 * join-clauses.
+	 * Add equality check for null values for columns involved in JOIN and
+	 * WHERE clauses.
 	 */
-	foreach(arg, node->args)
+	if (context->opExprCount == 0)
 	{
-		if (!IsA(lfirst(arg), Var))
-			continue;
+		List	   *var_list;
+		ListCell   *lc;
 
-		if (context->isBoolExpr)
-			bsonAppendStartObject(&and_op, psprintf("%d", and_index++), &expr);
-		else
-			bsonAppendStartObject(child_doc,
+		var_list = pull_var_clause((Node *) node, PVC_RECURSE_PLACEHOLDERS ||
+								   PVC_RECURSE_AGGREGATES);
+
+		foreach(lc, var_list)
+		{
+			Var		   *var = (Var *) lfirst(lc);
+
+			if (context->isBoolExpr)
+				bsonAppendStartObject(&and_op, psprintf("%d", and_index++),
+									  &expr);
+			else
+				bsonAppendStartObject(child_doc,
 								  psprintf("%d", context->arrayIndex++),
 								  &expr);
+			mongo_add_null_check(var, &expr, context);
 
-		mongo_add_null_check(lfirst(arg), &expr, context);
-
-		if (context->isBoolExpr)
-			bsonAppendFinishObject(&and_op, &expr);
-		else
-			bsonAppendFinishObject(child_doc, &expr);
+			if (context->isBoolExpr)
+				bsonAppendFinishObject(&and_op, &expr);
+			else
+				bsonAppendFinishObject(child_doc, &expr);
+		}
 	}
 
 	if (context->isBoolExpr == true)
@@ -560,7 +581,7 @@ mongo_append_column_name(Var *column, BSON *child_doc, pipeline_cxt *context)
 	if (!found)
 		return;
 
-	if (columnInfo->isOuter)
+	if (columnInfo->isOuter && context->isJoinClause)
 		field = psprintf("$$v_%s", columnInfo->colName);
 	else
 		field = psprintf("$%s", columnInfo->colName);
@@ -570,7 +591,8 @@ mongo_append_column_name(Var *column, BSON *child_doc, pipeline_cxt *context)
 
 /*
  * mongo_add_null_check
- *		Eliminate null value rows of columns involved in the join clauses.
+ *		Eliminate null value rows of columns involved in the join and WHERE
+ *		clauses.
  */
 static void
 mongo_add_null_check(Var *column, BSON *expr, pipeline_cxt *context)
@@ -591,7 +613,7 @@ mongo_add_null_check(Var *column, BSON *expr, pipeline_cxt *context)
 	if (!found)
 		return;
 
-	if (columnInfo->isOuter)
+	if (columnInfo->isOuter && context->isJoinClause)
 		field = psprintf("$$v_%s", columnInfo->colName);
 	else
 		field = psprintf("$%s", columnInfo->colName);

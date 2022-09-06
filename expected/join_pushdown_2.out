@@ -1025,23 +1025,17 @@ WITH t (c1_1, c1_3, c2_1) AS (
  1000 |   30
 (14 rows)
 
--- This won't push-down because WHERE only pushes operator expression.
+-- WHERE with boolean expression. Should push-down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, d.c5, e.c1, e.c2
   FROM f_test_tbl2 e LEFT JOIN f_test_tbl1 d ON (e.c1 = d.c8) WHERE d.c5 = '02-22-1981' OR d.c5 = '12-17-1980' ORDER BY 1;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: d.c1
-   ->  Hash Join
-         Hash Cond: (e.c1 = d.c8)
-         ->  Foreign Scan on f_test_tbl2 e
-               Foreign Namespace: mongo_fdw_regress.test_tbl2
-         ->  Hash
-               ->  Foreign Scan on f_test_tbl1 d
-                     Filter: ((c5 = '02-22-1981'::date) OR (c5 = '12-17-1980'::date))
-                     Foreign Namespace: mongo_fdw_regress.test_tbl1
-(10 rows)
+   ->  Foreign Scan
+         Foreign Namespace: (mongo_fdw_regress.test_tbl2 e) INNER JOIN (mongo_fdw_regress.test_tbl1 d)
+(4 rows)
 
 SELECT d.c1, d.c2, d.c5, e.c1, e.c2
   FROM f_test_tbl2 e LEFT JOIN f_test_tbl1 d ON (e.c1 = d.c8) WHERE d.c5 = '02-22-1981' OR d.c5 = '12-17-1980' ORDER BY 1;
@@ -1434,43 +1428,19 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.c1, t1.c2
   FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
   WHERE t1.c1 = t2.c2 AND t1.c2 = t2.c1) q WHERE t1.c1 % 2 = 0 ORDER BY 1,2;
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Merge Append
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Sort
+   Output: t1.c1, t1.c2
    Sort Key: t1.c1, t1.c2
-   ->  Merge Join
-         Output: t1.c1, t1.c2
-         Merge Cond: ((t1.c1 = t2.c2) AND (t1.c2 = t2.c1))
-         ->  Sort
+   ->  Append
+         ->  Foreign Scan
                Output: t1.c1, t1.c2
-               Sort Key: t1.c1, t1.c2
-               ->  Foreign Scan on public.ftprt1_p1 t1
-                     Output: t1.c1, t1.c2
-                     Filter: ((t1.c1 % 2) = 0)
-                     Foreign Namespace: mongo_fdw_regress.test1
-         ->  Sort
-               Output: t2.c2, t2.c1
-               Sort Key: t2.c2, t2.c1
-               ->  Foreign Scan on public.ftprt2_p1 t2
-                     Output: t2.c2, t2.c1
-                     Foreign Namespace: mongo_fdw_regress.test3
-   ->  Merge Join
-         Output: t1_1.c1, t1_1.c2
-         Merge Cond: ((t1_1.c1 = t2_1.c2) AND (t1_1.c2 = t2_1.c1))
-         ->  Sort
+               Foreign Namespace: (mongo_fdw_regress.test1 t1) INNER JOIN (mongo_fdw_regress.test3 t2)
+         ->  Foreign Scan
                Output: t1_1.c1, t1_1.c2
-               Sort Key: t1_1.c1, t1_1.c2
-               ->  Foreign Scan on public.ftprt1_p2 t1_1
-                     Output: t1_1.c1, t1_1.c2
-                     Filter: ((t1_1.c1 % 2) = 0)
-                     Foreign Namespace: mongo_fdw_regress.test2
-         ->  Sort
-               Output: t2_1.c2, t2_1.c1
-               Sort Key: t2_1.c2, t2_1.c1
-               ->  Foreign Scan on public.ftprt2_p2 t2_1
-                     Output: t2_1.c2, t2_1.c1
-                     Foreign Namespace: mongo_fdw_regress.test4
-(34 rows)
+               Foreign Namespace: (mongo_fdw_regress.test2 t1) INNER JOIN (mongo_fdw_regress.test4 t2)
+(10 rows)
 
 SELECT t1.c1, t1.c2
   FROM fprt1 t1, LATERAL (SELECT t2.c1, t2.c2 FROM fprt2 t2
@@ -1501,28 +1471,24 @@ SELECT t1.c1, t1.phv, t2.c2, t2.phv
                Hash Cond: (ftprt1_p1.c1 = ftprt2_p1.c2)
                ->  Foreign Scan on public.ftprt1_p1
                      Output: ftprt1_p1.c1
-                     Filter: ((ftprt1_p1.c1 % 2) = 0)
                      Foreign Namespace: mongo_fdw_regress.test1
                ->  Hash
                      Output: ftprt2_p1.c2, ('t2_phv'::text)
                      ->  Foreign Scan on public.ftprt2_p1
                            Output: ftprt2_p1.c2, 't2_phv'::text
-                           Filter: ((ftprt2_p1.c2 % 2) = 0)
                            Foreign Namespace: mongo_fdw_regress.test3
          ->  Hash Left Join
                Output: ftprt1_p2.c1, 't1_phv'::text, ftprt2_p2.c2, ('t2_phv'::text)
                Hash Cond: (ftprt1_p2.c1 = ftprt2_p2.c2)
                ->  Foreign Scan on public.ftprt1_p2
                      Output: ftprt1_p2.c1
-                     Filter: ((ftprt1_p2.c1 % 2) = 0)
                      Foreign Namespace: mongo_fdw_regress.test2
                ->  Hash
                      Output: ftprt2_p2.c2, ('t2_phv'::text)
                      ->  Foreign Scan on public.ftprt2_p2
                            Output: ftprt2_p2.c2, 't2_phv'::text
-                           Filter: ((ftprt2_p2.c2 % 2) = 0)
                            Foreign Namespace: mongo_fdw_regress.test4
-(30 rows)
+(26 rows)
 
 SELECT t1.c1, t1.phv, t2.c2, t2.phv
   FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE c1 % 2 = 0) t1 LEFT JOIN

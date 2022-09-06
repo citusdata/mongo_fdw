@@ -286,8 +286,9 @@ SELECT a FROM f_mongo_test
    Sort Key: f_mongo_test.a
    ->  Foreign Scan on public.f_mongo_test
          Output: a
+         Filter: ((f_mongo_test.a % 2) = 1)
          Foreign Namespace: mongo_fdw_regress.mongo_test
-(6 rows)
+(7 rows)
 
 SELECT a FROM f_mongo_test
   WHERE a%2 = 1
@@ -388,8 +389,9 @@ SELECT c1, c4 FROM f_test_tbl1
    Sort Key: f_test_tbl1.c1
    ->  Foreign Scan on public.f_test_tbl1
          Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
          Foreign Namespace: mongo_fdw_regress.test_tbl1
-(6 rows)
+(7 rows)
 
 SELECT c1, c4 FROM f_test_tbl1
   WHERE c1 > c4
@@ -404,31 +406,6 @@ SELECT c1, c4 FROM f_test_tbl1
  1400 | 700
 (6 rows)
 
-EXPLAIN (VERBOSE, COSTS FALSE)
-SELECT c1, c4, c7, c8 FROM f_test_tbl1
-  WHERE c1 < c4 AND c7 < c8
-  ORDER BY c1;
-                       QUERY PLAN                       
---------------------------------------------------------
- Sort
-   Output: c1, c4, c7, c8
-   Sort Key: f_test_tbl1.c1
-   ->  Foreign Scan on public.f_test_tbl1
-         Output: c1, c4, c7, c8
-         Foreign Namespace: mongo_fdw_regress.test_tbl1
-(6 rows)
-
-SELECT c1, c4, c7, c8 FROM f_test_tbl1
-  WHERE c1 < c4 AND c7 < c8
-  ORDER BY c1;
- c1  |  c4  | c7 | c8 
------+------+----+----
- 100 | 1300 |  0 | 20
- 400 |  900 |  0 | 20
- 600 |  900 |  0 | 30
- 700 |  900 |  0 | 10
-(4 rows)
-
 -- Nested operator expression in WHERE clause. Should pushdown.
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2 FROM f_test_tbl1
@@ -437,8 +414,9 @@ SELECT c1, c2 FROM f_test_tbl1
 --------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2
+   Filter: ((f_test_tbl1.c1 > 1000) > false)
    Foreign Namespace: mongo_fdw_regress.test_tbl1
-(3 rows)
+(4 rows)
 
 SELECT c1, c2 FROM f_test_tbl1
   WHERE (c1 > 1000) > FALSE;
@@ -457,8 +435,9 @@ SELECT c1, c2 FROM f_test_tbl1
 --------------------------------------------------
  Foreign Scan on public.f_test_tbl1
    Output: c1, c2
+   Filter: ((f_test_tbl1.c1 > 1000) > false)
    Foreign Namespace: mongo_fdw_regress.test_tbl1
-(3 rows)
+(4 rows)
 
 SELECT c1, c2 FROM f_test_tbl1
   WHERE (c1 > 1000) > 0::BOOLEAN;
@@ -545,8 +524,9 @@ SELECT name, marks FROM f_test_tbl3
    Sort Key: f_test_tbl3.name
    ->  Foreign Scan on public.f_test_tbl3
          Output: name, marks
+         Filter: f_test_tbl3.pass
          Foreign Namespace: mongo_fdw_regress.test_tbl3
-(6 rows)
+(7 rows)
 
 SELECT name, marks FROM f_test_tbl3
   WHERE pass = true
@@ -575,34 +555,18 @@ SELECT c1 FROM f_test_tbl2 WHERE c1 < 1;
 
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1 FROM f_test_tbl2 WHERE c2 = c3;
-                    QUERY PLAN                    
---------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Foreign Scan on public.f_test_tbl2
    Output: c1
+   Filter: ((f_test_tbl2.c2)::text = (f_test_tbl2.c3)::text)
    Foreign Namespace: mongo_fdw_regress.test_tbl2
-(3 rows)
+(4 rows)
 
 SELECT c1 FROM f_test_tbl2 WHERE c2 = c3;
  c1 
 ----
 (0 rows)
-
--- Test with IS NULL, shouldn't push down
-EXPLAIN (VERBOSE, COSTS FALSE)
-SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
-                    QUERY PLAN                    
---------------------------------------------------
- Foreign Scan on public.f_test_tbl2
-   Output: c1
-   Filter: (f_test_tbl2.c2 IS NULL)
-   Foreign Namespace: mongo_fdw_regress.test_tbl2
-(4 rows)
-
-SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
- c1 
-----
-   
-(1 row)
 
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;

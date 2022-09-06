@@ -26,6 +26,10 @@ typedef struct pipeline_cxt
 	unsigned int arrayIndex;	/* Index of the various arrays in the
 								 * pipeline, starting from zero */
 	bool		isBoolExpr;		/* is join expression boolean? */
+	bool		isJoinClause;   /* is join clause? This is to add null check
+								   only in case of join clause */
+	uint32      opExprCount;	/* count death of the expression */
+	ForeignScanState *scanStateNode; /* To evaluate param expression */
 } pipeline_cxt;
 
 /*
@@ -65,8 +69,6 @@ enum mongoFdwScanPrivateIndex
 
 	/* Relation Type (BASE/JOIN/UPPER/UPPER_JOIN) */
 	mongoFdwPrivateRelType,
-
-	/* Join information */
 
 	/*
 	 * List of column name, attribute number, range table index, and whether
@@ -130,5 +132,8 @@ extern void append_constant_value(BSON *queryDocument, const char *keyName,
 								  Const *constant);
 extern void mongo_append_expr(Expr *node, BSON *child_doc,
 							  pipeline_cxt *context);
+extern void append_param_value(BSON *queryDocument, const char *keyName,
+							   Param *paramNode,
+							   ForeignScanState *scanStateNode);
 
 #endif							/* MONGO_QUERY_H */

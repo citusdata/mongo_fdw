@@ -55,11 +55,12 @@ typedef struct foreign_glob_cxt
 {
 	PlannerInfo *root;			/* global planner state */
 	RelOptInfo *foreignrel;		/* the foreign relation we are planning for */
+#ifndef META_DRIVER
 	unsigned short varcount;	/* Var count */
 	unsigned short opexprcount;
+#endif
 	Relids		relids;			/* relids of base relations in the underlying
 								 * scan */
-	bool		is_join_cond;	/* "true" for join relations */
 	bool		is_having_cond; /* "true" for HAVING clause condition */
 } foreign_glob_cxt;
 
@@ -81,13 +82,12 @@ typedef struct foreign_loc_cxt
 } foreign_loc_cxt;
 
 /* Local functions forward declarations */
+#ifndef META_DRIVER
 static Expr *find_argument_of_type(List *argumentList, NodeTag argumentType);
 static List *equality_operator_list(List *operatorList);
 static List *unique_column_list(List *operatorList);
 static List *column_operator_list(Var *column, List *operatorList);
-static void append_param_value(BSON *queryDocument, const char *keyName,
-							   Param *paramNode,
-							   ForeignScanState *scanStateNode);
+#endif
 static bool foreign_expr_walker(Node *node,
 								foreign_glob_cxt *glob_cxt,
 								foreign_loc_cxt *outer_cxt);
@@ -96,14 +96,13 @@ static List *prepare_var_list_for_baserel(Oid relid, Index varno,
 #ifdef META_DRIVER
 static HTAB *column_info_hash(List *colname_list, List *colnum_list,
 							  List *rti_list, List *isouter_list);
-static void mongo_prepare_inner_pipeline(List *joinclause,
-										 BSON *inner_pipeline,
+static void mongo_prepare_pipeline(List *clause, BSON *inner_pipeline,
 										 pipeline_cxt *context);
-static void mongo_append_joinclauses_to_inner_pipeline(List *joinclause,
-													   BSON *child_doc,
-													   pipeline_cxt *context);
+static void mongo_append_clauses_to_pipeline(List *clause, BSON *child_doc,
+											 pipeline_cxt *context);
 #endif
 
+#ifndef META_DRIVER
 /*
  * find_argument_of_type
  *		Walks over the given argument list, looks for an argument with the
@@ -132,6 +131,7 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
 
 	return foundArgument;
 }
+#endif
 
 /*
  * mongo_query_document
@@ -148,7 +148,8 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *    t2(_id NAME, old INT, alias VARCHAR)
  *
  * SQL query:
- *    SELECT * FROM t1 LEFT JOIN t2 ON(t1.age = t2.old) WHERE name = 'xyz';
+ *    SELECT * FROM t1 LEFT JOIN t2 ON (t1.age = t2.old)
+ *    WHERE (t1.age % 2) = 1;
  *
  * Equivalent MongoDB query:
  *
@@ -176,7 +177,16 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *          "as": "Join_Result"
  *        }
  *      },
- *      { "$match": { "name" : "xyz" } },
+ *      { "$match" :
+ *        {
+ *          "$expr" :
+ *          { "$and" : [
+ *              { "$eq" : [ { "$mod" : [ "$age", 2] }, 1]},
+ *              { "$ne" : [ "$age", null ] }
+ *            ]
+ *          }
+ *        }
+ *      }
  *      {
  *        "$unwind":
  *        {
@@ -196,12 +206,6 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *
  * The outer $match stage (2nd element of root pipeline array) represents
  * remote_exprs, and $match inside $lookup stage represents the join clauses.
- *
- * For the conditions in WHERE i.e. remote_exprs, this function can only
- * transform simple comparison expressions and returns these transformed
- * expressions in a BSON document.  For example, simple expressions:
- * "l_shipdate >= date '1994-01-01' AND l_shipdate < date '1995-01-01'" becomes
- * "l_shipdate: { $gte: new Date(757382400000), $lt: new Date(788918400000) }".
  *
  * For grouping target, add $group stage on the base relation or join relation.
  * The HAVING clause is nothing but a post $match stage.
@@ -239,17 +243,33 @@ mongo_query_document(ForeignScanState *scanStateNode)
 #ifdef META_DRIVER
 	MongoFdwModifyState *fmstate = (MongoFdwModifyState *) scanStateNode->fdw_state;
 	BSON		root_pipeline;
+	BSON		match_stage;
 	int			root_index = 0;
 	List	   *joinclauses;
+	List	   *colnum_list;
 	List	   *colname_list = NIL;
 	List	   *isouter_list = NIL;
+	List	   *rti_list;
 	char	   *inner_relname;
 	char	   *outer_relname;
 	HTAB	   *columnInfoHash;
 	int			jointype;
+	int			natts;
 
-	/* Prepare array of stages */
-	bsonAppendStartArray(queryDocument, "pipeline", &root_pipeline);
+	/* Retrieve data passed by planning phase */
+	colname_list = list_nth(PrivateList, mongoFdwPrivateJoinClauseColNameList);
+	colnum_list = list_nth(PrivateList, mongoFdwPrivareJoinClauseColNumList);
+	rti_list = list_nth(PrivateList, mongoFdwPrivateJoinClauseRtiList);
+	isouter_list = list_nth(PrivateList, mongoFdwPrivateJoinClauseIsOuterList);
+
+	/* Length should be same for all lists of column information */
+	natts = list_length(colname_list);
+	Assert(natts == list_length(colnum_list) && natts == list_length(rti_list)
+		   && natts == list_length(isouter_list));
+
+	/* Store information in the hash-table */
+	columnInfoHash = column_info_hash(colname_list, colnum_list, rti_list,
+									  isouter_list);
 
 	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
@@ -265,29 +285,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		outer_relname = strVal(list_nth(innerouter_relname, 1));
 	}
 
-	if (fmstate->relType != BASE_REL)
-	{
-		List	   *colnum_list;
-		List	   *rti_list;
-		int			natts;
-
-		colname_list = list_nth(PrivateList,
-								mongoFdwPrivateJoinClauseColNameList);
-		colnum_list = list_nth(PrivateList,
-							   mongoFdwPrivareJoinClauseColNumList);
-		rti_list = list_nth(PrivateList, mongoFdwPrivateJoinClauseRtiList);
-		isouter_list = list_nth(PrivateList,
-								mongoFdwPrivateJoinClauseIsOuterList);
-
-		/* Length should be same for all lists of column information */
-		natts = list_length(colname_list);
-		Assert(natts == list_length(colnum_list) &&
-			   natts == list_length(rti_list) &&
-			   natts == list_length(isouter_list));
-
-		columnInfoHash = column_info_hash(colname_list, colnum_list, rti_list,
-										  isouter_list);
-	}
+	/* Prepare array of stages */
+	bsonAppendStartArray(queryDocument, "pipeline", &root_pipeline);
 #endif
 
 	/*
@@ -297,6 +296,21 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	 */
 	if (opExpressionList)
 	{
+#ifdef META_DRIVER
+		pipeline_cxt context;
+
+		context.colInfoHash = columnInfoHash;
+		context.isBoolExpr = false;
+		context.isJoinClause = false;
+		context.scanStateNode = scanStateNode;
+
+		bsonAppendStartArray(filter, "pipeline", &match_stage);
+
+		/* Form equivalent WHERE clauses in MongoDB */
+		mongo_prepare_pipeline(opExpressionList, &match_stage, &context);
+
+		bsonAppendFinishArray(filter, &match_stage);
+#else
 		Oid			relationId;
 		List	   *equalityOperatorList;
 		List	   *comparisonOperatorList;
@@ -335,33 +349,11 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			constant = (Const *) find_argument_of_type(argumentList, T_Const);
 			paramNode = (Param *) find_argument_of_type(argumentList, T_Param);
 
-			if (relationId != 0)
-			{
-				columnId = column->varattno;
+			columnId = column->varattno;
 #if PG_VERSION_NUM < 110000
-				columnName = get_relid_attribute_name(relationId, columnId);
+			columnName = get_relid_attribute_name(relationId, columnId);
 #else
-				columnName = get_attname(relationId, columnId, false);
-#endif
-			}
-#ifdef META_DRIVER
-			/* For join rel, use columnInfoHash to get column name */
-			else
-			{
-				bool		found = false;
-				ColInfoHashKey key;
-				ColInfoHashEntry *columnInfo;
-
-				key.varNo = column->varno;
-				key.varAttno = column->varattno;
-
-				columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
-															  (void *) &key,
-															  HASH_FIND,
-															  &found);
-				if (found)
-					columnName = columnInfo->colName;
-			}
+			columnName = get_attname(relationId, columnId, false);
 #endif
 
 			if (constant != NULL)
@@ -399,25 +391,6 @@ mongo_query_document(ForeignScanState *scanStateNode)
 				columnName = get_attname(relationId, columnId, false);
 #endif
 			}
-#ifdef META_DRIVER
-			/* For join rel, use columnInfoHash to get column name */
-			else
-			{
-				bool		found = false;
-				ColInfoHashKey key;
-				ColInfoHashEntry *columnInfo;
-
-				key.varNo = column->varno;
-				key.varAttno = column->varattno;
-
-				columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
-															  (void *) &key,
-															  HASH_FIND,
-															  &found);
-				if (found)
-					columnName = columnInfo->colName;
-			}
-#endif
 
 			/* Find all expressions that correspond to the column */
 			columnOperatorList = column_operator_list(column,
@@ -444,23 +417,15 @@ mongo_query_document(ForeignScanState *scanStateNode)
 				operatorName = get_opname(columnOperator->opno);
 				mongoOperatorName = mongo_operator_name(operatorName);
 
-#ifdef META_DRIVER
-				if (constant != NULL)
-					append_constant_value(&childDocument, mongoOperatorName,
-										  constant);
-				else
-					append_param_value(&childDocument, mongoOperatorName, paramNode,
-									   scanStateNode);
-#else
 				if (constant != NULL)
 					append_constant_value(filter, mongoOperatorName, constant);
 				else
 					append_param_value(filter, mongoOperatorName, paramNode,
 									   scanStateNode);
-#endif
 			}
 			bsonAppendFinishObject(filter, &childDocument);
 		}
+#endif
 	}
 	if (!bsonFinish(filter))
 	{
@@ -482,7 +447,6 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		BSON		lookup_object;
 		BSON		lookup;
 		BSON		let_exprs;
-		BSON		outer_match_stage;
 		BSON		unwind_stage;
 		BSON		unwind;
 		BSON	   *inner_pipeline_doc = bsonCreate();
@@ -536,10 +500,11 @@ mongo_query_document(ForeignScanState *scanStateNode)
 
 			context.colInfoHash = columnInfoHash;
 			context.isBoolExpr = false;
+			context.isJoinClause = true;
+			context.scanStateNode = scanStateNode;
 
 			/* Form equivalent join qual clauses in MongoDB */
-			mongo_prepare_inner_pipeline(joinclauses, &inner_pipeline,
-										 &context);
+			mongo_prepare_pipeline(joinclauses, &inner_pipeline, &context);
 			bsonAppendFinishArray(inner_pipeline_doc, &inner_pipeline);
 		}
 
@@ -552,10 +517,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		bsonAppendFinishObject(&root_pipeline, &lookup_object);
 
 		/* $match stage. This is to add a filter */
-		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
-							  &outer_match_stage);
-		bsonAppendBson(&outer_match_stage, "$match", filter);
-		bsonAppendFinishObject(&root_pipeline, &outer_match_stage);
+		if (opExpressionList)
+			bsonAppendBson(&root_pipeline, "$match", &match_stage);
 
 		/*
 		 * $unwind stage. This deconstructs an array field from the input
@@ -574,16 +537,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 
 		fmstate->outerRelName = outer_relname;
 	}
-	else
-	{
-		BSON		match_stage;
-
-		/* $match stage.  This is to add a filter for the WHERE clause */
-		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
-							  &match_stage);
-		bsonAppendBson(&match_stage, "$match", filter);
-		bsonAppendFinishObject(&root_pipeline, &match_stage);
-	}
+	else if (opExpressionList)
+		bsonAppendBson(&root_pipeline, "$match", &match_stage);
 
 	/* Add $group stage for upper relation */
 	if (fmstate->relType == UPPER_JOIN_REL || fmstate->relType == UPPER_REL)
@@ -725,77 +680,25 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		if (having_expr)
 		{
 			BSON		match_stage;
-			BSON	   *filter = bsonCreate();
-			List	   *equalityOperatorList;
-			List	   *comparisonOperatorList;
-			ListCell   *equalityOperatorCell;
-			ListCell   *comparisonoperatorCell;
+			pipeline_cxt context;
+
+			context.colInfoHash = columnInfoHash;
+			context.isBoolExpr = false;
+			context.isJoinClause = false;
+			context.scanStateNode = scanStateNode;
 
 			/* $match stage.  Add a filter for the HAVING clause */
 			bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
 								  &match_stage);
+			/* Form equivalent HAVING clauses in MongoDB */
+			mongo_prepare_pipeline(having_expr, &match_stage, &context);
 
-			equalityOperatorList = equality_operator_list(having_expr);
-			comparisonOperatorList = list_difference(having_expr,
-													 equalityOperatorList);
-			/* Append equality expressions to the query */
-			foreach(equalityOperatorCell, equalityOperatorList)
-			{
-				OpExpr	   *equalityOperator;
-				Const	   *constant;
-				List	   *argumentList;
-
-				equalityOperator = (OpExpr *) lfirst(equalityOperatorCell);
-				argumentList = equalityOperator->args;
-				constant = (Const *) find_argument_of_type(argumentList,
-														   T_Const);
-
-				if (constant != NULL)
-					append_constant_value(filter, "v_having", constant);
-			}
-
-			foreach(comparisonoperatorCell, comparisonOperatorList)
-			{
-				BSON		childDocument;
-				OpExpr	   *operator;
-				List	   *argumentList;
-				Const	   *constant;
-				char	   *operatorName;
-				char	   *mongoOperatorName;
-
-				/* For comparison expressions, start a sub-document */
-				bsonAppendStartObject(filter, "v_having", &childDocument);
-
-				operator = (OpExpr *) lfirst(comparisonoperatorCell);
-				argumentList = operator->args;
-				constant = (Const *) find_argument_of_type(argumentList,
-														   T_Const);
-				operatorName = get_opname(operator->opno);
-				mongoOperatorName = mongo_operator_name(operatorName);
-#ifdef META_DRIVER
-				append_constant_value(&childDocument, mongoOperatorName,
-									  constant);
-#else
-				append_constant_value(filter, mongoOperatorName, constant);
-#endif
-				bsonAppendFinishObject(filter, &childDocument);
-			}
-
-			bsonAppendBson(&match_stage, "$match", filter);
 			bsonAppendFinishObject(&root_pipeline, &match_stage);
 
 			if (!bsonFinish(filter))
-			{
-#ifdef META_DRIVER
 				ereport(ERROR,
 						(errmsg("could not create document for query"),
 						 errhint("BSON flags: %d", queryDocument->flags)));
-#else
-				ereport(ERROR,
-						(errmsg("could not create document for query"),
-						 errhint("BSON error: %d", queryDocument->err)));
-#endif
-			}
 		}
 	}
 
@@ -854,6 +757,7 @@ mongo_operator_name(const char *operatorName)
 	return (char *) mongoOperatorName;
 }
 
+#ifndef META_DRIVER
 /*
  * equality_operator_list
  *		Finds the equality (=) operators in the given list, and returns these
@@ -929,8 +833,9 @@ column_operator_list(Var *column, List *operatorList)
 
 	return columnOperatorList;
 }
+#endif
 
-static void
+void
 append_param_value(BSON *queryDocument, const char *keyName, Param *paramNode,
 				   ForeignScanState *scanStateNode)
 {
@@ -1372,15 +1277,11 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
  * as being built-in), and that all collations used in the expression derive
  * from Vars of the foreign table.
  *
- * For WHERE clauses, we only support simple binary operators that compare a
- * column against a constant.  If the expression is a tree, we don't recurse
- * into it.
- *
- * For JOIN clauses, in addition to the above support, in the case of operator
- * expression, we do support arithmetic (+, -, *, /, %, ^, @ and |/) operators.
- * Also, both operands of the binary operator can be a column.  If the
- * expression is a tree, we do recurse into it.  Supports Boolean expression as
- * well.
+ * For WHERE as well as JOIN clauses, in the case of operator expression, we do
+ * support arithmetic (=, <, >, <=, >=, <>, +, -, *, /, %, ^, @ and |/)
+ * operators.  Also, both operands of the binary operator can be a column.  If
+ * the expression is a tree, we do recurse into it.  Supports Boolean
+ * expression as well.
  */
 static bool
 foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
@@ -1404,15 +1305,14 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 			{
 				Var		   *var = (Var *) node;
 
+#ifndef META_DRIVER
 				/* Increment the Var count */
 				glob_cxt->varcount++;
-
+#endif
 				/*
 				 * If the Var is from the foreign table, we consider its
 				 * collation (if any) safe to use.  If it is from another
-				 * table, we treat its collation the same way as we would a
-				 * Param's collation, i.e. it's not safe for it to have a
-				 * non-default collation.
+				 * table, don't push it down.
 				 */
 				if (bms_is_member(var->varno, glob_cxt->relids) &&
 					var->varlevelsup == 0)
@@ -1423,29 +1323,13 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				}
 				else
 				{
-					/* Var belongs to some other table */
-					collation = var->varcollid;
-					if (var->varcollid != InvalidOid &&
-						var->varcollid != DEFAULT_COLLATION_OID)
-						return false;
-
-					if (collation == InvalidOid ||
-						collation == DEFAULT_COLLATION_OID)
-					{
-						/*
-						 * It's noncollatable, or it's safe to combine with a
-						 * collatable foreign Var, so set state to NONE.
-						 */
-						state = FDW_COLLATE_NONE;
-					}
-					else
-					{
-						/*
-						 * Do not fail right away, since the Var might appear
-						 * in a collation-insensitive context.
-						 */
-						state = FDW_COLLATE_UNSAFE;
-					}
+					/*
+					 * Var belongs to some other table.  Unlike postgres_fdw,
+					 * can't be treated like Param because MongoDB doesn't
+					 * have corresponding syntax to represent it in the query
+					 * pipeline.
+					 */
+					return false;
 				}
 			}
 			break;
@@ -1508,8 +1392,10 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 					!glob_cxt->is_having_cond)
 					return false;
 
+#ifndef META_DRIVER
 				/* Increment the operator expression count */
 				glob_cxt->opexprcount++;
+#endif
 
 				/*
 				 * We support =, <, >, <=, >=, <>, +, -, *, /, %, ^, |/, and @
@@ -1522,12 +1408,15 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/*
 				 * Recurse to input subexpressions.
 				 *
-				 * We support only =, <, >, <=, >= and <> operators for WHERE
-				 * conditions of simple as well as join relation.
+				 * We support same operators as joinclause for WHERE conditions
+				 * of simple as well as join relation.
 				 */
 				if (!foreign_expr_walker((Node *) oe->args, glob_cxt,
-										 &inner_cxt) ||
-					(!glob_cxt->is_join_cond && glob_cxt->opexprcount > 1))
+										 &inner_cxt)
+#ifndef META_DRIVER
+					|| (glob_cxt->opexprcount > 1)
+#endif
+				   )
 					return false;
 
 				/*
@@ -1596,8 +1485,11 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				foreach(lc, l)
 				{
 					if ((!foreign_expr_walker((Node *) lfirst(lc),
-											  glob_cxt, &inner_cxt)) ||
-						(!(glob_cxt->is_join_cond) && glob_cxt->varcount > 1))
+											  glob_cxt, &inner_cxt))
+#ifndef META_DRIVER
+						|| (glob_cxt->varcount > 1)
+#endif
+					   )
 						return false;
 				}
 
@@ -1680,7 +1572,8 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 						n = (Node *) tle->expr;
 					}
 
-					if (!foreign_expr_walker(n, glob_cxt, &inner_cxt))
+					if (!IsA(n, Var) || !foreign_expr_walker(n, glob_cxt,
+															 &inner_cxt))
 						return false;
 				}
 
@@ -1777,7 +1670,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
  */
 bool
 mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
-					  bool is_join_cond, bool is_having_cond)
+					  bool is_having_cond)
 {
 	foreign_glob_cxt glob_cxt;
 	foreign_loc_cxt loc_cxt;
@@ -1801,9 +1694,10 @@ mongo_is_foreign_expr(PlannerInfo *root, RelOptInfo *baserel, Expr *expression,
 	else
 		glob_cxt.relids = baserel->relids;
 
+#ifndef META_DRIVER
 	glob_cxt.varcount = 0;
 	glob_cxt.opexprcount = 0;
-	glob_cxt.is_join_cond = is_join_cond;
+#endif
 	glob_cxt.is_having_cond = is_having_cond;
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
@@ -1951,8 +1845,8 @@ column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
 }
 
 /*
- * mongo_prepare_inner_pipeline
- *		Form inner query pipeline syntax equivalent to postgresql join clauses.
+ * mongo_prepare_pipeline
+ *		Form query pipeline syntax equivalent to postgresql.
  *
  * From the example given on mongo_query_document, the following part of
  * MongoDB query formed by this function:
@@ -1974,50 +1868,63 @@ column_info_hash(List *colname_list, List *colnum_list, List *rti_list,
  *          ]
  */
 static void
-mongo_prepare_inner_pipeline(List *joinclause, BSON *inner_pipeline,
-							 pipeline_cxt *context)
+mongo_prepare_pipeline(List *clause, BSON *inner_pipeline,
+					   pipeline_cxt *context)
 {
 	BSON	   *and_query_doc = bsonCreate();
 	BSON		match_object;
 	BSON		match_stage;
 	BSON		expr;
 	BSON		and_op;
-	int			inner_pipeline_index = 0;
 
-	bsonAppendStartObject(inner_pipeline,
-						  psprintf("%d", inner_pipeline_index++),
-						  &match_object);
-	bsonAppendStartObject(&match_object, "$match", &match_stage);
+	if (context->isJoinClause)
+	{
+		int			inner_pipeline_index = 0;
+
+		bsonAppendStartObject(inner_pipeline,
+							  psprintf("%d", inner_pipeline_index++),
+							  &match_object);
+		bsonAppendStartObject(&match_object, "$match", &match_stage);
+	}
+	else
+		bsonAppendStartObject(inner_pipeline, "$match", &match_stage);
+
 	bsonAppendStartObject(&match_stage, "$expr", &expr);
 
 	bsonAppendStartArray(and_query_doc, "$and", &and_op);
 
 	context->arrayIndex = 0;
+	context->opExprCount = 0;
 
-	/* Append join clause expression */
-	mongo_append_joinclauses_to_inner_pipeline(joinclause, &and_op, context);
+	/* Append JOIN/WHERE/HAVING clause expression */
+	mongo_append_clauses_to_pipeline(clause, &and_op, context);
 
 	/* Append $and array to $expr */
 	bson_append_array(&expr, "$and", (int) strlen("$and"), &and_op);
 
 	bsonAppendFinishArray(and_query_doc, &and_op);
 	bsonAppendFinishObject(&match_stage, &expr);
-	bsonAppendFinishObject(&match_object, &match_stage);
-	bsonAppendFinishObject(inner_pipeline, &match_object);
+	if (context->isJoinClause)
+	{
+		bsonAppendFinishObject(&match_object, &match_stage);
+		bsonAppendFinishObject(inner_pipeline, &match_object);
+	}
+	else
+		bsonAppendFinishObject(inner_pipeline, &match_stage);
 }
 
 /*
- * mongo_append_joinclauses_to_inner_pipeline
- *		Append all join expressions to mongoDB's $and array.
+ * mongo_append_clauses_to_pipeline
+ *		Append all JOIN/WHERE/HAVING clauses to mongoDB's $and array.
  */
 static void
-mongo_append_joinclauses_to_inner_pipeline(List *joinclause, BSON *child_doc,
-										   pipeline_cxt *context)
+mongo_append_clauses_to_pipeline(List *clause, BSON *child_doc,
+								 pipeline_cxt *context)
 {
 	ListCell   *lc;
 
-	/* loop through all join-clauses */
-	foreach(lc, joinclause)
+	/* loop through all clauses */
+	foreach(lc, clause)
 	{
 		Expr	   *expr = (Expr *) lfirst(lc);
 

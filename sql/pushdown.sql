@@ -143,17 +143,25 @@ SELECT c1, c2 FROM f_test_tbl1
 SELECT c1, c2 FROM f_test_tbl1
   WHERE c2 < 'EMP10';
 
--- Should not push down if two columns of same table is
+-- Should push down if two columns of same table are
 -- involved in single WHERE clause operator expression.
 EXPLAIN (VERBOSE, COSTS FALSE)
-SELECT c1, c6 FROM f_test_tbl1
-  WHERE c1 = c6 AND c1 = 1100
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
   ORDER BY c1;
-SELECT c1, c6 FROM f_test_tbl1
-  WHERE c1 = c6 AND c1 = 1100
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
   ORDER BY c1;
 
--- Nested operator expression in WHERE clause. Shouldn't push down.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4, c7, c8 FROM f_test_tbl1
+  WHERE c1 < c4 AND c7 < c8
+  ORDER BY c1;
+SELECT c1, c4, c7, c8 FROM f_test_tbl1
+  WHERE c1 < c4 AND c7 < c8
+  ORDER BY c1;
+
+-- Nested operator expression in WHERE clause. Should pushdown.
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2 FROM f_test_tbl1
   WHERE (c1 > 1000) > FALSE;
@@ -193,8 +201,25 @@ SELECT name, marks FROM f_test_tbl3
   WHERE pass = true
   ORDER BY name;
 
+-- INSERT NULL values and check behaviour.
+INSERT INTO f_test_tbl2 VALUES ('0', NULL, NULL, NULL);
+
+-- Should pushdown and shouldn't result row with NULL VALUES.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1 FROM f_test_tbl2 WHERE c1 < 1;
+SELECT c1 FROM f_test_tbl2 WHERE c1 < 1;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1 FROM f_test_tbl2 WHERE c2 = c3;
+SELECT c1 FROM f_test_tbl2 WHERE c2 = c3;
+
+-- Test with IS NULL, shouldn't push down
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
+SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
+DELETE FROM f_test_tbl2 WHERE c1 IS NULL;
 DROP FOREIGN TABLE f_mongo_test;
 DROP FOREIGN TABLE f_test_tbl1;
 DROP FOREIGN TABLE f_test_tbl2;

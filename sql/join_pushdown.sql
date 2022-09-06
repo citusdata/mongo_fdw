@@ -255,7 +255,7 @@ WITH t (c1_1, c1_3, c2_1) AS (
     FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1)
 ) SELECT c1_1, c2_1 FROM t ORDER BY c1_3, c1_1;
 
--- This won't push-down because WHERE only pushes operator expression.
+-- WHERE with boolean expression. Should push-down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, d.c5, e.c1, e.c2
   FROM f_test_tbl2 e LEFT JOIN f_test_tbl1 d ON (e.c1 = d.c8) WHERE d.c5 = '02-22-1981' OR d.c5 = '12-17-1980' ORDER BY 1;
