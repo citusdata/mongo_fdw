@@ -406,6 +406,32 @@ SELECT c1, c4 FROM f_test_tbl1
  1400 | 700
 (6 rows)
 
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4, c7, c8 FROM f_test_tbl1
+  WHERE c1 < c4 AND c7 < c8
+  ORDER BY c1;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Output: c1, c4, c7, c8
+   Sort Key: f_test_tbl1.c1
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4, c7, c8
+         Filter: ((f_test_tbl1.c1 < f_test_tbl1.c4) AND (f_test_tbl1.c7 < f_test_tbl1.c8))
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c4, c7, c8 FROM f_test_tbl1
+  WHERE c1 < c4 AND c7 < c8
+  ORDER BY c1;
+ c1  |  c4  | c7 | c8 
+-----+------+----+----
+ 100 | 1300 |  0 | 20
+ 400 |  900 |  0 | 20
+ 600 |  900 |  0 | 30
+ 700 |  900 |  0 | 10
+(4 rows)
+
 -- Nested operator expression in WHERE clause. Should pushdown.
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2 FROM f_test_tbl1
@@ -567,6 +593,23 @@ SELECT c1 FROM f_test_tbl2 WHERE c2 = c3;
  c1 
 ----
 (0 rows)
+
+-- Test with IS NULL, shouldn't push down
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl2
+   Output: c1
+   Filter: (f_test_tbl2.c2 IS NULL)
+   Foreign Namespace: mongo_fdw_regress.test_tbl2
+(4 rows)
+
+SELECT c1 FROM f_test_tbl2 WHERE c2 IS NULL;
+ c1 
+----
+   
+(1 row)
 
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
