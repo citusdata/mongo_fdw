@@ -339,6 +339,66 @@ SELECT e.c1, d.c2
 SELECT e.c1, d.c2
   FROM f_test_tbl1 d CROSS JOIN f_test_tbl2 e ORDER BY e.c1, d.c2 LIMIT 10;
 
+-- FDW-131: Limit and offset pushdown with join pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT round(2.2) OFFSET 2;
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT round(2.2) OFFSET 2;
+
+-- Limit as NULL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (t1.c8 = t2.c1) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT NULL OFFSET 1;
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (t1.c8 = t2.c1) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT NULL OFFSET 1;
+
+-- Limit as ALL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (t1.c8 = t2.c1) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT ALL OFFSET 1;
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (t1.c8 = t2.c1) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT ALL OFFSET 1;
+
+-- Offset as NULL, no LIMIT/OFFSET pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT 3 OFFSET NULL;
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT 3 OFFSET NULL;
+
+-- Limit with -ve value. Shouldn't pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT -2;
+-- Should throw an error.
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT -2;
+
+-- Offset with -ve value. Shouldn't pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST OFFSET -1;
+-- Should throw an error.
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST OFFSET -1;
+
+-- Limit/Offset with -ve value. Shouldn't pushdown.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT -3 OFFSET -1;
+-- Should throw an error.
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT -3 OFFSET -1;
+
+-- Limit with expression evaluating to -ve value.
+EXPLAIN (COSTS false, VERBOSE)
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT (1 - (SELECT COUNT(*) FROM f_test_tbl1));
+-- Should throw an error.
+SELECT t1.c1, t2.c1
+  FROM f_test_tbl1 t1 JOIN f_test_tbl2 t2 ON (TRUE) ORDER BY t1.c1 ASC NULLS FIRST, t2.c1 ASC NULLS FIRST LIMIT (1 - (SELECT COUNT(*) FROM f_test_tbl1));
+
 -- Test partition-wise join
 SET enable_partitionwise_join TO on;
 
