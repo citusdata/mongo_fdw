@@ -44,42 +44,42 @@ CREATE TABLE l_test_tbl1 AS
 -- Push down LEFT OUTER JOIN.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
+  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1, 3 OFFSET 50;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST OFFSET 50;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1, 3 OFFSET 50;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST OFFSET 50;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 
 -- Push down RIGHT OUTER JOIN.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
+  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
+  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 OR e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1, 3 OFFSET 60;
@@ -93,9 +93,9 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON (d.c1 = 20 AND e.c2 = 'EMP1')  ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON (d.c1 = 20 AND e.c2 = 'EMP1') ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 
 -- Push INNER JOIN.
 EXPLAIN (COSTS OFF)
@@ -124,25 +124,25 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 -- (NOT added into join clauses) on remote side.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
 -- INNER JOIN in which join clause is not pushable but WHERE condition is
 -- pushable with join clause 'TRUE'.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
 
 SET enable_mergejoin TO OFF;
 SET enable_nestloop TO OFF;
 -- Local-Foreign table joins.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 RESET enable_mergejoin;
 RESET enable_nestloop;
 
@@ -150,10 +150,10 @@ RESET enable_nestloop;
 EXPLAIN (COSTS OFF)
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
-    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1, 3;
+    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
-    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1, 3;
+    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (COSTS OFF)
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
@@ -186,9 +186,9 @@ EXECUTE pre_stmt_inner_join;
 -- join + WHERE clause push-down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE e.c8 = 10 ORDER BY 1, 3;
@@ -226,9 +226,9 @@ SELECT d.c1, d.c2, d.c5, e.c1, e.c2
   FROM f_test_tbl1 d LEFT JOIN f_test_tbl2 e ON (e.c1 = d.c8) WHERE d.c5 = '02-22-1981' ORDER BY 1;
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
 
 -- Natural join, should push-down.
 EXPLAIN (COSTS OFF)

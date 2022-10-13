@@ -36,19 +36,18 @@ CREATE TABLE l_test_tbl1 AS
 -- Push down LEFT OUTER JOIN.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(4 rows)
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
+    |                |      |       |         |   
  10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
  10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
  10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
@@ -65,58 +64,54 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  30 | SALES          | 1200 | EMP12 |     950 | 30
  40 | HR             |      |       |         |   
  50 | TESTING        |      |       |         |   
-    |                |      |       |         |   
 (17 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON d.c1 = e.c8 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
-(4 rows)
+  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
+  FROM f_test_tbl1 e LEFT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
- 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
- 10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
- 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
  20 | ADMINISTRATION |  100 | EMP1  |   800.3 | 20
- 20 | ADMINISTRATION |  400 | EMP4  |    2975 | 20
- 20 | ADMINISTRATION |  800 | EMP8  |    3000 | 20
- 20 | ADMINISTRATION | 1100 | EMP11 |    1100 | 20
- 20 | ADMINISTRATION | 1300 | EMP13 |    3000 | 20
  30 | SALES          |  200 | EMP2  |    1600 | 30
  30 | SALES          |  300 | EMP3  |    1250 | 30
+ 20 | ADMINISTRATION |  400 | EMP4  |    2975 | 20
  30 | SALES          |  500 | EMP5  | 1250.23 | 30
  30 | SALES          |  600 | EMP6  |    2850 | 30
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 20 | ADMINISTRATION |  800 | EMP8  |    3000 | 20
+ 10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
  30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 20 | ADMINISTRATION | 1100 | EMP11 |    1100 | 20
  30 | SALES          | 1200 | EMP12 |     950 | 30
+ 20 | ADMINISTRATION | 1300 | EMP13 |    3000 | 20
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
     |                | 1500 | EMP15 |     950 | 60
     |                | 1600 | EMP16 |         |   
 (16 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1, 3 OFFSET 50;
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST OFFSET 50;
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: d.c1, e.c1
-         ->  Foreign Scan
-               Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(5 rows)
+   ->  Foreign Scan
+         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(3 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1, 3 OFFSET 50;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 OR e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST OFFSET 50;
  c1 |   c2    |  c1  |  c2   |   c6    | c8 
 ----+---------+------+-------+---------+----
+ 40 | HR      | 1300 | EMP13 |    3000 | 20
  40 | HR      | 1400 | EMP14 |    1300 | 10
  40 | HR      | 1500 | EMP15 |     950 | 60
  40 | HR      | 1600 | EMP16 |         |   
@@ -136,24 +131,22 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  50 | TESTING | 1400 | EMP14 |    1300 | 10
  50 | TESTING | 1500 | EMP15 |     950 | 60
  50 | TESTING | 1600 | EMP16 |         |   
-    |         |      |       |         |   
 (20 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(4 rows)
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
+    |                |      |       |         |   
  10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
  10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
  20 | ADMINISTRATION |      |       |         |   
@@ -165,25 +158,23 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  30 | SALES          | 1200 | EMP12 |     950 | 30
  40 | HR             |      |       |         |   
  50 | TESTING        |      |       |         |   
-    |                |      |       |         |   
 (12 rows)
 
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(4 rows)
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
+    |                |      |       |         |   
  10 | DEVELOPMENT    |      |       |         |   
  20 | ADMINISTRATION |  100 | EMP1  |   800.3 | 20
  20 | ADMINISTRATION |  200 | EMP2  |    1600 | 30
@@ -204,58 +195,54 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  30 | SALES          |      |       |         |   
  40 | HR             |      |       |         |   
  50 | TESTING        |      |       |         |   
-    |                |      |       |         |   
 (21 rows)
 
 -- Push down RIGHT OUTER JOIN.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
-(4 rows)
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
- 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
- 10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
- 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
  20 | ADMINISTRATION |  100 | EMP1  |   800.3 | 20
- 20 | ADMINISTRATION |  400 | EMP4  |    2975 | 20
- 20 | ADMINISTRATION |  800 | EMP8  |    3000 | 20
- 20 | ADMINISTRATION | 1100 | EMP11 |    1100 | 20
- 20 | ADMINISTRATION | 1300 | EMP13 |    3000 | 20
  30 | SALES          |  200 | EMP2  |    1600 | 30
  30 | SALES          |  300 | EMP3  |    1250 | 30
+ 20 | ADMINISTRATION |  400 | EMP4  |    2975 | 20
  30 | SALES          |  500 | EMP5  | 1250.23 | 30
  30 | SALES          |  600 | EMP6  |    2850 | 30
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 20 | ADMINISTRATION |  800 | EMP8  |    3000 | 20
+ 10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
  30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 20 | ADMINISTRATION | 1100 | EMP11 |    1100 | 20
  30 | SALES          | 1200 | EMP12 |     950 | 30
+ 20 | ADMINISTRATION | 1300 | EMP13 |    3000 | 20
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
     |                | 1500 | EMP15 |     950 | 60
     |                | 1600 | EMP16 |         |   
 (16 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(4 rows)
+  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1, 3;
+  FROM f_test_tbl1 e RIGHT OUTER JOIN f_test_tbl2 d ON e.c8 = d.c1 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
+    |                |      |       |         |   
  10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
  10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
  10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
@@ -272,7 +259,6 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  30 | SALES          | 1200 | EMP12 |     950 | 30
  40 | HR             |      |       |         |   
  50 | TESTING        |      |       |         |   
-    |                |      |       |         |   
 (17 rows)
 
 EXPLAIN (COSTS OFF)
@@ -353,17 +339,15 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
-(4 rows)
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON d.c1 = 20 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl1 e) LEFT JOIN (mongo_fdw_regress.test_tbl2 d)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON (d.c1 = 20 AND e.c2 = 'EMP1')  ORDER BY 1, 3;
+  FROM f_test_tbl2 d RIGHT OUTER JOIN f_test_tbl1 e ON (d.c1 = 20 AND e.c2 = 'EMP1') ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
  20 | ADMINISTRATION |  100 | EMP1  |   800.3 | 20
@@ -512,17 +496,15 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 -- (NOT added into join clauses) on remote side.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: e.c3
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl1 d) INNER JOIN (mongo_fdw_regress.test_tbl2 e)
-(4 rows)
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl1 d) INNER JOIN (mongo_fdw_regress.test_tbl2 e)
+(2 rows)
 
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (d.c8 = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
  c1  | c1 
 -----+----
  100 | 20
@@ -532,18 +514,16 @@ SELECT d.c1, e.c1
 -- pushable with join clause 'TRUE'.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: e.c3
-   ->  Foreign Scan
-         Filter: (abs(c8) = c1)
-         Foreign Namespace: (mongo_fdw_regress.test_tbl1 d) INNER JOIN (mongo_fdw_regress.test_tbl2 e)
-(5 rows)
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Filter: (abs(c8) = c1)
+   Foreign Namespace: (mongo_fdw_regress.test_tbl1 d) INNER JOIN (mongo_fdw_regress.test_tbl2 e)
+(3 rows)
 
 SELECT d.c1, e.c1
-  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3, d.c1;
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
  c1  | c1 
 -----+----
  100 | 20
@@ -554,11 +534,11 @@ SET enable_nestloop TO OFF;
 -- Local-Foreign table joins.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
                           QUERY PLAN                          
 --------------------------------------------------------------
  Sort
-   Sort Key: d.c1, e.c1
+   Sort Key: d.c1 NULLS FIRST, e.c1 NULLS FIRST
    ->  Hash Left Join
          Hash Cond: (d.c1 = e.c8)
          ->  Foreign Scan on f_test_tbl2 d
@@ -568,9 +548,10 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
 (8 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN l_test_tbl1 e ON d.c1 = e.c8 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
  c1 |       c2       |  c1  |  c2   |   c6    | c8 
 ----+----------------+------+-------+---------+----
+    |                |      |       |         |   
  10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
  10 | DEVELOPMENT    |  900 | EMP9  |    5000 | 10
  10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
@@ -587,7 +568,6 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  30 | SALES          | 1200 | EMP12 |     950 | 30
  40 | HR             |      |       |         |   
  50 | TESTING        |      |       |         |   
-    |                |      |       |         |   
 (17 rows)
 
 RESET enable_mergejoin;
@@ -596,11 +576,11 @@ RESET enable_nestloop;
 EXPLAIN (COSTS OFF)
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
-    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1, 3;
+    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
  Sort
-   Sort Key: l.c1, l.c8
+   Sort Key: l.c1 NULLS FIRST, l.c8 NULLS FIRST
    ->  Hash Join
          Hash Cond: (l.c1 = f1.c1)
          ->  Seq Scan on l_test_tbl1 l
@@ -613,7 +593,7 @@ SELECT l.c1, l.c6, l.c8
 
 SELECT l.c1, l.c6, l.c8
   FROM l_test_tbl1 l
-    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1, 3;
+    WHERE l.c1 IN (SELECT f1.c1 FROM f_test_tbl1 f1 LEFT JOIN f_test_tbl2 f2 ON (f1.c8 = f2.c1)) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
   c1  |   c6    | c8 
 ------+---------+----
   100 |   800.3 | 20
@@ -737,17 +717,15 @@ EXECUTE pre_stmt_inner_join;
 -- join + WHERE clause push-down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: e.c1
-   ->  Foreign Scan
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(4 rows)
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON d.c1 = e.c8 WHERE d.c1 = 10 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
  c1 |     c2      |  c1  |  c2   |   c6    | c8 
 ----+-------------+------+-------+---------+----
  10 | DEVELOPMENT |  700 | EMP7  | 2450.34 | 10
@@ -909,18 +887,16 @@ SELECT d.c1, d.c2, d.c5, e.c1, e.c2
 
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1, 3;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
- Sort
-   Sort Key: d.c1, e.c1
-   ->  Foreign Scan
-         Filter: ((c1 = 10) OR (c8 = 30))
-         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
-(5 rows)
+  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Filter: ((c1 = 10) OR (c8 = 30))
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(3 rows)
 
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
-  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1, 3;
+  FROM f_test_tbl2 d LEFT JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND d.c1 = 20 OR e.c2 = 'EMP1') WHERE d.c1 = 10 OR e.c8 = 30 ORDER BY 1 DESC NULLS LAST, 3 DESC NULLS LAST;
  c1 |     c2      | c1  |  c2  |  c6   | c8 
 ----+-------------+-----+------+-------+----
  10 | DEVELOPMENT | 100 | EMP1 | 800.3 | 20

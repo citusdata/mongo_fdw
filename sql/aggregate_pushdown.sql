@@ -28,28 +28,28 @@ INSERT INTO fdw137_t2 VALUES (0);
 CREATE TABLE fdw137_local AS
   SELECT c1, c2, c3, c4, c5, c6, c7, c8 FROM fdw137_t1;
 
--- Simple aggregates
+-- Simple aggregates. ORDER BY push-down not possible because only column names allowed.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT count(*), sum(c1), avg(c1), min(c4), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw137_t1 WHERE c4 > 600 GROUP BY c4 ORDER BY 1, 2;
-SELECT count(*), sum(c1), avg(c1), min(c4), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw137_t1 WHERE c4 > 600 GROUP BY c4 ORDER BY 1, 2;
+SELECT count(*), sum(c1), avg(c1), min(c4), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw137_t1 WHERE c4 > 600 GROUP BY c4 ORDER BY 1 ASC NULLS FIRST, 2 ASC NULLS FIRST;
+SELECT count(*), sum(c1), avg(c1), min(c4), max(c1), sum(c1) * (random() <= 1)::int AS sum2 FROM fdw137_t1 WHERE c4 > 600 GROUP BY c4 ORDER BY 1 ASC NULLS FIRST, 2 ASC NULLS FIRST;
 
 -- GROUP BY clause HAVING expressions
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c1, sum(c1), count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1;
-SELECT c1, sum(c1), count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1;
+SELECT c1, sum(c1), count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1 ASC NULLS FIRST;
+SELECT c1, sum(c1), count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1 ASC NULLS FIRST;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c8, min(c2) FROM fdw137_t1 WHERE c3 = 'ADMIN' GROUP BY c8 HAVING min(c8) = 20 ORDER BY c8;
-SELECT c8, min(c2) FROM fdw137_t1 WHERE c3 = 'ADMIN' GROUP BY c8 HAVING min(c8) = 20 ORDER BY c8;
+SELECT c8, min(c2) FROM fdw137_t1 WHERE c3 = 'ADMIN' GROUP BY c8 HAVING min(c8) = 20 ORDER BY c8 ASC NULLS FIRST;
+SELECT c8, min(c2) FROM fdw137_t1 WHERE c3 = 'ADMIN' GROUP BY c8 HAVING min(c8) = 20 ORDER BY c8 ASC NULLS FIRST;
 
 -- Multi-column GROUP BY clause. Push-down.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1;
-SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
 
 -- Aggregation on expression. Don't push-down.
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT c1, sum(c1+2) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1;
-SELECT c1, sum(c1+2) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1;
+SELECT c1, sum(c1+2) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1 ASC NULLS FIRST;
+SELECT c1, sum(c1+2) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1 ASC NULLS FIRST;
 
 -- Aggregate with unshippable GROUP BY clause are not pushed
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -58,6 +58,11 @@ SELECT max(c4) FROM fdw137_t1 GROUP BY c4 * (random() <= 1)::int ORDER BY 1;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, sum(c1) FROM fdw137_t1 GROUP BY c1 HAVING min(c1 * 3) > 500 ORDER BY c1;
 SELECT c1, sum(c1) FROM fdw137_t1 GROUP BY c1 HAVING min(c1 * 3) > 500 ORDER BY c1;
+
+-- FDW-134: Test ORDER BY with COLLATE. Shouldn't push-down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY c2 COLLATE "en_US" ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY c2 COLLATE "en_US" ASC NULLS FIRST;
 
 
 -- Using expressions in HAVING clause. Pushed down.
@@ -72,14 +77,14 @@ SELECT count(*) FROM (SELECT c3, count(c1) FROM fdw137_t1 GROUP BY c3 HAVING (av
 
 -- Aggregate over join query
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT sum(t1.c8), avg(t2.c1) FROM fdw137_t1 t1 INNER JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8%2 = 0 ORDER BY 1;
-SELECT sum(t1.c8), avg(t2.c1) FROM fdw137_t1 t1 INNER JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8%2 = 0 ORDER BY 1;
+SELECT sum(t1.c8), avg(t2.c1) FROM fdw137_t1 t1 INNER JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8%2 = 0 ORDER BY 1 DESC NULLS LAST;
+SELECT sum(t1.c8), avg(t2.c1) FROM fdw137_t1 t1 INNER JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8%2 = 0 ORDER BY 1 DESC NULLS LAST;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT t1.c1, count(*), t2.c4 FROM fdw137_t2 t1 INNER JOIN fdw137_t1 t2 ON (t1.c1 = t2.c8) GROUP BY t1.c1, t2.c4 ORDER BY 1, 3;
-SELECT t1.c1, count(*), t2.c4 FROM fdw137_t2 t1 INNER JOIN fdw137_t1 t2 ON (t1.c1 = t2.c8) GROUP BY t1.c1, t2.c4 ORDER BY 1, 3;
+SELECT t1.c1, count(*), t2.c4 FROM fdw137_t2 t1 INNER JOIN fdw137_t1 t2 ON (t1.c1 = t2.c8) GROUP BY t1.c1, t2.c4 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+SELECT t1.c1, count(*), t2.c4 FROM fdw137_t2 t1 INNER JOIN fdw137_t1 t2 ON (t1.c1 = t2.c8) GROUP BY t1.c1, t2.c4 ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2;
-SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
 
 -- Aggregate is not pushed down as aggregation contains random()
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -294,7 +299,7 @@ ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'false');
 ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
 ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
 EXPLAIN (VERBOSE, COSTS OFF)
-SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
 
 -- Check when enable_join_pushdown is OFF and enable_aggregate_pushdown is ON.
 -- Shouldn't push down join as well as aggregation.
@@ -302,6 +307,64 @@ ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');
 ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2;
+
+-- FDW-134: Test with number of columns more than 32
+CREATE FOREIGN TABLE f_test_large (_id int,
+  a01 int, a02 int, a03 int, a04 int, a05 int, a06 int, a07 int, a08 int, a09 int, a10 int,
+  a11 int, a12 int, a13 int, a14 int, a15 int, a16 int, a17 int, a18 int, a19 int, a20 int,
+  a21 int, a22 int, a23 int, a24 int, a25 int, a26 int, a27 int, a28 int, a29 int, a30 int,
+  a31 int, a32 int, a33 int, a34 int, a35 int)
+  SERVER mongo_server OPTIONS (database 'mongo_fdw_regress', collection 'mongo_test_large');
+
+-- Shouldn't pushdown ORDERBY clause due to exceeded number of path keys limit.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a32, sum(a32) FROM f_test_large GROUP BY
+  a01, a02, a03, a04, a05, a06, a07, a08, a09, a10, a11, a12, a13, a14, a15,
+  a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+  a31, a32, a33, a34, a35 ORDER BY
+  a01 ASC NULLS FIRST, a02 ASC NULLS FIRST, a03 ASC NULLS FIRST, a04 ASC NULLS FIRST, a05 ASC NULLS FIRST,
+  a06 ASC NULLS FIRST, a07 ASC NULLS FIRST, a08 ASC NULLS FIRST, a09 ASC NULLS FIRST, a10 ASC NULLS FIRST,
+  a11 ASC NULLS FIRST, a12 ASC NULLS FIRST, a13 ASC NULLS FIRST, a14 ASC NULLS FIRST, a15 ASC NULLS FIRST,
+  a16 ASC NULLS FIRST, a17 ASC NULLS FIRST, a18 ASC NULLS FIRST, a19 ASC NULLS FIRST, a20 ASC NULLS FIRST,
+  a21 ASC NULLS FIRST, a22 ASC NULLS FIRST, a23 ASC NULLS FIRST, a24 ASC NULLS FIRST, a25 ASC NULLS FIRST,
+  a26 ASC NULLS FIRST, a27 ASC NULLS FIRST, a28 ASC NULLS FIRST, a29 ASC NULLS FIRST, a30 ASC NULLS FIRST,
+  a31 ASC NULLS FIRST, a32 ASC NULLS FIRST, a33 ASC NULLS FIRST, a34 DESC NULLS LAST, a35 ASC NULLS FIRST;
+SELECT a32, sum(a32) FROM f_test_large GROUP BY
+  a01, a02, a03, a04, a05, a06, a07, a08, a09, a10, a11, a12, a13, a14, a15,
+  a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+  a31, a32, a33, a34, a35 ORDER BY
+  a01 ASC NULLS FIRST, a02 ASC NULLS FIRST, a03 ASC NULLS FIRST, a04 ASC NULLS FIRST, a05 ASC NULLS FIRST,
+  a06 ASC NULLS FIRST, a07 ASC NULLS FIRST, a08 ASC NULLS FIRST, a09 ASC NULLS FIRST, a10 ASC NULLS FIRST,
+  a11 ASC NULLS FIRST, a12 ASC NULLS FIRST, a13 ASC NULLS FIRST, a14 ASC NULLS FIRST, a15 ASC NULLS FIRST,
+  a16 ASC NULLS FIRST, a17 ASC NULLS FIRST, a18 ASC NULLS FIRST, a19 ASC NULLS FIRST, a20 ASC NULLS FIRST,
+  a21 ASC NULLS FIRST, a22 ASC NULLS FIRST, a23 ASC NULLS FIRST, a24 ASC NULLS FIRST, a25 ASC NULLS FIRST,
+  a26 ASC NULLS FIRST, a27 ASC NULLS FIRST, a28 ASC NULLS FIRST, a29 ASC NULLS FIRST, a30 ASC NULLS FIRST,
+  a31 ASC NULLS FIRST, a32 ASC NULLS FIRST, a33 ASC NULLS FIRST, a34 DESC NULLS LAST, a35 ASC NULLS FIRST;
+
+-- Should pushdown ORDERBY clause because number of path keys are in limit.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT a32, sum(a32) FROM f_test_large GROUP BY
+  a01, a02, a03, a04, a05, a06, a07, a08, a09, a10, a11, a12, a13, a14, a15,
+  a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+  a31, a32 ORDER BY
+  a01 ASC NULLS FIRST, a02 ASC NULLS FIRST, a03 ASC NULLS FIRST, a04 ASC NULLS FIRST, a05 ASC NULLS FIRST,
+  a06 ASC NULLS FIRST, a07 ASC NULLS FIRST, a08 ASC NULLS FIRST, a09 ASC NULLS FIRST, a10 ASC NULLS FIRST,
+  a11 ASC NULLS FIRST, a12 ASC NULLS FIRST, a13 ASC NULLS FIRST, a14 ASC NULLS FIRST, a15 ASC NULLS FIRST,
+  a16 ASC NULLS FIRST, a17 ASC NULLS FIRST, a18 ASC NULLS FIRST, a19 ASC NULLS FIRST, a20 ASC NULLS FIRST,
+  a21 ASC NULLS FIRST, a22 ASC NULLS FIRST, a23 ASC NULLS FIRST, a24 ASC NULLS FIRST, a25 ASC NULLS FIRST,
+  a26 ASC NULLS FIRST, a27 ASC NULLS FIRST, a28 ASC NULLS FIRST, a29 ASC NULLS FIRST, a30 ASC NULLS FIRST,
+  a31 ASC NULLS FIRST, a32 ASC NULLS FIRST;
+SELECT a32, sum(a32) FROM f_test_large GROUP BY
+  a01, a02, a03, a04, a05, a06, a07, a08, a09, a10, a11, a12, a13, a14, a15,
+  a16, a17, a18, a19, a20, a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+  a31, a32 ORDER BY
+  a01 ASC NULLS FIRST, a02 ASC NULLS FIRST, a03 ASC NULLS FIRST, a04 ASC NULLS FIRST, a05 ASC NULLS FIRST,
+  a06 ASC NULLS FIRST, a07 ASC NULLS FIRST, a08 ASC NULLS FIRST, a09 ASC NULLS FIRST, a10 ASC NULLS FIRST,
+  a11 ASC NULLS FIRST, a12 ASC NULLS FIRST, a13 ASC NULLS FIRST, a14 ASC NULLS FIRST, a15 ASC NULLS FIRST,
+  a16 ASC NULLS FIRST, a17 ASC NULLS FIRST, a18 ASC NULLS FIRST, a19 ASC NULLS FIRST, a20 ASC NULLS FIRST,
+  a21 ASC NULLS FIRST, a22 ASC NULLS FIRST, a23 ASC NULLS FIRST, a24 ASC NULLS FIRST, a25 ASC NULLS FIRST,
+  a26 ASC NULLS FIRST, a27 ASC NULLS FIRST, a28 ASC NULLS FIRST, a29 ASC NULLS FIRST, a30 ASC NULLS FIRST,
+  a31 ASC NULLS FIRST, a32 ASC NULLS FIRST;
 
 -- Cleanup
 DELETE FROM fdw137_t1 WHERE c8 IS NULL;
@@ -312,6 +375,7 @@ DROP FOREIGN TABLE fdw137_t1;
 DROP FOREIGN TABLE fdw137_t2;
 DROP FOREIGN TABLE ftprt1_p1;
 DROP FOREIGN TABLE ftprt1_p2;
+DROP FOREIGN TABLE f_test_large;
 DROP TABLE fprt1;
 DROP USER MAPPING FOR public SERVER mongo_server;
 DROP SERVER mongo_server;

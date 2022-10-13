@@ -267,9 +267,9 @@ SELECT (c6::float + (c1 * length(c3::text))) AS "c1 + c6", c1, c6
 -- FDW-249; LEFT JOIN LATERAL should not crash
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
-  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1 ASC NULLS FIRST;
 SELECT t1.a, t1.b, t3.a, t1_a FROM f_mongo_test t1 LEFT JOIN LATERAL (
-  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1;
+  SELECT t2.a, t1.a AS t1_a FROM f_mongo_test t2) t3 ON t1.a = t3.a ORDER BY 1 ASC NULLS FIRST;
 SELECT t1.c1, t3.c1, t3.t1_c8 FROM f_test_tbl1 t1 INNER JOIN LATERAL (
   SELECT t2.c1, t1.c8 AS t1_c8 FROM f_test_tbl2 t2) t3 ON t3.c1 = t3.t1_c8
   ORDER BY 1, 2, 3;
