@@ -264,6 +264,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	HTAB	   *columnInfoHash;
 	int			jointype;
 	int			natts;
+	bool		has_limit;
 
 	/* Retrieve data passed by planning phase */
 	colname_list = list_nth(PrivateList, mongoFdwPrivateJoinClauseColNameList);
@@ -283,6 +284,9 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	/* Retrieve information related to ORDER BY clause */
 	pathkey_list = list_nth(PrivateList, mongoFdwPrivatePathKeyList);
 	is_ascsort_list = list_nth(PrivateList, mongoFdwPrivateIsAscSortList);
+
+	/* Retrieve information related to LIMIT/OFFSET clause */
+	has_limit = intVal(list_nth(PrivateList, mongoFdwPrivateHasLimitClause));
 
 	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
@@ -769,6 +773,46 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		}
 		bsonAppendFinishObject(&sort_stage, &sort);
 		bsonAppendFinishObject(&root_pipeline, &sort_stage); /* End sort */
+	}
+
+	/* Add LIMIT/SKIP stage */
+	if (has_limit)
+	{
+		int64		limit_value;
+		int64 		offset_value;
+
+		/*
+		 * Add skip stage for OFFSET clause.  However, don't add the same if
+		 * either offset is not provided or the offset value is zero.
+		 */
+		offset_value = (int64) intVal(list_nth(PrivateList,
+											   mongoFdwPrivateLimitOffsetList));
+		if (offset_value != -1 && offset_value != 0)
+		{
+			BSON		skip_stage;
+
+			bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+								  &skip_stage);
+			bsonAppendInt64(&skip_stage, "$skip", offset_value);
+			bsonAppendFinishObject(&root_pipeline, &skip_stage);
+		}
+
+		/*
+		 * Add limit stage for LIMIT clause.  However, don't add the same if
+		 * the limit is not provided.
+		 */
+		limit_value = (int64) intVal(list_nth(PrivateList,
+											  mongoFdwPrivateLimitCountList));
+
+		if (limit_value != -1)
+		{
+			BSON		limit_stage;
+
+			bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+								  &limit_stage);
+			bsonAppendInt64(&limit_stage, "$limit", limit_value);
+			bsonAppendFinishObject(&root_pipeline, &limit_stage);
+		}
 	}
 
 	bsonAppendFinishArray(queryDocument, &root_pipeline);

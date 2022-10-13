@@ -230,6 +230,11 @@ equivalent result, we can only push-down ORDER BY with either
 ASC NULLS FIRST or DESC NULLS LAST. Moreover, as MongoDB sorts only on
 fields, only column names in ORDER BY expressions are pushed down.
 
+### LIMIT OFFSET push-down
+mongo_fdw now also supports limit offset push-down. Wherever possible,
+perform LIMIT and OFFSET operations on the remote server. This reduces
+network traffic between local PostgreSQL and remote MongoDB servers.
+
 ### New MongoDB C Driver Support
 This enhancement is to add a new [MongoDB][1]' C driver. The current
 implementation is based on the legacy driver of MongoDB. But

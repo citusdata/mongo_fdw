@@ -94,11 +94,14 @@ static bool enable_order_by_pushdown = true;
  * We store:
  *
  * 1) Boolean flag showing if the remote query has the final sort
+ * 2) Boolean flag showing if the remote query has the LIMIT clause
  */
 enum FdwPathPrivateIndex
 {
 	/* has-final-sort flag (as an integer Value node) */
 	FdwPathPrivateHasFinalSort,
+	/* has-limit flag (as an integer Value node) */
+	FdwPathPrivateHasLimit
 };
 
 extern PGDLLEXPORT void _PG_init(void);
@@ -238,6 +241,12 @@ static bool mongo_foreign_grouping_ok(PlannerInfo *root,
 static void mongo_add_foreign_grouping_paths(PlannerInfo *root,
 											 RelOptInfo *input_rel,
 											 RelOptInfo *grouped_rel);
+#endif
+#if PG_VERSION_NUM >= 120000
+static void mongo_add_foreign_final_paths(PlannerInfo *root,
+										  RelOptInfo *input_rel,
+										  RelOptInfo *final_rel,
+										  FinalPathExtraData *extra);
 #endif
 #endif
 #ifndef META_DRIVER
@@ -630,13 +639,21 @@ mongoGetForeignPlan(PlannerInfo *root,
 	List	   *pathKeyList = NIL;
 	List	   *isAscSortList = NIL;
 	bool		has_final_sort = false;
+	bool		has_limit = false;
+	int64		limit_value;
+	int64	    offset_value;
 
 	/*
 	 * Get FDW private data created by mongoGetForeignUpperPaths(), if any.
 	 */
 	if (best_path->fdw_private)
+	{
 		has_final_sort = intVal(list_nth(best_path->fdw_private,
 										 FdwPathPrivateHasFinalSort));
+		has_limit = intVal(list_nth(best_path->fdw_private,
+									FdwPathPrivateHasLimit));
+	}
+
 #endif
 
 	/* Set scan relation id */
@@ -997,6 +1014,39 @@ mongoGetForeignPlan(PlannerInfo *root,
 
 	/* Destroy hash table used to get unique column info */
 	hash_destroy(qual_info->exprColHash);
+
+	/*
+	 * Retrieve limit and offset values, which needs to be passed to the
+	 * executor.  If any of the two clauses (limit or offset) is missing from
+	 * the query, then default value -1 is used to indicate the same.
+	 */
+	limit_value = offset_value = -1;
+	if (has_limit)
+	{
+		Node	   *node;
+
+		node = root->parse->limitCount;
+		if (node)
+		{
+			Assert(nodeTag(node) == T_Const &&
+				   ((Const *) node)->consttype == INT8OID);
+
+			/* Treat NULL as no limit */
+			if (!((Const *) node)->constisnull)
+				limit_value = DatumGetInt64(((Const *) node)->constvalue);
+		}
+
+		node = root->parse->limitOffset;
+		if (node)
+		{
+			Assert(nodeTag(node) == T_Const &&
+				   ((Const *) node)->consttype == INT8OID);
+
+			/* Treat NULL as no offset */
+			if (!((Const *) node)->constisnull)
+				offset_value = DatumGetInt64(((Const *) node)->constvalue);
+		}
+	}
 #endif
 
 	/*
@@ -1023,6 +1073,9 @@ mongoGetForeignPlan(PlannerInfo *root,
 	fdw_private = lappend(fdw_private, qual_info->isOuterList);
 	fdw_private = lappend(fdw_private, pathKeyList);
 	fdw_private = lappend(fdw_private, isAscSortList);
+	fdw_private = lappend(fdw_private, makeInteger(has_limit));
+	fdw_private = lappend(fdw_private, makeInteger(limit_value));
+	fdw_private = lappend(fdw_private, makeInteger(offset_value));
 
 	if (IS_JOIN_REL(foreignrel) || IS_UPPER_REL(foreignrel))
 	{
@@ -3728,8 +3781,6 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
  * mongoGetForeignUpperPaths
  *		Add paths for post-join operations like aggregation, grouping etc. if
  *		corresponding operations are safe to push down.
- *
- * Right now, we only support aggregate, grouping and having clause pushdown.
  */
 #if PG_VERSION_NUM >= 110000
 static void
@@ -3754,7 +3805,8 @@ mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 
 	/* Ignore stages we don't support; and skip any duplicate calls. */
 #if PG_VERSION_NUM >= 120000
-	if ((stage != UPPERREL_GROUP_AGG && stage != UPPERREL_ORDERED) ||
+	if ((stage != UPPERREL_GROUP_AGG && stage != UPPERREL_ORDERED &&
+		 stage != UPPERREL_FINAL) ||
 #else
 	if (stage != UPPERREL_GROUP_AGG ||
 #endif
@@ -3775,6 +3827,10 @@ mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 			break;
 		case UPPERREL_ORDERED:
 			mongo_add_foreign_ordered_paths(root, input_rel, output_rel);
+			break;
+		case UPPERREL_FINAL:
+			mongo_add_foreign_final_paths(root, input_rel, output_rel,
+										  (FinalPathExtraData *) extra);
 			break;
 		default:
 			elog(ERROR, "unexpected upper relation: %d", (int) stage);
@@ -4405,7 +4461,7 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * Build the fdw_private list that will be used by mongoGetForeignPlan.
 	 * Items in the list must match the order in the enum FdwPathPrivateIndex.
 	 */
-	fdw_private = list_make1(makeInteger(true));
+	fdw_private = list_make2(makeInteger(true), makeInteger(false));
 
 	/* Create foreign ordering path */
 	ordered_path = create_foreign_upper_path(root,
@@ -4420,6 +4476,232 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	/* and add it to the ordered_rel */
 	add_path(ordered_rel, (Path *) ordered_path);
+}
+
+/*
+ * mongo_add_foreign_final_paths
+ *		Add foreign paths for performing the final processing remotely.
+ *
+ * Given input_rel contains the source-data Paths.  The paths are added to the
+ * given final_rel.
+ */
+static void
+mongo_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
+							  RelOptInfo *final_rel, FinalPathExtraData *extra)
+{
+	Query	   *parse = root->parse;
+	MongoFdwRelationInfo *ifpinfo = (MongoFdwRelationInfo *) input_rel->fdw_private;
+	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) final_rel->fdw_private;
+	bool		has_final_sort = false;
+	List	   *pathkeys = NIL;
+	double		rows;
+	Cost		startup_cost;
+	Cost		total_cost;
+	List	   *fdw_private;
+	ForeignPath *final_path;
+
+	/*
+	 * Currently, we only support this for SELECT commands
+	 */
+	if (parse->commandType != CMD_SELECT)
+		return;
+
+	/*
+	 * We do not support LIMIT with FOR UPDATE/SHARE.  Also, if there is no
+	 * FOR UPDATE/SHARE clause and there is no LIMIT, don't need to add Foreign
+	 * final path.
+	 */
+	if (parse->rowMarks || !extra->limit_needed)
+		return;
+
+	/* We don't support cases where there are any SRFs in the targetlist */
+	if (parse->hasTargetSRFs)
+		return;
+
+	/* Save the input_rel as outerrel in fpinfo */
+	fpinfo->outerrel = input_rel;
+
+	/*
+	 * If there is no need to add a LIMIT node, there might be a ForeignPath
+	 * in the input_rel's pathlist that implements all behavior of the query.
+	 * Note: we would already have accounted for the query's FOR UPDATE/SHARE
+	 * (if any) before we get here.
+	 */
+	if (!extra->limit_needed)
+	{
+		ListCell   *lc;
+
+		Assert(parse->rowMarks);
+
+		/*
+		 * Grouping and aggregation are not supported with FOR UPDATE/SHARE,
+		 * so the input_rel should be a base, join, or ordered relation; and
+		 * if it's an ordered relation, its input relation should be a base or
+		 * join relation.
+		 */
+		Assert(input_rel->reloptkind == RELOPT_BASEREL ||
+			   input_rel->reloptkind == RELOPT_JOINREL ||
+			   (input_rel->reloptkind == RELOPT_UPPER_REL &&
+				ifpinfo->stage == UPPERREL_ORDERED &&
+				(ifpinfo->outerrel->reloptkind == RELOPT_BASEREL ||
+				 ifpinfo->outerrel->reloptkind == RELOPT_JOINREL)));
+
+		foreach(lc, input_rel->pathlist)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+
+			/*
+			 * apply_scanjoin_target_to_paths() uses create_projection_path()
+			 * to adjust each of its input paths if needed, whereas
+			 * create_ordered_paths() uses apply_projection_to_path() to do
+			 * that.  So the former might have put a ProjectionPath on top of
+			 * the ForeignPath; look through ProjectionPath and see if the
+			 * path underneath it is ForeignPath.
+			 */
+			if (IsA(path, ForeignPath) ||
+				(IsA(path, ProjectionPath) &&
+				 IsA(((ProjectionPath *) path)->subpath, ForeignPath)))
+			{
+				/*
+				 * Create foreign final path; this gets rid of a
+				 * no-longer-needed outer plan (if any), which makes the
+				 * EXPLAIN output look cleaner
+				 */
+				final_path = create_foreign_upper_path(root,
+													   path->parent,
+													   path->pathtarget,
+													   path->rows,
+													   path->startup_cost,
+													   path->total_cost,
+													   path->pathkeys,
+													   NULL,	/* no extra plan */
+													   NULL);	/* no fdw_private */
+
+				/* and add it to the final_rel */
+				add_path(final_rel, (Path *) final_path);
+
+				/* Safe to push down */
+				fpinfo->pushdown_safe = true;
+
+				return;
+			}
+		}
+
+		/*
+		 * If we get here it means no ForeignPaths; since we would already
+		 * have considered pushing down all operations for the query to the
+		 * remote server, give up on it.
+		 */
+		return;
+	}
+
+	Assert(extra->limit_needed);
+
+	/*
+	 * If the input_rel is an ordered relation, replace the input_rel with its
+	 * input relation
+	 */
+	if (input_rel->reloptkind == RELOPT_UPPER_REL &&
+		ifpinfo->stage == UPPERREL_ORDERED)
+	{
+		/* Do not push down LIMIT if ORDER BY push down is disabled */
+		if (!enable_order_by_pushdown)
+			return;
+
+		input_rel = ifpinfo->outerrel;
+		ifpinfo = (MongoFdwRelationInfo *) input_rel->fdw_private;
+		has_final_sort = true;
+		pathkeys = root->sort_pathkeys;
+	}
+
+	/* The input_rel should be a base, join, or grouping relation */
+	Assert(input_rel->reloptkind == RELOPT_BASEREL ||
+		   input_rel->reloptkind == RELOPT_JOINREL ||
+		   (input_rel->reloptkind == RELOPT_UPPER_REL &&
+			ifpinfo->stage == UPPERREL_GROUP_AGG));
+
+	/*
+	 * We try to create a path below by extending a simple foreign path for
+	 * the underlying base, join, or grouping relation to perform the final
+	 * sort (if has_final_sort) and the LIMIT restriction remotely, which is
+	 * stored into the fdw_private list of the resulting path.  (We
+	 * re-estimate the costs of sorting the underlying relation, if
+	 * has_final_sort.)
+	 */
+
+	/*
+	 * Assess if it is safe to push down the LIMIT and OFFSET to the remote
+	 * server
+	 */
+
+	/*
+	 * If the underlying relation has any local conditions, the LIMIT/OFFSET
+	 * cannot be pushed down.
+	 */
+	if (ifpinfo->local_conds)
+		return;
+
+	/*
+	 * Support only Const nodes as expressions are NOT supported on MongoDB.
+	 * Also, MongoDB supports only positive 64-bit integer values, so don't
+	 * pushdown in case of -ve values given for LIMIT/OFFSET clauses.
+	 */
+	if (parse->limitCount)
+	{
+		Node	   *node = parse->limitCount;
+
+		if (nodeTag(node) != T_Const ||
+			(((Const *) node)->consttype != INT8OID))
+			return;
+
+		if (!((Const *) node)->constisnull &&
+			(DatumGetInt64(((Const *) node)->constvalue) < 0))
+				return;
+	}
+	if (parse->limitOffset)
+	{
+		Node	   *node = parse->limitOffset;
+
+		if (nodeTag(node) != T_Const ||
+			(((Const *) node)->consttype != INT8OID))
+			return;
+
+		if (!((Const *) node)->constisnull &&
+			(DatumGetInt64(((Const *) node)->constvalue) < 0))
+				return;
+	}
+
+	/* Safe to push down */
+	fpinfo->pushdown_safe = true;
+
+	/* TODO: Put accurate estimates */
+	startup_cost = 1;
+	total_cost = 1 + startup_cost;
+	rows = 1;
+
+	/*
+	 * Build the fdw_private list that will be used by mongoGetForeignPlan.
+	 * Items in the list must match order in enum FdwPathPrivateIndex.
+	 */
+	fdw_private = list_make2(makeInteger(has_final_sort),
+							 makeInteger(extra->limit_needed));
+
+	/*
+	 * Create foreign final path; this gets rid of a no-longer-needed outer
+	 * plan (if any), which makes the EXPLAIN output look cleaner
+	 */
+	final_path = create_foreign_upper_path(root,
+										   input_rel,
+										   root->upper_targets[UPPERREL_FINAL],
+										   rows,
+										   startup_cost,
+										   total_cost,
+										   pathkeys,
+										   NULL,	/* no extra plan */
+										   fdw_private);
+
+	/* and add it to the final_rel */
+	add_path(final_rel, (Path *) final_path);
 }
 #endif							/* PG_VERSION_NUM >= 120000 */
 

@@ -85,6 +85,11 @@ enum mongoFdwScanPrivateIndex
 	mongoFdwPrivatePathKeyList,
 	mongoFdwPrivateIsAscSortList,
 
+	/* LIMIT/OFFSET clause information */
+	mongoFdwPrivateHasLimitClause,
+	mongoFdwPrivateLimitCountList,
+	mongoFdwPrivateLimitOffsetList,
+
 	/* Upper relation information */
 
 	/* Upper relation grouping operation name list */
