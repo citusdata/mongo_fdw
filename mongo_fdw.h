@@ -347,6 +347,9 @@ typedef struct MongoFdwRelationInfo
 	 */
 	StringInfo	relation_name;
 
+	/* True means that the query_pathkeys is safe to push down */
+	bool		qp_is_pushdown_safe;
+
 	/* Join information */
 	RelOptInfo *outerrel;
 	RelOptInfo *innerrel;
@@ -360,6 +363,9 @@ typedef struct MongoFdwRelationInfo
 	/* Grouping information */
 	List	   *grouped_tlist;
 	List	   *groupbyColList;
+
+	/* Upper relation information */
+	UpperRelationKind stage;
 } MongoFdwRelationInfo;
 
 /*

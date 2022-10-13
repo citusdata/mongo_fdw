@@ -81,6 +81,10 @@ enum mongoFdwScanPrivateIndex
 	mongoFdwPrivateJoinClauseRtiList,
 	mongoFdwPrivateJoinClauseIsOuterList,
 
+	/* ORDER BY clause information */
+	mongoFdwPrivatePathKeyList,
+	mongoFdwPrivateIsAscSortList,
+
 	/* Upper relation information */
 
 	/* Upper relation grouping operation name list */

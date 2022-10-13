@@ -221,6 +221,15 @@ to aggregate functions min, max, sum, avg, and count, to avoid pushing
 down the functions that are not present on the MongoDB server. The
 aggregate filters, orders, variadic and distinct are not pushed down.
 
+### ORDER BY push-down
+mongo_fdw now also supports order by push-down. If possible, push order
+by clause to the remote server so that we get the ordered result set from
+the foreign server itself. It might help us to have an efficient merge
+join. NULLs behavior is opposite on the MongoDB server. Thus to get an
+equivalent result, we can only push-down ORDER BY with either
+ASC NULLS FIRST or DESC NULLS LAST. Moreover, as MongoDB sorts only on
+fields, only column names in ORDER BY expressions are pushed down.
+
 ### New MongoDB C Driver Support
 This enhancement is to add a new [MongoDB][1]' C driver. The current
 implementation is based on the legacy driver of MongoDB. But

@@ -149,8 +149,9 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *
  * SQL query:
  *    SELECT * FROM t1 LEFT JOIN t2 ON (t1.age = t2.old)
- *    WHERE (t1.age % 2) = 1;
- *
+ *    WHERE (t1.age % 2) = 1
+ *    ORDER BY t1.age ASC NULLS FIRST;
+
  * Equivalent MongoDB query:
  *
  *    db.t1.aggregate([
@@ -193,7 +194,8 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *          "path": "$Join_Result",
  *          "preserveNullAndEmptyArrays": true
  *        }
- *      }
+ *      },
+ *		{ "$sort": { "age" : 1 } }
  *    ])
  *
  * Any MongoDB query would have the following three main arrays:
@@ -213,7 +215,8 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  * Example: Consider above table t1:
  *
  * SQL query:
- *    SELECT name, SUM(age) FROM t1 GROUP BY name HAVING MIN(name) = 'xyz';
+ *    SELECT name, SUM(age) FROM t1 GROUP BY name HAVING MIN(name) = 'xyz'
+ *      ORDER BY name DESC NULLS LAST;
  *
  * Equivalent MongoDB query:
  *
@@ -229,7 +232,11 @@ find_argument_of_type(List *argumentList, NodeTag argumentType)
  *       {
  *         "$match": {"v_having": "xyz"}
  *       }
+ *		 { "$sort": { "name" : -1 } }
  *     ])
+ *
+ * For ORDER BY, add $sort stage on the base relation or join or grouping
+ * relation as shown in the above examples of join and grouping relations.
  */
 BSON *
 mongo_query_document(ForeignScanState *scanStateNode)
@@ -250,6 +257,8 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	List	   *colname_list = NIL;
 	List	   *isouter_list = NIL;
 	List	   *rti_list;
+	List	   *pathkey_list;
+	List	   *is_ascsort_list;
 	char	   *inner_relname;
 	char	   *outer_relname;
 	HTAB	   *columnInfoHash;
@@ -270,6 +279,10 @@ mongo_query_document(ForeignScanState *scanStateNode)
 	/* Store information in the hash-table */
 	columnInfoHash = column_info_hash(colname_list, colnum_list, rti_list,
 									  isouter_list);
+
+	/* Retrieve information related to ORDER BY clause */
+	pathkey_list = list_nth(PrivateList, mongoFdwPrivatePathKeyList);
+	is_ascsort_list = list_nth(PrivateList, mongoFdwPrivateIsAscSortList);
 
 	if (fmstate->relType == JOIN_REL || fmstate->relType == UPPER_JOIN_REL)
 	{
@@ -700,6 +713,62 @@ mongo_query_document(ForeignScanState *scanStateNode)
 						(errmsg("could not create document for query"),
 						 errhint("BSON flags: %d", queryDocument->flags)));
 		}
+	}
+
+	/* Add sort stage */
+	if (pathkey_list)
+	{
+		BSON		sort_stage;
+		BSON		sort;
+		ListCell   *cell1;
+		ListCell   *cell2;
+
+		bsonAppendStartObject(&root_pipeline, psprintf("%d", root_index++),
+							  &sort_stage);
+		bsonAppendStartObject(&sort_stage, "$sort", &sort);
+
+		forboth(cell1, pathkey_list, cell2, is_ascsort_list)
+		{
+			Var		   *column = (Var *) lfirst(cell1);
+			int			is_asc_sort = lfirst_int(cell2);
+			bool		found = false;
+			ColInfoHashKey key;
+			ColInfoHashEntry *columnInfo;
+
+			/* Find column name */
+			key.varNo = column->varno;
+			key.varAttno = column->varattno;
+
+			columnInfo = (ColInfoHashEntry *) hash_search(columnInfoHash,
+														  (void *) &key,
+														  HASH_FIND,
+														  &found);
+			if (found)
+			{
+				/*
+				 * In the case of upper rel, access the column by prefixing it
+				 * with "_id".  To access the column of the inner relation in
+				 * the join operation, use the prefix "Join_result" because
+				 * direct access is not possible.  However, columns of the
+				 * simple relation and outer relation of the join can be
+				 * accessed directly.
+				 */
+				if (fmstate->relType == UPPER_JOIN_REL ||
+					fmstate->relType == UPPER_REL)
+					bsonAppendInt32(&sort,
+									psprintf("_id.%s", columnInfo->colName),
+									is_asc_sort);
+				else if (!columnInfo->isOuter && fmstate->relType != BASE_REL)
+					bsonAppendInt32(&sort,
+									psprintf("Join_result.%s",
+											 columnInfo->colName),
+									is_asc_sort);
+				else
+					bsonAppendInt32(&sort, columnInfo->colName, is_asc_sort);
+			}
+		}
+		bsonAppendFinishObject(&sort_stage, &sort);
+		bsonAppendFinishObject(&root_pipeline, &sort_stage); /* End sort */
 	}
 
 	bsonAppendFinishArray(queryDocument, &root_pipeline);
@@ -1455,7 +1524,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 
 				/*
 				 * RelabelType must not introduce a collation not derived from
-				 * an input foreign Var (same logic as for a real function).
+				 * an input foreign Var.
 				 */
 				collation = r->resultcollid;
 				if (collation == InvalidOid)
