@@ -310,6 +310,12 @@ The following parameters can be supplied while creating user mapping:
   * `username`: Username to use when connecting to MongoDB.
   * `password`: Password to authenticate to the MongoDB server.
 
+GUC variables:
+
+  * `mongo_fdw.enable_order_by_pushdown`: If `true`, pushes the order by
+	operation to the foreign server, instead of fetching rows from the
+	foreign server and performing the sort locally. Default is `true`.
+
 As an example, the following commands demonstrate loading the
 `mongo_fdw` wrapper, creating a server, and then creating a foreign
 table associated with a MongoDB collection. The commands also show

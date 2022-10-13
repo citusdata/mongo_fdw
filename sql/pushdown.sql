@@ -166,6 +166,17 @@ SELECT c1, c4, c7, c8 FROM f_test_tbl1
   WHERE c1 < c4 AND c7 < c8
   ORDER BY c1;
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+SET mongo_fdw.enable_order_by_pushdown TO ON;
+
 -- Nested operator expression in WHERE clause. Should pushdown.
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2 FROM f_test_tbl1

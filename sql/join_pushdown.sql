@@ -62,6 +62,14 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
   FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
@@ -134,6 +142,14 @@ SELECT d.c1, e.c1
   FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
 SELECT d.c1, e.c1
   FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (COSTS OFF)
+SELECT d.c1, e.c1
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+SELECT d.c1, e.c1
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 
 SET enable_mergejoin TO OFF;
 SET enable_nestloop TO OFF;

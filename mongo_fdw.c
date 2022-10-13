@@ -45,6 +45,7 @@
 #endif
 #include "parser/parsetree.h"
 #include "storage/ipc.h"
+#include "utils/guc.h"
 #include "utils/jsonb.h"
 #if PG_VERSION_NUM < 130000
 #include "utils/jsonapi.h"
@@ -83,6 +84,9 @@ PG_MODULE_MAGIC;
  * the underlying scan.  Hence for now, cost sorts same as underlying scans.
  */
 #define DEFAULT_MONGO_SORT_MULTIPLIER 1
+
+/* GUC variables. */
+static bool enable_order_by_pushdown = true;
 #endif
 
 /*
@@ -289,6 +293,22 @@ void
 _PG_init(void)
 {
 #ifdef META_DRIVER
+	/*
+	 * Sometimes getting a sorted result from MongoDB server is slower than
+	 * performing a sort locally.  To have that flexibility add a GUC named
+	 * mongo_fdw.enable_order_by_pushdown to control the ORDER BY push-down.
+	 */
+	DefineCustomBoolVariable("mongo_fdw.enable_order_by_pushdown",
+							 "Enable/Disable ORDER BY push down",
+							 NULL,
+							 &enable_order_by_pushdown,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
 	/* Initialize MongoDB C driver */
 	mongoc_init();
 #endif
@@ -4156,6 +4176,10 @@ mongo_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 	ListCell   *lc;
 	List	   *useful_pathkeys_list = NIL; /* List of all pathkeys */
 
+	/* If orderby pushdown is not enabled, honor it. */
+	if (!enable_order_by_pushdown)
+		return;
+
 	/*
 	 * Check the query pathkeys length.  Don't push when exceeding the limit
 	 * set by MongoDB.
@@ -4283,6 +4307,10 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	List	   *fdw_private;
 	ForeignPath *ordered_path;
 	ListCell   *lc;
+
+	/* If orderby pushdown is not enabled, honor it. */
+	if (!enable_order_by_pushdown)
+		return;
 
 	/* Shouldn't get here unless the query has ORDER BY */
 	Assert(parse->sortClause);

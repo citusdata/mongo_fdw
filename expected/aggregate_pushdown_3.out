@@ -122,6 +122,37 @@ SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 
  EMP9  |  900
 (11 rows)
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Output: c2, (sum(c1)), c1
+   Sort Key: fdw137_t1.c2 NULLS FIRST
+   ->  Foreign Scan
+         Output: c2, (sum(c1)), c1
+         Foreign Namespace: Aggregate on (mongo_fdw_regress.test_tbl1 fdw137_t1)
+(6 rows)
+
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+  c2   | sum  
+-------+------
+ EMP10 | 1000
+ EMP11 | 1100
+ EMP12 | 1200
+ EMP13 | 1300
+ EMP14 | 1400
+ EMP15 | 1500
+ EMP16 | 1600
+ EMP6  |  600
+ EMP7  |  700
+ EMP8  |  800
+ EMP9  |  900
+(11 rows)
+
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 -- Aggregation on expression. Don't push-down.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c1, sum(c1+2) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY c1 ASC NULLS FIRST;
@@ -351,6 +382,29 @@ SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON
    0 | 60 |  60
 (3 rows)
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (sum(t2.c1)), t1.c8, (avg(t1.c8))
+   Sort Key: t1.c8 NULLS FIRST
+   ->  Foreign Scan
+         Output: (sum(t2.c1)), t1.c8, (avg(t1.c8))
+         Foreign Namespace: Aggregate on ((mongo_fdw_regress.test_tbl1 t1) LEFT JOIN (mongo_fdw_regress.test_tbl2 t2))
+(6 rows)
+
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+ sum | c8 | avg 
+-----+----+-----
+ 100 | 20 |  20
+ 180 | 30 |  30
+   0 | 60 |  60
+(3 rows)
+
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 -- Aggregate is not pushed down as aggregation contains random()
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT sum(c1 * (random() <= 1)::int) AS sum, avg(c1) FROM fdw137_t1 ORDER BY 1;

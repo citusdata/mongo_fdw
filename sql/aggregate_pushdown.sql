@@ -45,6 +45,12 @@ SELECT c8, min(c2) FROM fdw137_t1 WHERE c3 = 'ADMIN' GROUP BY c8 HAVING min(c8) 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
 SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 
 -- Aggregation on expression. Don't push-down.
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -85,6 +91,12 @@ SELECT t1.c1, count(*), t2.c4 FROM fdw137_t2 t1 INNER JOIN fdw137_t1 t2 ON (t1.c
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
 SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10 ORDER BY 2 ASC NULLS FIRST;
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 
 -- Aggregate is not pushed down as aggregation contains random()
 EXPLAIN (VERBOSE, COSTS OFF)

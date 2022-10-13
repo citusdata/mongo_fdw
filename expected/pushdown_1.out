@@ -443,6 +443,37 @@ SELECT c1, c4, c7, c8 FROM f_test_tbl1
  700 |  900 |  0 | 10
 (4 rows)
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+  c1  | c4  
+------+-----
+  800 | 400
+ 1000 | 600
+ 1100 | 800
+ 1200 | 600
+ 1300 | 400
+ 1400 | 700
+(6 rows)
+
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 -- Nested operator expression in WHERE clause. Should pushdown.
 EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, c2 FROM f_test_tbl1

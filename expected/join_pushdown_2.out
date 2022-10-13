@@ -160,6 +160,38 @@ SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
  50 | TESTING        |      |       |         |   
 (12 rows)
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: d.c1 NULLS FIRST, e.c1 NULLS FIRST
+   ->  Foreign Scan
+         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(4 rows)
+
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+ c1 |       c2       |  c1  |  c2   |   c6    | c8 
+----+----------------+------+-------+---------+----
+    |                |      |       |         |   
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
+ 20 | ADMINISTRATION |      |       |         |   
+ 30 | SALES          |  200 | EMP2  |    1600 | 30
+ 30 | SALES          |  300 | EMP3  |    1250 | 30
+ 30 | SALES          |  500 | EMP5  | 1250.23 | 30
+ 30 | SALES          |  600 | EMP6  |    2850 | 30
+ 30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 30 | SALES          | 1200 | EMP12 |     950 | 30
+ 40 | HR             |      |       |         |   
+ 50 | TESTING        |      |       |         |   
+(12 rows)
+
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 -- Column comparing with 'Constant' pushed down.
 EXPLAIN (COSTS OFF)
 SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
@@ -529,6 +561,28 @@ SELECT d.c1, e.c1
  100 | 20
 (1 row)
 
+-- With ORDER BY pushdown disabled.
+SET mongo_fdw.enable_order_by_pushdown TO OFF;
+EXPLAIN (COSTS OFF)
+SELECT d.c1, e.c1
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: e.c3 DESC NULLS LAST
+   ->  Foreign Scan
+         Filter: (abs(c8) = c1)
+         Foreign Namespace: (mongo_fdw_regress.test_tbl1 d) INNER JOIN (mongo_fdw_regress.test_tbl2 e)
+(5 rows)
+
+SELECT d.c1, e.c1
+  FROM f_test_tbl1 d JOIN f_test_tbl2 e ON (abs(d.c8) = e.c1) WHERE d.c1 = 100 ORDER BY e.c3 DESC NULLS LAST, d.c1 DESC NULLS LAST;
+ c1  | c1 
+-----+----
+ 100 | 20
+(1 row)
+
+SET mongo_fdw.enable_order_by_pushdown TO ON;
 SET enable_mergejoin TO OFF;
 SET enable_nestloop TO OFF;
 -- Local-Foreign table joins.
