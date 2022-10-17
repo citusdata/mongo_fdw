@@ -313,6 +313,12 @@ ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
 
+-- FDW-560: Aggregation over nested join. As nested join push down is not
+-- supported, aggregation shouldn't get pushdown.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) INNER JOIN fdw137_t1 t3 ON (t3.c1 = t1.c1) GROUP BY t1.c8 ORDER BY 2;
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) INNER JOIN fdw137_t1 t3 ON (t3.c1 = t1.c1) GROUP BY t1.c8 ORDER BY 2;
+
 -- Check when enable_join_pushdown is OFF and enable_aggregate_pushdown is ON.
 -- Shouldn't push down join as well as aggregation.
 ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');

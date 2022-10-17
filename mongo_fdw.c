@@ -490,6 +490,15 @@ mongoGetForeignRelSize(PlannerInfo *root,
 
 	/* Also store the options in fpinfo for further use */
 	fpinfo->options = options;
+
+#ifdef META_DRIVER
+	/*
+	 * Store aggregation enable/disable option in the fpinfo directly for
+	 * further use.  This flag can be useful when options are not accessible in
+	 * the recursive cases.
+	 */
+	fpinfo->is_agg_scanrel_pushable = options->enable_aggregate_pushdown;
+#endif
 }
 
 /*
@@ -3472,6 +3481,10 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	/* Mark that this join can be pushed down safely */
 	fpinfo->pushdown_safe = true;
 
+	/* Joinrel's aggregation flag depends on each joining relation's flag. */
+	fpinfo->is_agg_scanrel_pushable = fpinfo_o->is_agg_scanrel_pushable &&
+		fpinfo_i->is_agg_scanrel_pushable;
+
 	/*
 	 * Set the string describing this join relation to be used in EXPLAIN
 	 * output of the corresponding ForeignScan.
@@ -3535,29 +3548,9 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 #endif
 	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) grouped_rel->fdw_private;
 	MongoFdwRelationInfo *ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
-	MongoFdwRelationInfo *ofpinfo_o;
-	MongoFdwRelationInfo *ofpinfo_i;
 	ListCell   *lc;
 	int			i;
 	List	   *tlist = NIL;
-	bool		is_join = false;
-
-	/*
-	 * If the underlying scan relation is the join relation then find the
-	 * fpinfo of each relation involved in the join.
-	 */
-	if (IS_JOIN_REL(fpinfo->outerrel))
-	{
-		ofpinfo_o = (MongoFdwRelationInfo *) ofpinfo->outerrel->fdw_private;
-		ofpinfo_i = (MongoFdwRelationInfo *) ofpinfo->innerrel->fdw_private;
-		is_join = true;
-	}
-
-	/* If aggregate pushdown is not enabled, honor it. */
-	if ((!is_join && !ofpinfo->options->enable_aggregate_pushdown) ||
-		((is_join && !ofpinfo_o->options->enable_aggregate_pushdown) ||
-		 (is_join && !ofpinfo_i->options->enable_aggregate_pushdown)))
-		return false;
 
 	/* Grouping Sets are not pushable */
 	if (query->groupingSets)
@@ -3876,6 +3869,14 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	/* Save the input_rel as outerrel in fpinfo */
 	fpinfo->outerrel = input_rel;
+
+	/* Set aggregation flag of aggregate relation */
+	fpinfo->is_agg_scanrel_pushable =
+		((MongoFdwRelationInfo *) input_rel->fdw_private)->is_agg_scanrel_pushable;
+
+	/* If aggregate pushdown is not enabled, honor it. */
+	if (!fpinfo->is_agg_scanrel_pushable)
+		return;
 
 	/* Assess if it is safe to push down aggregation and grouping. */
 #if PG_VERSION_NUM >= 110000

@@ -366,6 +366,12 @@ typedef struct MongoFdwRelationInfo
 
 	/* Upper relation information */
 	UpperRelationKind stage;
+
+	/*
+	 * True if the underlying scan relation involved in aggregation is
+	 * pushable.
+	 */
+	bool		is_agg_scanrel_pushable;
 } MongoFdwRelationInfo;
 
 /*

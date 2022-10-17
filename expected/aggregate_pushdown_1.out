@@ -1320,6 +1320,42 @@ SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2
    Foreign Namespace: Aggregate on ((mongo_fdw_regress.test_tbl1 t1) LEFT JOIN (mongo_fdw_regress.test_tbl2 t2))
 (3 rows)
 
+-- FDW-560: Aggregation over nested join. As nested join push down is not
+-- supported, aggregation shouldn't get pushdown.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) INNER JOIN fdw137_t1 t3 ON (t3.c1 = t1.c1) GROUP BY t1.c8 ORDER BY 2;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ GroupAggregate
+   Output: sum(t2.c1), t1.c8
+   Group Key: t1.c8
+   ->  Merge Left Join
+         Output: t1.c8, t2.c1
+         Merge Cond: (t1.c8 = t2.c1)
+         ->  Sort
+               Output: t1.c8
+               Sort Key: t1.c8
+               ->  Foreign Scan
+                     Output: t1.c8
+                     Foreign Namespace: (mongo_fdw_regress.test_tbl1 t1) INNER JOIN (mongo_fdw_regress.test_tbl1 t3)
+         ->  Sort
+               Output: t2.c1
+               Sort Key: t2.c1
+               ->  Foreign Scan on public.fdw137_t2 t2
+                     Output: t2.c1
+                     Foreign Namespace: mongo_fdw_regress.test_tbl2
+(18 rows)
+
+SELECT sum(t2.c1), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) INNER JOIN fdw137_t1 t3 ON (t3.c1 = t1.c1) GROUP BY t1.c8 ORDER BY 2;
+ sum | c8 
+-----+----
+  30 | 10
+ 100 | 20
+ 180 | 30
+     | 60
+     |   
+(5 rows)
+
 -- Check when enable_join_pushdown is OFF and enable_aggregate_pushdown is ON.
 -- Shouldn't push down join as well as aggregation.
 ALTER SERVER mongo_server OPTIONS (ADD enable_join_pushdown 'false');
