@@ -29,6 +29,7 @@
 #include "mongo.h"
 #endif
 #include "mongo_query.h"
+#include "nodes/nodeFuncs.h"
 #if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
 #include "optimizer/var.h"
@@ -622,4 +623,73 @@ mongo_add_null_check(Var *column, BSON *expr, pipeline_cxt *context)
 	bsonAppendUTF8(&ne_expr, "0", field);
 	bsonAppendNull(&ne_expr, "1");
 	bsonAppendFinishArray(expr, &ne_expr);
+}
+
+/*
+ * mongo_is_foreign_pathkey
+ *		Returns true if it's safe to push down the sort expression described by
+ *		'pathkey' to the foreign server.
+ */
+bool
+mongo_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
+						 PathKey *pathkey)
+{
+	EquivalenceMember *em;
+	EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
+	Expr	   *em_expr;
+
+	/*
+	 * mongo_is_foreign_expr would detect volatile expressions as well,
+	 * but checking ec_has_volatile here saves some cycles.
+	 */
+	if (pathkey_ec->ec_has_volatile)
+		return false;
+
+	/* can push if a suitable EC member exists */
+	if (!(em = mongo_find_em_for_rel(root, pathkey_ec, baserel)))
+		return false;
+
+	/* Ignore binary-compatible relabeling */
+	em_expr = em->em_expr;
+	while (em_expr && IsA(em_expr, RelabelType))
+		em_expr = ((RelabelType *) em_expr)->arg;
+
+	/* Only Vars are allowed per MongoDB. */
+	if (!IsA(em_expr, Var))
+		return false;
+
+	/* Check for sort operator pushability. */
+	if (!mongo_is_default_sort_operator(em, pathkey))
+		return false;
+
+	return true;
+}
+
+/*
+ * mongo_is_builtin
+ *		Return true if given object is one of PostgreSQL's built-in objects.
+ *
+ * We use FirstBootstrapObjectId as the cutoff, so that we only consider
+ * objects with hand-assigned OIDs to be "built in", not for instance any
+ * function or type defined in the information_schema.
+ *
+ * Our constraints for dealing with types are tighter than they are for
+ * functions or operators: we want to accept only types that are in pg_catalog,
+ * else format_type might incorrectly fail to schema-qualify their names.
+ * (This could be fixed with some changes to format_type, but for now there's
+ * no need.)  Thus we must exclude information_schema types.
+ *
+ * XXX there is a problem with this, which is that the set of built-in
+ * objects expands over time.  Something that is built-in to us might not
+ * be known to the remote server, if it's of an older version.  But keeping
+ * track of that would be a huge exercise.
+ */
+bool
+mongo_is_builtin(Oid oid)
+{
+#if PG_VERSION_NUM >= 120000
+	return (oid < FirstGenbkiObjectId);
+#else
+	return (oid < FirstBootstrapObjectId);
+#endif
 }

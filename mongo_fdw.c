@@ -55,6 +55,7 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+#include "utils/typcache.h"
 
 /* Declarations for dynamic loading */
 PG_MODULE_MAGIC;
@@ -267,11 +268,9 @@ static void mongo_add_paths_with_pathkeys(PlannerInfo *root,
 										  Path *epq_path,
 										  Cost base_startup_cost,
 										  Cost base_total_cost);
-static Expr *mongo_find_em_expr_for_input_target(PlannerInfo *root,
-												 EquivalenceClass *ec,
-												 RelOptInfo *rel);
-static Expr *mongo_find_em_expr_for_rel(PlannerInfo *root,
-										EquivalenceClass *ec, RelOptInfo *rel);
+static EquivalenceMember *mongo_find_em_for_rel_target(PlannerInfo *root,
+													   EquivalenceClass *ec,
+													   RelOptInfo *rel);
 #if PG_VERSION_NUM >= 120000
 static void mongo_add_foreign_ordered_paths(PlannerInfo *root,
 											RelOptInfo *input_rel,
@@ -987,6 +986,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 #ifdef META_DRIVER
 	foreach(lc, best_path->path.pathkeys)
 	{
+		EquivalenceMember *em;
 		PathKey    *pathkey = lfirst(lc);
 		Expr	   *em_expr;
 
@@ -996,16 +996,23 @@ mongoGetForeignPlan(PlannerInfo *root,
 			 * By construction, foreignrel is the input relation to the final
 			 * sort.
 			 */
-			em_expr = mongo_find_em_expr_for_input_target(root,
-														  pathkey->pk_eclass,
-														  foreignrel);
+			em = mongo_find_em_for_rel_target(root, pathkey->pk_eclass,
+											  foreignrel);
 		}
 		else
-			em_expr = mongo_find_em_expr_for_rel(root, pathkey->pk_eclass,
-												 qual_info->foreignRel);
+			em = mongo_find_em_for_rel(root, pathkey->pk_eclass,
+									   qual_info->foreignRel);
 
-		Assert(em_expr != NULL);
+		/*
+		 * We don't expect any error here; it would mean that shippability
+		 * wasn't verified earlier.  For the same reason, we don't recheck
+		 * shippability of the sort operator.
+		 */
+		if (em == NULL)
+			elog(ERROR, "could not find pathkey item to sort");
+
 		/* Ignore binary-compatible relabeling */
+		em_expr = em->em_expr;
 		while (IsA(em_expr, RelabelType))
 			em_expr = ((RelabelType *) em_expr)->arg;
 
@@ -4121,8 +4128,6 @@ mongo_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 		foreach(lc, root->query_pathkeys)
 		{
 			PathKey    *pathkey = (PathKey *) lfirst(lc);
-			EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
-			Expr	   *em_expr;
 
 			/* Only ASC NULLS FIRST and DESC NULLS LAST can be pushed down */
 			if (!IS_PATHKEY_PUSHABLE(pathkey))
@@ -4138,18 +4143,7 @@ mongo_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 			 * end up resorting the entire data set.  So, unless we can push
 			 * down all of the query pathkeys, forget it.
 			 */
-			if (!(em_expr = mongo_find_em_expr_for_rel(root, pathkey_ec, rel)))
-			{
-				query_pathkeys_ok = false;
-				break;
-			}
-
-			/* Ignore binary-compatible relabeling */
-			while (em_expr && IsA(em_expr, RelabelType))
-				em_expr = ((RelabelType *) em_expr)->arg;
-
-			/* Only Vars are allowed per MongoDB. */
-			if (!IsA(em_expr, Var))
+			if (!mongo_is_foreign_pathkey(root, rel, pathkey))
 			{
 				query_pathkeys_ok = false;
 				break;
@@ -4184,6 +4178,7 @@ mongo_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 	foreach(lc, useful_eclass_list)
 	{
 		EquivalenceClass *cur_ec = lfirst(lc);
+		EquivalenceMember *em;
 		Expr	   *em_expr;
 		PathKey    *pathkey;
 
@@ -4191,11 +4186,16 @@ mongo_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 		if (cur_ec == query_ec)
 			continue;
 
+		/* Can't push down the sort if the EC's opfamily is not shippable. */
+		if (!mongo_is_builtin(linitial_oid(cur_ec->ec_opfamilies)))
+			continue;
+
 		/* If no pushable expression for this rel, skip it. */
-		if (!(em_expr = mongo_find_em_expr_for_rel(root, cur_ec, rel)))
+		if (!(em = mongo_find_em_for_rel(root, cur_ec, rel)))
 			continue;
 
 		/* Ignore binary-compatible relabeling */
+		em_expr = em->em_expr;
 		while (em_expr && IsA(em_expr, RelabelType))
 			em_expr = ((RelabelType *) em_expr)->arg;
 
@@ -4209,6 +4209,10 @@ mongo_get_useful_pathkeys_for_relation(PlannerInfo *root, RelOptInfo *rel)
 										 BTLessStrategyNumber,
 										 false);
 		if (!IS_PATHKEY_PUSHABLE(pathkey))
+			continue;
+
+		/* Check for sort operator pushability. */
+		if (!mongo_is_default_sort_operator(em, pathkey))
 			continue;
 
 		useful_pathkeys_list = lappend(useful_pathkeys_list,
@@ -4312,13 +4316,12 @@ mongo_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
- * mongo_find_em_expr_for_rel
+ * mongo_find_em_for_rel
  * 		Find an equivalence class member expression, all of whose Vars, come
  * 		from the indicated relation.
  */
-static Expr *
-mongo_find_em_expr_for_rel(PlannerInfo *root, EquivalenceClass *ec,
-						   RelOptInfo *rel)
+EquivalenceMember *
+mongo_find_em_for_rel(PlannerInfo *root, EquivalenceClass *ec, RelOptInfo *rel)
 {
 	ListCell   *lc_em;
 
@@ -4326,6 +4329,10 @@ mongo_find_em_expr_for_rel(PlannerInfo *root, EquivalenceClass *ec,
 	{
 		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc_em);
 
+		/*
+		 * Note we require !bms_is_empty, else we'd accept constant
+		 * expressions which are not suitable for the purpose.
+		 */
 		if (bms_is_subset(em->em_relids, rel->relids) &&
 			!bms_is_empty(em->em_relids) &&
 			mongo_is_foreign_expr(root, rel, em->em_expr, false))
@@ -4335,7 +4342,7 @@ mongo_find_em_expr_for_rel(PlannerInfo *root, EquivalenceClass *ec,
 			 * taken entirely from this relation, we'll be content to choose
 			 * any one of those.
 			 */
-			return em->em_expr;
+			return em;
 		}
 	}
 
@@ -4419,6 +4426,7 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	{
 		PathKey    *pathkey = (PathKey *) lfirst(lc);
 		EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
+		EquivalenceMember *em = NULL;
 		Expr	   *sort_expr;
 
 		/*
@@ -4436,12 +4444,14 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		 * shippable EM that is computed in input_rel's reltarget, else we
 		 * can't push down the sort.
 		 */
-		sort_expr = mongo_find_em_expr_for_input_target(root, pathkey_ec,
-														input_rel);
-		if (!sort_expr)
+		em = mongo_find_em_for_rel_target(root, pathkey_ec, input_rel);
+
+		/* Check for sort operator pushability. */
+		if (!mongo_is_default_sort_operator(em, pathkey))
 			return;
 
 		/* Ignore binary-compatible relabeling */
+		sort_expr = em->em_expr;
 		while (sort_expr && IsA(sort_expr, RelabelType))
 			sort_expr = ((RelabelType *) sort_expr)->arg;
 
@@ -4707,13 +4717,13 @@ mongo_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 #endif							/* PG_VERSION_NUM >= 120000 */
 
 /*
- * mongo_find_em_expr_for_input_target
+ * mongo_find_em_for_rel_target
  * 		Find an equivalence class member expression to be computed as a sort
  * 		column in the given target.
  */
-static Expr *
-mongo_find_em_expr_for_input_target(PlannerInfo *root, EquivalenceClass *ec,
-									RelOptInfo *rel)
+static EquivalenceMember *
+mongo_find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
+							 RelOptInfo *rel)
 {
 	PathTarget *target = rel->reltarget;
 	ListCell   *lc1;
@@ -4766,12 +4776,58 @@ mongo_find_em_expr_for_input_target(PlannerInfo *root, EquivalenceClass *ec,
 			 * it's unsafe to remote, we cannot push down the final sort.
 			 */
 			if (mongo_is_foreign_expr(root, rel, em->em_expr, false))
-				return em->em_expr;
+				return em;
 		}
 
 		i++;
 	}
 
 	return NULL;				/* keep compiler quiet */
+}
+
+/*
+ * mongo_is_default_sort_operator
+ *		Returns true if default sort operator is provided.
+ */
+bool
+mongo_is_default_sort_operator(EquivalenceMember *em, PathKey *pathkey)
+{
+	Oid			oprid;
+	char	   *oprname;
+	TypeCacheEntry *typentry;
+
+	if (em == NULL)
+		return false;
+
+	/* Can't push down the sort if pathkey's opfamily is not shippable. */
+	if (!mongo_is_builtin(pathkey->pk_opfamily))
+		return NULL;
+
+	oprid = get_opfamily_member(pathkey->pk_opfamily,
+								em->em_datatype,
+								em->em_datatype,
+								pathkey->pk_strategy);
+	if (!OidIsValid(oprid))
+		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+			pathkey->pk_strategy, em->em_datatype, em->em_datatype,
+			pathkey->pk_opfamily);
+
+	/* Can't push down the sort if the operator is not shippable. */
+	oprname = get_opname(oprid);
+	if (!((strncmp(oprname, "<", NAMEDATALEN) == 0) ||
+		(strncmp(oprname, ">", NAMEDATALEN) == 0)))
+		return false;
+
+	/*
+	 * See whether the operator is default < or > for sort expr's datatype.
+	 * Here we need to use the expression's actual type to discover whether
+	 * the desired operator will be the default or not.
+	 */
+	typentry = lookup_type_cache(exprType((Node *)em->em_expr),
+								 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+	if (oprid == typentry->lt_opr || oprid == typentry->gt_opr)
+		return true;
+
+	return false;
 }
 #endif							/* End of META_DRIVER */

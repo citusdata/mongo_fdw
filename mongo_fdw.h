@@ -502,5 +502,13 @@ extern Datum mongo_fdw_validator(PG_FUNCTION_ARGS);
 /* deparse.c headers */
 extern void mongo_check_qual(Expr *node, MongoRelQualInfo *qual_info);
 extern const char *mongo_get_jointype_name(JoinType jointype);
+extern EquivalenceMember *mongo_find_em_for_rel(PlannerInfo *root,
+												EquivalenceClass *ec,
+												RelOptInfo *rel);
+extern bool mongo_is_builtin(Oid oid);
+extern bool mongo_is_default_sort_operator(EquivalenceMember *em,
+										   PathKey *pathkey);
+extern bool mongo_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
+									 PathKey *pathkey);
 
 #endif							/* MONGO_FDW_H */
