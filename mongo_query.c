@@ -97,7 +97,7 @@ static List *prepare_var_list_for_baserel(Oid relid, Index varno,
 static HTAB *column_info_hash(List *colname_list, List *colnum_list,
 							  List *rti_list, List *isouter_list);
 static void mongo_prepare_pipeline(List *clause, BSON *inner_pipeline,
-										 pipeline_cxt *context);
+								   pipeline_cxt *context);
 static void mongo_append_clauses_to_pipeline(List *clause, BSON *child_doc,
 											 pipeline_cxt *context);
 #endif
@@ -772,14 +772,14 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			}
 		}
 		bsonAppendFinishObject(&sort_stage, &sort);
-		bsonAppendFinishObject(&root_pipeline, &sort_stage); /* End sort */
+		bsonAppendFinishObject(&root_pipeline, &sort_stage);	/* End sort */
 	}
 
 	/* Add LIMIT/SKIP stage */
 	if (has_limit)
 	{
 		int64		limit_value;
-		int64 		offset_value;
+		int64		offset_value;
 
 		/*
 		 * Add skip stage for OFFSET clause.  However, don't add the same if
@@ -1422,6 +1422,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/* Increment the Var count */
 				glob_cxt->varcount++;
 #endif
+
 				/*
 				 * If the Var is from the foreign table, we consider its
 				 * collation (if any) safe to use.  If it is from another
@@ -1521,15 +1522,15 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 				/*
 				 * Recurse to input subexpressions.
 				 *
-				 * We support same operators as joinclause for WHERE conditions
-				 * of simple as well as join relation.
+				 * We support same operators as joinclause for WHERE
+				 * conditions of simple as well as join relation.
 				 */
 				if (!foreign_expr_walker((Node *) oe->args, glob_cxt,
 										 &inner_cxt)
 #ifndef META_DRIVER
 					|| (glob_cxt->opexprcount > 1)
 #endif
-				   )
+					)
 					return false;
 
 				/*
@@ -1602,7 +1603,7 @@ foreign_expr_walker(Node *node, foreign_glob_cxt *glob_cxt,
 #ifndef META_DRIVER
 						|| (glob_cxt->varcount > 1)
 #endif
-					   )
+						)
 						return false;
 				}
 

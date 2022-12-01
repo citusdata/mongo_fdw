@@ -26,10 +26,10 @@ typedef struct pipeline_cxt
 	unsigned int arrayIndex;	/* Index of the various arrays in the
 								 * pipeline, starting from zero */
 	bool		isBoolExpr;		/* is join expression boolean? */
-	bool		isJoinClause;   /* is join clause? This is to add null check
-								   only in case of join clause */
-	uint32      opExprCount;	/* count death of the expression */
-	ForeignScanState *scanStateNode; /* To evaluate param expression */
+	bool		isJoinClause;	/* is join clause? This is to add null check
+								 * only in case of join clause */
+	uint32		opExprCount;	/* count death of the expression */
+	ForeignScanState *scanStateNode;	/* To evaluate param expression */
 } pipeline_cxt;
 
 /*

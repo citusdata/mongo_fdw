@@ -492,10 +492,11 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	fpinfo->options = options;
 
 #ifdef META_DRIVER
+
 	/*
 	 * Store aggregation enable/disable option in the fpinfo directly for
-	 * further use.  This flag can be useful when options are not accessible in
-	 * the recursive cases.
+	 * further use.  This flag can be useful when options are not accessible
+	 * in the recursive cases.
 	 */
 	fpinfo->is_agg_scanrel_pushable = options->enable_aggregate_pushdown;
 #endif
@@ -650,7 +651,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 	bool		has_final_sort = false;
 	bool		has_limit = false;
 	int64		limit_value;
-	int64	    offset_value;
+	int64		offset_value;
 
 	/*
 	 * Get FDW private data created by mongoGetForeignUpperPaths(), if any.
@@ -859,6 +860,7 @@ mongoGetForeignPlan(PlannerInfo *root,
 		mongofdwreltype = BASE_REL;
 
 #ifdef META_DRIVER
+
 	/*
 	 * We use MongoRelQualInfo to pass various information related to joining
 	 * quals and grouping target to fdw_private which is used to form
@@ -4520,8 +4522,8 @@ mongo_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 	/*
 	 * We do not support LIMIT with FOR UPDATE/SHARE.  Also, if there is no
-	 * FOR UPDATE/SHARE clause and there is no LIMIT, don't need to add Foreign
-	 * final path.
+	 * FOR UPDATE/SHARE clause and there is no LIMIT, don't need to add
+	 * Foreign final path.
 	 */
 	if (parse->rowMarks || !extra->limit_needed)
 		return;
@@ -4668,7 +4670,7 @@ mongo_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 		if (!((Const *) node)->constisnull &&
 			(DatumGetInt64(((Const *) node)->constvalue) < 0))
-				return;
+			return;
 	}
 	if (parse->limitOffset)
 	{
@@ -4680,7 +4682,7 @@ mongo_add_foreign_final_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 		if (!((Const *) node)->constisnull &&
 			(DatumGetInt64(((Const *) node)->constvalue) < 0))
-				return;
+			return;
 	}
 
 	/* Safe to push down */
@@ -4810,13 +4812,13 @@ mongo_is_default_sort_operator(EquivalenceMember *em, PathKey *pathkey)
 								pathkey->pk_strategy);
 	if (!OidIsValid(oprid))
 		elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
-			pathkey->pk_strategy, em->em_datatype, em->em_datatype,
-			pathkey->pk_opfamily);
+			 pathkey->pk_strategy, em->em_datatype, em->em_datatype,
+			 pathkey->pk_opfamily);
 
 	/* Can't push down the sort if the operator is not shippable. */
 	oprname = get_opname(oprid);
 	if (!((strncmp(oprname, "<", NAMEDATALEN) == 0) ||
-		(strncmp(oprname, ">", NAMEDATALEN) == 0)))
+		  (strncmp(oprname, ">", NAMEDATALEN) == 0)))
 		return false;
 
 	/*
@@ -4824,7 +4826,7 @@ mongo_is_default_sort_operator(EquivalenceMember *em, PathKey *pathkey)
 	 * Here we need to use the expression's actual type to discover whether
 	 * the desired operator will be the default or not.
 	 */
-	typentry = lookup_type_cache(exprType((Node *)em->em_expr),
+	typentry = lookup_type_cache(exprType((Node *) em->em_expr),
 								 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
 	if (oprid == typentry->lt_opr || oprid == typentry->gt_opr)
 		return true;

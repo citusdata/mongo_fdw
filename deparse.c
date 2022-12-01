@@ -534,8 +534,8 @@ mongo_append_op_expr(OpExpr *node, BSON *child_doc, pipeline_cxt *context)
 									  &expr);
 			else
 				bsonAppendStartObject(child_doc,
-								  psprintf("%d", context->arrayIndex++),
-								  &expr);
+									  psprintf("%d", context->arrayIndex++),
+									  &expr);
 			mongo_add_null_check(var, &expr, context);
 
 			if (context->isBoolExpr)
@@ -638,8 +638,8 @@ mongo_is_foreign_pathkey(PlannerInfo *root, RelOptInfo *baserel,
 	Expr	   *em_expr;
 
 	/*
-	 * mongo_is_foreign_expr would detect volatile expressions as well,
-	 * but checking ec_has_volatile here saves some cycles.
+	 * mongo_is_foreign_expr would detect volatile expressions as well, but
+	 * checking ec_has_volatile here saves some cycles.
 	 */
 	if (pathkey_ec->ec_has_volatile)
 		return false;
