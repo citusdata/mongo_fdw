@@ -32,6 +32,7 @@
 #include "miscadmin.h"
 #include "mongo_fdw.h"
 #include "mongo_query.h"
+#include "nodes/nodeFuncs.h"
 #if PG_VERSION_NUM >= 140000
 #include "optimizer/appendinfo.h"
 #endif

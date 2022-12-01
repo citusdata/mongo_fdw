@@ -29,7 +29,6 @@
 #include "mongo.h"
 #endif
 #include "mongo_query.h"
-#include "nodes/nodeFuncs.h"
 #if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
 #include "optimizer/var.h"
