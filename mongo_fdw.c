@@ -63,9 +63,9 @@ PG_MODULE_MAGIC;
 
 /*
  * In PG 9.5.1 the number will be 90501,
- * our version is 5.4.0 so number will be 50400
+ * our version is 5.5.0 so number will be 50500
  */
-#define CODE_VERSION   50400
+#define CODE_VERSION   50500
 
 #ifdef META_DRIVER
 /*
