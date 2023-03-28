@@ -504,6 +504,32 @@ EXPLAIN (COSTS FALSE, VERBOSE)
 SELECT t1.c1, t2.c2
   FROM f_test_tbl3 t1 JOIN f_test_tbl4 t2 ON (t1.c1 = t2.c8) ORDER BY 1, 2;
 
+-- FDW-558: Test mongo_fdw.enable_join_pushdown GUC.
+-- Negative testing for GUC value.
+SET mongo_fdw.enable_join_pushdown to 'abc';
+-- Check default value. Should be ON.
+SHOW mongo_fdw.enable_join_pushdown;
+-- Join pushdown should happen as the GUC enable_join_pushdown is true.
+ALTER SERVER mongo_server OPTIONS (SET enable_join_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'true');
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON (d.c1 = e.c8) ORDER BY 1, 2;
+--Disable the GUC enable_join_pushdown.
+SET mongo_fdw.enable_join_pushdown to false;
+-- Join pushdown shouldn't happen as the GUC enable_join_pushdown is false.
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON (d.c1 = e.c8) ORDER BY 1, 2;
+-- Enable the GUC and table level option is set to false, should not pushdown.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'false');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'false');
+SET mongo_fdw.enable_join_pushdown to true;
+EXPLAIN (COSTS FALSE, VERBOSE)
+SELECT d.c1, e.c8
+  FROM f_test_tbl2 d JOIN f_test_tbl1 e ON (d.c1 = e.c8) ORDER BY 1, 2;
+
 DELETE FROM f_test_tbl1 WHERE c8 IS NULL;
 DELETE FROM f_test_tbl1 WHERE c8 = 60;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;

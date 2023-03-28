@@ -88,6 +88,7 @@ PG_MODULE_MAGIC;
 #define DEFAULT_MONGO_SORT_MULTIPLIER 1
 
 /* GUC variables. */
+static bool enable_join_pushdown = true;
 static bool enable_order_by_pushdown = true;
 #endif
 
@@ -303,10 +304,21 @@ _PG_init(void)
 {
 #ifdef META_DRIVER
 	/*
-	 * Sometimes getting a sorted result from MongoDB server is slower than
-	 * performing a sort locally.  To have that flexibility add a GUC named
-	 * mongo_fdw.enable_order_by_pushdown to control the ORDER BY push-down.
+	 * Sometimes getting a join or sorted result from MongoDB server is slower
+	 * than performing those operations locally.  To have that flexibility add
+	 * a few GUCs to control those push-downs.
 	 */
+	DefineCustomBoolVariable("mongo_fdw.enable_join_pushdown",
+							 "enable/disable join pushdown",
+							 NULL,
+							 &enable_join_pushdown,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
 	DefineCustomBoolVariable("mongo_fdw.enable_order_by_pushdown",
 							 "Enable/Disable ORDER BY push down",
 							 NULL,
@@ -3198,11 +3210,22 @@ mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 	Cost		total_cost;
 	Path	   *epq_path = NULL;	/* Path to create plan to be executed when
 									 * EvalPlanQual gets triggered. */
+	MongoFdwRelationInfo *fpinfo_o;
+	MongoFdwRelationInfo *fpinfo_i;
 
 	/*
 	 * Skip if this join combination has been considered already.
 	 */
 	if (joinrel->fdw_private)
+		return;
+
+	fpinfo_o = (MongoFdwRelationInfo *) outerrel->fdw_private;
+	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
+
+	/* If join pushdown is not enabled, honor it. */
+	if ((!IS_JOIN_REL(outerrel) && !fpinfo_o->options->enable_join_pushdown) ||
+		(!IS_JOIN_REL(innerrel) && !fpinfo_i->options->enable_join_pushdown) ||
+		!enable_join_pushdown)
 		return;
 
 	/*
@@ -3320,11 +3343,6 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	fpinfo = (MongoFdwRelationInfo *) joinrel->fdw_private;
 	fpinfo_o = (MongoFdwRelationInfo *) outerrel->fdw_private;
 	fpinfo_i = (MongoFdwRelationInfo *) innerrel->fdw_private;
-
-	/* If join pushdown is not enabled, honor it. */
-	if ((!IS_JOIN_REL(outerrel) && !fpinfo_o->options->enable_join_pushdown) ||
-		(!IS_JOIN_REL(innerrel) && !fpinfo_i->options->enable_join_pushdown))
-		return false;
 
 	/* Recursive joins can't be pushed down */
 	if (IS_JOIN_REL(outerrel) || IS_JOIN_REL(innerrel))

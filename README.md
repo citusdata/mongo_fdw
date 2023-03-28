@@ -317,9 +317,13 @@ The following parameters can be supplied while creating user mapping:
 
 GUC variables:
 
+  * `mongo_fdw.enable_join_pushdown`: If `true`, pushes the join between two
+    foreign tables from the same foreign server, instead of fetching all the
+    rows for both the tables and performing a join locally. Default is `true`.
+
   * `mongo_fdw.enable_order_by_pushdown`: If `true`, pushes the order by
-	operation to the foreign server, instead of fetching rows from the
-	foreign server and performing the sort locally. Default is `true`.
+    operation to the foreign server, instead of fetching rows from the
+    foreign server and performing the sort locally. Default is `true`.
 
 As an example, the following commands demonstrate loading the
 `mongo_fdw` wrapper, creating a server, and then creating a foreign
