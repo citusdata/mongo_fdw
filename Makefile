@@ -1,6 +1,6 @@
 # mongo_fdw/Makefile
 #
-# Portions Copyright (c) 2004-2022, EnterpriseDB Corporation.
+# Portions Copyright (c) 2004-2023, EnterpriseDB Corporation.
 # Portions Copyright © 2012–2014 Citus Data, Inc.
 #
 
