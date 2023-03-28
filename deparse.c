@@ -273,11 +273,7 @@ mongo_check_var(Var *column, MongoRelQualInfo *qual_info)
 	/* Get RangeTblEntry from array in PlannerInfo. */
 	rte = planner_rt_fetch(column->varno, qual_info->root);
 
-#if PG_VERSION_NUM >= 110000
 	colname = get_attname(rte->relid, column->varattno, false);
-#else
-	colname = get_relid_attribute_name(rte->relid, column->varattno);
-#endif
 
 	/* Is relation inner or outer? */
 	if (bms_is_member(column->varno, qual_info->outerRelids))

@@ -367,11 +367,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			paramNode = (Param *) find_argument_of_type(argumentList, T_Param);
 
 			columnId = column->varattno;
-#if PG_VERSION_NUM < 110000
-			columnName = get_relid_attribute_name(relationId, columnId);
-#else
 			columnName = get_attname(relationId, columnId, false);
-#endif
 
 			if (constant != NULL)
 				append_constant_value(filter, columnName, constant);
@@ -402,11 +398,7 @@ mongo_query_document(ForeignScanState *scanStateNode)
 			if (relationId != 0)
 			{
 				columnId = column->varattno;
-#if PG_VERSION_NUM < 110000
-				columnName = get_relid_attribute_name(relationId, columnId);
-#else
 				columnName = get_attname(relationId, columnId, false);
-#endif
 			}
 
 			/* Find all expressions that correspond to the column */
@@ -1291,16 +1283,10 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 	List	   *columnList = NIL;
 	ListCell   *lc;
 	RelOptInfo *scanrel;
-#if PG_VERSION_NUM >= 100000
 	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 	MongoFdwRelationInfo *ofpinfo;
-#endif
 
-#if PG_VERSION_NUM >= 100000
 	scanrel = IS_UPPER_REL(foreignrel) ? fpinfo->outerrel : foreignrel;
-#else
-	scanrel = foreignrel;
-#endif
 
 	if (IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel))
 		ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
@@ -1358,11 +1344,7 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 			MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 			char	   *columnName;
 
-#if PG_VERSION_NUM < 110000
-			columnName = get_relid_attribute_name(rte->relid, var->varattno);
-#else
 			columnName = get_attname(rte->relid, var->varattno, false);
-#endif
 			*column_name_list = lappend(*column_name_list,
 										makeString(columnName));
 			if (IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel) &&

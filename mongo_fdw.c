@@ -172,30 +172,21 @@ static void mongoExplainForeignModify(ModifyTableState *mtstate,
 static bool mongoAnalyzeForeignTable(Relation relation,
 									 AcquireSampleRowsFunc *func,
 									 BlockNumber *totalpages);
-#if PG_VERSION_NUM >= 110000
 static void mongoBeginForeignInsert(ModifyTableState *mtstate,
 									ResultRelInfo *resultRelInfo);
 static void mongoEndForeignInsert(EState *estate,
 								  ResultRelInfo *resultRelInfo);
-#endif
 #ifdef META_DRIVER
 static void mongoGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel,
 									 RelOptInfo *outerrel,
 									 RelOptInfo *innerrel,
 									 JoinType jointype,
 									 JoinPathExtraData *extra);
-#if PG_VERSION_NUM >= 110000
 static void mongoGetForeignUpperPaths(PlannerInfo *root,
 									  UpperRelationKind stage,
 									  RelOptInfo *input_rel,
 									  RelOptInfo *output_rel,
 									  void *extra);
-#else
-static void mongoGetForeignUpperPaths(PlannerInfo *root,
-									  UpperRelationKind stage,
-									  RelOptInfo *input_rel,
-									  RelOptInfo *output_rel);
-#endif
 #endif
 
 /*
@@ -230,7 +221,6 @@ static bool mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 								  RelOptInfo *innerrel,
 								  JoinPathExtraData *extra);
 static void mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info);
-#if PG_VERSION_NUM >= 110000
 static bool mongo_foreign_grouping_ok(PlannerInfo *root,
 									  RelOptInfo *grouped_rel,
 									  Node *havingQual);
@@ -238,13 +228,6 @@ static void mongo_add_foreign_grouping_paths(PlannerInfo *root,
 											 RelOptInfo *input_rel,
 											 RelOptInfo *grouped_rel,
 											 GroupPathExtraData *extra);
-#else
-static bool mongo_foreign_grouping_ok(PlannerInfo *root,
-									  RelOptInfo *grouped_rel);
-static void mongo_add_foreign_grouping_paths(PlannerInfo *root,
-											 RelOptInfo *input_rel,
-											 RelOptInfo *grouped_rel);
-#endif
 #if PG_VERSION_NUM >= 120000
 static void mongo_add_foreign_final_paths(PlannerInfo *root,
 										  RelOptInfo *input_rel,
@@ -372,11 +355,9 @@ mongo_fdw_handler(PG_FUNCTION_ARGS)
 	/* Support for ANALYZE */
 	fdwRoutine->AnalyzeForeignTable = mongoAnalyzeForeignTable;
 
-#if PG_VERSION_NUM >= 110000
 	/* Partition routing and/or COPY from */
 	fdwRoutine->BeginForeignInsert = mongoBeginForeignInsert;
 	fdwRoutine->EndForeignInsert = mongoEndForeignInsert;
-#endif
 
 #ifdef META_DRIVER
 	/* Support function for join push-down */
@@ -1451,11 +1432,7 @@ mongoPlanForeignModify(PlannerInfo *root,
 
 		for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{
-#if PG_VERSION_NUM < 110000
-			Form_pg_attribute attr = tupdesc->attrs[attnum - 1];
-#else
 			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
-#endif
 
 			if (!attr->attisdropped)
 				targetAttrs = lappend_int(targetAttrs, attnum);
@@ -1583,12 +1560,8 @@ mongoBeginForeignModify(ModifyTableState *mtstate,
 	foreach(lc, fmstate->target_attrs)
 	{
 		int			attnum = lfirst_int(lc);
-#if PG_VERSION_NUM < 110000
-		Form_pg_attribute attr = RelationGetDescr(rel)->attrs[attnum - 1];
-#else
 		Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(rel),
 											   attnum - 1);
-#endif
 
 		Assert(!attr->attisdropped);
 
@@ -1635,20 +1608,12 @@ mongoExecForeignInsert(EState *estate,
 			value = slot_getattr(slot, attnum, &isnull);
 
 			/* First column of MongoDB's foreign table must be _id */
-#if PG_VERSION_NUM < 110000
-			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "_id") != 0)
-#else
 			if (strcmp(TupleDescAttr(slot->tts_tupleDescriptor, 0)->attname.data, "_id") != 0)
-#endif
 				elog(ERROR, "first column of MongoDB's foreign table must be \"_id\"");
 
 			if (typoid != NAMEOID)
 				elog(ERROR, "type of first column of MongoDB's foreign table must be \"NAME\"");
-#if PG_VERSION_NUM < 110000
-			if (strcmp(slot->tts_tupleDescriptor->attrs[0]->attname.data, "__doc") == 0)
-#else
 			if (strcmp(TupleDescAttr(slot->tts_tupleDescriptor, 0)->attname.data, "__doc") == 0)
-#endif
 				continue;
 
 			/*
@@ -1666,19 +1631,11 @@ mongoExecForeignInsert(EState *estate,
 				continue;
 			}
 
-#if PG_VERSION_NUM < 110000
-			append_mongo_value(bsonDoc,
-							   slot->tts_tupleDescriptor->attrs[attnum - 1]->attname.data,
-							   value,
-							   isnull,
-							   slot->tts_tupleDescriptor->attrs[attnum - 1]->atttypid);
-#else
 			append_mongo_value(bsonDoc,
 							   TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->attname.data,
 							   value,
 							   isnull,
 							   TupleDescAttr(slot->tts_tupleDescriptor, attnum - 1)->atttypid);
-#endif
 		}
 	}
 	bsonFinish(bsonDoc);
@@ -1720,12 +1677,8 @@ mongoAddForeignUpdateTargets(Query *parsetree,
 	/*
 	 * What we need is the rowid which is the first column
 	 */
-#if PG_VERSION_NUM < 110000
-	Form_pg_attribute attr = RelationGetDescr(target_relation)->attrs[0];
-#else
 	Form_pg_attribute attr = TupleDescAttr(RelationGetDescr(target_relation),
 										   0);
-#endif
 
 	/* Make a Var representing the desired value */
 #if PG_VERSION_NUM >= 140000
@@ -1779,11 +1732,7 @@ mongoExecForeignUpdate(EState *estate,
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, fmstate->rowidAttno, &isNull);
 
-#if PG_VERSION_NUM < 110000
-	columnName = get_relid_attribute_name(foreignTableId, 1);
-#else
 	columnName = get_attname(foreignTableId, 1, false);
-#endif
 
 	/* First column of MongoDB's foreign table must be _id */
 	if (strcmp(columnName, "_id") != 0)
@@ -1806,12 +1755,8 @@ mongoExecForeignUpdate(EState *estate,
 		foreach(lc, fmstate->target_attrs)
 		{
 			int			attnum = lfirst_int(lc);
-#if PG_VERSION_NUM < 110000
-			Form_pg_attribute attr = slot->tts_tupleDescriptor->attrs[attnum - 1];
-#else
 			Form_pg_attribute attr = TupleDescAttr(slot->tts_tupleDescriptor,
 												   attnum - 1);
-#endif
 			Datum		value;
 			bool		isnull;
 
@@ -1878,11 +1823,7 @@ mongoExecForeignDelete(EState *estate,
 	/* Get the id that was passed up as a resjunk column */
 	datum = ExecGetJunkAttribute(planSlot, 1, &isNull);
 
-#if PG_VERSION_NUM < 110000
-	columnName = get_relid_attribute_name(foreignTableId, 1);
-#else
 	columnName = get_attname(foreignTableId, 1, false);
-#endif
 
 	/* First column of MongoDB's foreign table must be _id */
 	if (strcmp(columnName, "_id") != 0)
@@ -2056,15 +1997,8 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 			if (IsA(column, Var))
 			{
 				if (relType == UPPER_REL)
-				{
-#if PG_VERSION_NUM < 110000
-					columnName = get_relid_attribute_name(foreignTableId,
-														  column->varattno);
-#else
 					columnName = get_attname(foreignTableId, column->varattno,
 											 false);
-#endif
-				}
 				else
 					columnName = strVal(list_nth(colNameList, listIndex++));
 
@@ -2080,12 +2014,7 @@ column_mapping_hash(Oid foreignTableId, List *columnList, List *colNameList,
 		}
 		else
 		{
-#if PG_VERSION_NUM < 110000
-			columnName = get_relid_attribute_name(foreignTableId,
-												  column->varattno);
-#else
 			columnName = get_attname(foreignTableId, column->varattno, false);
-#endif
 			hashKey = (void *) columnName;
 		}
 
@@ -2977,18 +2906,11 @@ mongo_acquire_sample_rows(Relation relation,
 	for (columnId = 1; columnId <= columnCount; columnId++)
 	{
 		Var		   *column = (Var *) palloc0(sizeof(Var));
-#if PG_VERSION_NUM >= 110000
 		Form_pg_attribute attr = TupleDescAttr(tupleDescriptor, columnId - 1);
 
 		column->varattno = columnId;
 		column->vartype = attr->atttypid;
 		column->vartypmod = attr->atttypmod;
-#else
-		/* Only assign required fields for column mapping hash */
-		column->varattno = columnId;
-		column->vartype = tupleDescriptor->attrs[columnId - 1]->atttypid;
-		column->vartypmod = tupleDescriptor->attrs[columnId - 1]->atttypmod;
-#endif
 
 		columnList = lappend(columnList, column);
 	}
@@ -3028,17 +2950,9 @@ mongo_acquire_sample_rows(Relation relation,
 	 * Use per-tuple memory context to prevent leak of memory used to read
 	 * rows from the file with copy routines.
 	 */
-#if PG_VERSION_NUM < 110000
-	tupleContext = AllocSetContextCreate(CurrentMemoryContext,
-										 "mongo_fdw temporary context",
-										 ALLOCSET_DEFAULT_MINSIZE,
-										 ALLOCSET_DEFAULT_INITSIZE,
-										 ALLOCSET_DEFAULT_MAXSIZE);
-#else
 	tupleContext = AllocSetContextCreate(CurrentMemoryContext,
 										 "mongo_fdw temporary context",
 										 ALLOCSET_DEFAULT_SIZES);
-#endif
 
 	/* Prepare for sampling rows */
 	randomState = anl_init_selection_state(targetRowCount);
@@ -3161,7 +3075,6 @@ mongo_fdw_version(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(CODE_VERSION);
 }
 
-#if PG_VERSION_NUM >= 110000
 /*
  * mongoBeginForeignInsert
  * 		Prepare for an insert operation triggered by partition routing
@@ -3192,7 +3105,6 @@ mongoEndForeignInsert(EState *estate, ResultRelInfo *resultRelInfo)
 			(errcode(ERRCODE_FDW_UNABLE_TO_CREATE_EXECUTION),
 			 errmsg("COPY and foreign partition routing not supported in mongo_fdw")));
 }
-#endif
 
 #ifdef META_DRIVER
 /*
@@ -3382,11 +3294,8 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 			return false;
 
 		rte = planner_rt_fetch(var->varno, root);
-#if PG_VERSION_NUM >= 110000
 		colname = get_attname(rte->relid, var->varattno, false);
-#else
-		colname = get_relid_attribute_name(rte->relid, var->varattno);
-#endif
+
 		/* Don't support full document retrieval */
 		if (strcmp("__doc", colname) == 0)
 			return false;
@@ -3559,21 +3468,12 @@ mongo_prepare_qual_info(List *quals, MongoRelQualInfo *qual_info)
  * 		information we obtain in this function to MongoFdwRelationInfo of
  * 		the input relation.
  */
-#if PG_VERSION_NUM >= 110000
 static bool
 mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 						  Node *havingQual)
-#else
-static bool
-mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
-#endif
 {
 	Query	   *query = root->parse;
-#if PG_VERSION_NUM >= 110000
 	PathTarget *grouping_target = grouped_rel->reltarget;
-#else
-	PathTarget *grouping_target = root->upper_targets[UPPERREL_GROUP_AGG];
-#endif
 	MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) grouped_rel->fdw_private;
 	MongoFdwRelationInfo *ofpinfo = (MongoFdwRelationInfo *) fpinfo->outerrel->fdw_private;
 	ListCell   *lc;
@@ -3693,19 +3593,11 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
 	 * Classify the pushable and non-pushable having clauses and save them in
 	 * remote_conds and local_conds of the grouped rel's fpinfo.
 	 */
-#if PG_VERSION_NUM >= 110000
 	if (havingQual)
 	{
 		ListCell   *lc;
 
 		foreach(lc, (List *) havingQual)
-#else
-	if (root->hasHavingQual && query->havingQual)
-	{
-		ListCell   *lc;
-
-		foreach(lc, (List *) query->havingQual)
-#endif
 		{
 			Expr	   *expr = (Expr *) lfirst(lc);
 			RestrictInfo *rinfo;
@@ -3803,16 +3695,10 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel)
  *		Add paths for post-join operations like aggregation, grouping etc. if
  *		corresponding operations are safe to push down.
  */
-#if PG_VERSION_NUM >= 110000
 static void
 mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 						  RelOptInfo *input_rel, RelOptInfo *output_rel,
 						  void *extra)
-#else
-static void
-mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
-						  RelOptInfo *input_rel, RelOptInfo *output_rel)
-#endif
 {
 	MongoFdwRelationInfo *fpinfo;
 
@@ -3857,11 +3743,9 @@ mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
 			elog(ERROR, "unexpected upper relation: %d", (int) stage);
 			break;
 	}
-#elif PG_VERSION_NUM >= 110000
+#else
 	mongo_add_foreign_grouping_paths(root, input_rel, output_rel,
 									 (GroupPathExtraData *) extra);
-#else
-	mongo_add_foreign_grouping_paths(root, input_rel, output_rel);
 #endif
 }
 
@@ -3872,16 +3756,10 @@ mongoGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage,
  * Given input_rel represents the underlying scan.  The paths are added to the
  * given grouped_rel.
  */
-#if PG_VERSION_NUM >= 110000
 static void
 mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 								 RelOptInfo *grouped_rel,
 								 GroupPathExtraData *extra)
-#else
-static void
-mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
-								 RelOptInfo *grouped_rel)
-#endif
 {
 	Query	   *parse = root->parse;
 	MongoFdwRelationInfo *fpinfo = grouped_rel->fdw_private;
@@ -3907,11 +3785,7 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		return;
 
 	/* Assess if it is safe to push down aggregation and grouping. */
-#if PG_VERSION_NUM >= 110000
 	if (!mongo_foreign_grouping_ok(root, grouped_rel, extra->havingQual))
-#else
-	if (!mongo_foreign_grouping_ok(root, grouped_rel))
-#endif
 		return;
 
 	/*
@@ -3947,21 +3821,10 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 										  NIL,	/* no pathkeys */
 										  NULL,
 										  NIL); /* no fdw_private */
-#elif PG_VERSION_NUM >= 110000
-	grouppath = create_foreignscan_path(root,
-										grouped_rel,
-										grouped_rel->reltarget,
-										num_groups,
-										startup_cost,
-										total_cost,
-										NIL,	/* no pathkeys */
-										grouped_rel->lateral_relids,
-										NULL,
-										NIL);	/* no fdw_private */
 #else
 	grouppath = create_foreignscan_path(root,
 										grouped_rel,
-										root->upper_targets[UPPERREL_GROUP_AGG],
+										grouped_rel->reltarget,
 										num_groups,
 										startup_cost,
 										total_cost,
