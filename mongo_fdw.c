@@ -90,6 +90,7 @@ PG_MODULE_MAGIC;
 /* GUC variables. */
 static bool enable_join_pushdown = true;
 static bool enable_order_by_pushdown = true;
+static bool enable_aggregate_pushdown = true;
 #endif
 
 /*
@@ -306,6 +307,17 @@ _PG_init(void)
 							 "Enable/Disable ORDER BY push down",
 							 NULL,
 							 &enable_order_by_pushdown,
+							 true,
+							 PGC_SUSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("mongo_fdw.enable_aggregate_pushdown",
+							 "Enable/Disable aggregate push down",
+							 NULL,
+							 &enable_aggregate_pushdown,
 							 true,
 							 PGC_SUSET,
 							 0,
@@ -3781,7 +3793,7 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		((MongoFdwRelationInfo *) input_rel->fdw_private)->is_agg_scanrel_pushable;
 
 	/* If aggregate pushdown is not enabled, honor it. */
-	if (!fpinfo->is_agg_scanrel_pushable)
+	if (!enable_aggregate_pushdown || !fpinfo->is_agg_scanrel_pushable)
 		return;
 
 	/* Assess if it is safe to push down aggregation and grouping. */

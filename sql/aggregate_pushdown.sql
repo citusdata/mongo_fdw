@@ -428,6 +428,49 @@ EXPLAIN (VERBOSE, COSTS FALSE)
 SELECT c1, avg(c1) FROM fdw137_t2 GROUP BY c1 ORDER BY c1 ASC NULLS FIRST LIMIT (1 - (SELECT COUNT(*) FROM fdw137_t2));
 SELECT c1, avg(c1) FROM fdw137_t2 GROUP BY c1 ORDER BY c1 ASC NULLS FIRST LIMIT (1 - (SELECT COUNT(*) FROM fdw137_t2));
 
+-- FDW-559: Test mongo_fdw.enable_aggregate_pushdown GUC.
+-- Check default value. Should be ON.
+SHOW mongo_fdw.enable_aggregate_pushdown;
+-- Negative testing for GUC value.
+SET mongo_fdw.enable_aggregate_pushdown to 'abc';
+--Disable the GUC enable_aggregate_pushdown.
+SET mongo_fdw.enable_aggregate_pushdown to false;
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+-- Shouldn't pushdown aggregate because GUC is OFF.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+--Enable the GUC enable_aggregate_pushdown.
+SET mongo_fdw.enable_aggregate_pushdown to on;
+ALTER SERVER mongo_server OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+-- Should pushdown aggregate because GUC is ON.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+SELECT count(*) FROM fdw137_t1 GROUP BY c1 HAVING min(c1) > 500 ORDER BY 1;
+-- Test for aggregation over join when server and table options for both the
+-- tables is true and guc is enabled. Should pushdown.
+SET mongo_fdw.enable_aggregate_pushdown to on;
+SET mongo_fdw.enable_join_pushdown to on;
+ALTER SERVER mongo_server OPTIONS (SET enable_join_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+--Disable the GUC enable_join_pushdown. Shouldn't pushdown aggregate.
+SET mongo_fdw.enable_join_pushdown to off;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+SET mongo_fdw.enable_join_pushdown to on;
+--Disable the GUC enable_aggregate_pushdown. Shouldn't pushdown.
+SET mongo_fdw.enable_aggregate_pushdown to false;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+
 -- Cleanup
 DELETE FROM fdw137_t1 WHERE c8 IS NULL;
 DELETE FROM fdw137_t1 WHERE c8 = 60;
