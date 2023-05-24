@@ -1960,6 +1960,145 @@ SELECT d.c1, e.c8
                Foreign Namespace: mongo_fdw_regress.test_tbl1
 (15 rows)
 
+-- FDW-589: Test enable_order_by_pushdown option at server and table level.
+SET mongo_fdw.enable_join_pushdown to true;
+SET mongo_fdw.enable_order_by_pushdown to true;
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'true');
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (ADD enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (ADD enable_order_by_pushdown 'true');
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
+
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+ c1 |       c2       |  c1  |  c2   |   c6    | c8 
+----+----------------+------+-------+---------+----
+    |                |      |       |         |   
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
+ 20 | ADMINISTRATION |      |       |         |   
+ 30 | SALES          |  200 | EMP2  |    1600 | 30
+ 30 | SALES          |  300 | EMP3  |    1250 | 30
+ 30 | SALES          |  500 | EMP5  | 1250.23 | 30
+ 30 | SALES          |  600 | EMP6  |    2850 | 30
+ 30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 30 | SALES          | 1200 | EMP12 |     950 | 30
+ 40 | HR             |      |       |         |   
+ 50 | TESTING        |      |       |         |   
+(12 rows)
+
+-- One table level option is OFF. Shouldn't pushdown ORDER BY.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_order_by_pushdown 'false');
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: d.c1 NULLS FIRST, e.c1 NULLS FIRST
+   ->  Foreign Scan
+         Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(4 rows)
+
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+ c1 |       c2       |  c1  |  c2   |   c6    | c8 
+----+----------------+------+-------+---------+----
+    |                |      |       |         |   
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
+ 20 | ADMINISTRATION |      |       |         |   
+ 30 | SALES          |  200 | EMP2  |    1600 | 30
+ 30 | SALES          |  300 | EMP3  |    1250 | 30
+ 30 | SALES          |  500 | EMP5  | 1250.23 | 30
+ 30 | SALES          |  600 | EMP6  |    2850 | 30
+ 30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 30 | SALES          | 1200 | EMP12 |     950 | 30
+ 40 | HR             |      |       |         |   
+ 50 | TESTING        |      |       |         |   
+(12 rows)
+
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'false');
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_order_by_pushdown 'true');
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Foreign Scan
+   Foreign Namespace: (mongo_fdw_regress.test_tbl2 d) LEFT JOIN (mongo_fdw_regress.test_tbl1 e)
+(2 rows)
+
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+ c1 |       c2       |  c1  |  c2   |   c6    | c8 
+----+----------------+------+-------+---------+----
+    |                |      |       |         |   
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
+ 20 | ADMINISTRATION |      |       |         |   
+ 30 | SALES          |  200 | EMP2  |    1600 | 30
+ 30 | SALES          |  300 | EMP3  |    1250 | 30
+ 30 | SALES          |  500 | EMP5  | 1250.23 | 30
+ 30 | SALES          |  600 | EMP6  |    2850 | 30
+ 30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 30 | SALES          | 1200 | EMP12 |     950 | 30
+ 40 | HR             |      |       |         |   
+ 50 | TESTING        |      |       |         |   
+(12 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+-- When enable_join_pushdown option is disabled. Shouldn't pushdown join and
+-- hence, ORDER BY too.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_join_pushdown 'false');
+ALTER FOREIGN TABLE f_test_tbl2 OPTIONS (SET enable_join_pushdown 'false');
+EXPLAIN (COSTS OFF)
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort
+   Sort Key: d.c1 NULLS FIRST, e.c1 NULLS FIRST
+   ->  Hash Left Join
+         Hash Cond: (d.c1 = e.c8)
+         Join Filter: ((e.c4 > d.c1) AND (e.c2 < d.c3))
+         ->  Foreign Scan on f_test_tbl2 d
+               Foreign Namespace: mongo_fdw_regress.test_tbl2
+         ->  Hash
+               ->  Foreign Scan on f_test_tbl1 e
+                     Foreign Namespace: mongo_fdw_regress.test_tbl1
+(10 rows)
+
+SELECT d.c1, d.c2, e.c1, e.c2, e.c6, e.c8
+  FROM f_test_tbl2 d LEFT OUTER JOIN f_test_tbl1 e ON (d.c1 = e.c8 AND e.c4 > d.c1 AND e.c2 < d.c3) ORDER BY 1 ASC NULLS FIRST, 3 ASC NULLS FIRST;
+ c1 |       c2       |  c1  |  c2   |   c6    | c8 
+----+----------------+------+-------+---------+----
+    |                |      |       |         |   
+ 10 | DEVELOPMENT    |  700 | EMP7  | 2450.34 | 10
+ 10 | DEVELOPMENT    | 1400 | EMP14 |    1300 | 10
+ 20 | ADMINISTRATION |      |       |         |   
+ 30 | SALES          |  200 | EMP2  |    1600 | 30
+ 30 | SALES          |  300 | EMP3  |    1250 | 30
+ 30 | SALES          |  500 | EMP5  | 1250.23 | 30
+ 30 | SALES          |  600 | EMP6  |    2850 | 30
+ 30 | SALES          | 1000 | EMP10 |    1500 | 30
+ 30 | SALES          | 1200 | EMP12 |     950 | 30
+ 40 | HR             |      |       |         |   
+ 50 | TESTING        |      |       |         |   
+(12 rows)
+
 DELETE FROM f_test_tbl1 WHERE c8 IS NULL;
 DELETE FROM f_test_tbl1 WHERE c8 = 60;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;

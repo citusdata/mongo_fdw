@@ -70,7 +70,6 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY c2 COLLATE "en_US" ASC NULLS FIRST;
 SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY c2 COLLATE "en_US" ASC NULLS FIRST;
 
-
 -- Using expressions in HAVING clause. Pushed down.
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT c3, count(*) FROM fdw137_t1 GROUP BY c3 HAVING abs(max(c8)) = abs(10) ORDER BY 1, 2;
@@ -470,6 +469,56 @@ SET mongo_fdw.enable_aggregate_pushdown to false;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
 SELECT count(*), t1.c8 FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) GROUP BY t1.c8 ORDER BY 2 ASC NULLS FIRST;
+
+-- FDW-589: Test enable_order_by_pushdown option at server and table level.
+SET mongo_fdw.enable_join_pushdown to true;
+SET mongo_fdw.enable_aggregate_pushdown to true;
+SET mongo_fdw.enable_order_by_pushdown to true;
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (ADD enable_join_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (ADD enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (ADD enable_join_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_aggregate_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (ADD enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_order_by_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'false');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+ALTER FOREIGN TABLE fdw137_t2 OPTIONS (SET enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+SELECT sum(t2.c1), t1.c8, avg(t1.c8) FROM fdw137_t1 t1 LEFT JOIN fdw137_t2 t2 ON (t1.c8 = t2.c1) WHERE t1.c8 > 10 GROUP BY t1.c8 HAVING avg(t1.c8)*1 > 10
+  ORDER BY 2 ASC NULLS FIRST;
+-- When option enable_aggregate_pushdown is disabled. Shouldn't pushdown
+-- aggregate as well as ORDER BY too.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+SELECT c2, sum(c1) FROM fdw137_t1 GROUP BY c1, c2 HAVING min(c1) > 500 ORDER BY 1 ASC NULLS FIRST;
+ALTER FOREIGN TABLE fdw137_t1 OPTIONS (SET enable_aggregate_pushdown 'true');
 
 -- Cleanup
 DELETE FROM fdw137_t1 WHERE c8 IS NULL;

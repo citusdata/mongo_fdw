@@ -110,7 +110,8 @@ mongo_fdw_validator(PG_FUNCTION_ARGS)
 				 || strcmp(optionName, OPTION_NAME_WEAK_CERT) == 0 ||
 				 strcmp(optionName, OPTION_NAME_ENABLE_JOIN_PUSHDOWN) == 0 ||
 				 strcmp(optionName, OPTION_NAME_SSL) == 0 ||
-				 strcmp(optionName, OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0
+				 strcmp(optionName, OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0 ||
+				 strcmp(optionName, OPTION_NAME_ENABLE_ORDER_BY_PUSHDOWN) == 0
 #endif
 			)
 		{
@@ -188,6 +189,7 @@ mongo_get_options(Oid foreignTableId)
 	options->weak_cert_validation = false;
 	options->enable_join_pushdown = true;
 	options->enable_aggregate_pushdown = true;
+	options->enable_order_by_pushdown = true;
 #endif
 
 	/* Loop through the options */
@@ -232,6 +234,10 @@ mongo_get_options(Oid foreignTableId)
 		else if (strcmp(def->defname,
 						OPTION_NAME_ENABLE_AGGREGATE_PUSHDOWN) == 0)
 			options->enable_aggregate_pushdown = defGetBoolean(def);
+
+		else if (strcmp(def->defname,
+						OPTION_NAME_ENABLE_ORDER_BY_PUSHDOWN) == 0)
+			options->enable_order_by_pushdown = defGetBoolean(def);
 
 		else					/* This is for continuation */
 #endif

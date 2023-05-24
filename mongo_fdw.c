@@ -504,6 +504,9 @@ mongoGetForeignRelSize(PlannerInfo *root,
 	 * in the recursive cases.
 	 */
 	fpinfo->is_agg_scanrel_pushable = options->enable_aggregate_pushdown;
+
+	/* Set the flag is_order_by_pushable of the base relation */
+	fpinfo->is_order_by_pushable = options->enable_order_by_pushdown;
 #endif
 }
 
@@ -3434,6 +3437,10 @@ mongo_foreign_join_ok(PlannerInfo *root, RelOptInfo *joinrel,
 	fpinfo->is_agg_scanrel_pushable = fpinfo_o->is_agg_scanrel_pushable &&
 		fpinfo_i->is_agg_scanrel_pushable;
 
+	/* Set the flag is_order_by_pushable of the join relation */
+	fpinfo->is_order_by_pushable = fpinfo_o->is_order_by_pushable &&
+		fpinfo_i->is_order_by_pushable;
+
 	/*
 	 * Set the string describing this join relation to be used in EXPLAIN
 	 * output of the corresponding ForeignScan.
@@ -3800,6 +3807,9 @@ mongo_add_foreign_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	if (!mongo_foreign_grouping_ok(root, grouped_rel, extra->havingQual))
 		return;
 
+	fpinfo->is_order_by_pushable =
+		((MongoFdwRelationInfo *) input_rel->fdw_private)->is_order_by_pushable;
+
 	/*
 	 * TODO: Put accurate estimates here.
 	 *
@@ -4134,7 +4144,8 @@ mongo_add_paths_with_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 	List	   *useful_pathkeys_list = NIL; /* List of all pathkeys */
 
 	/* If orderby pushdown is not enabled, honor it. */
-	if (!enable_order_by_pushdown)
+	if (!enable_order_by_pushdown  ||
+		!((MongoFdwRelationInfo *) rel->fdw_private)->is_order_by_pushable)
 		return;
 
 	/*
@@ -4268,8 +4279,12 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	ForeignPath *ordered_path;
 	ListCell   *lc;
 
+	/* Set the flag is_order_by_pushable of the ordered relation */
+	fpinfo->is_order_by_pushable =
+		((MongoFdwRelationInfo *) input_rel->fdw_private)->is_order_by_pushable;
+
 	/* If orderby pushdown is not enabled, honor it. */
-	if (!enable_order_by_pushdown)
+	if (!enable_order_by_pushdown || !fpinfo->is_order_by_pushable)
 		return;
 
 	/* Shouldn't get here unless the query has ORDER BY */

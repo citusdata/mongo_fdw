@@ -320,6 +320,43 @@ SELECT * FROM f_mongo_test ORDER BY a USING OPERATOR(public.<^);
 EXPLAIN (COSTS FALSE, VERBOSE)
 SELECT MIN(a) FROM f_mongo_test ORDER BY 1 USING OPERATOR(public.<^);
 
+-- FDW-589: Test enable_order_by_pushdown option at server and table level.
+-- Test the option at server level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'abc11');
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'false');
+-- Test the option at table level.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (ADD enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;

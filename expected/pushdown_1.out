@@ -796,6 +796,117 @@ SELECT MIN(a) FROM f_mongo_test ORDER BY 1 USING OPERATOR(public.<^);
                Foreign Namespace: mongo_fdw_regress.mongo_test
 (8 rows)
 
+-- FDW-589: Test enable_order_by_pushdown option at server and table level.
+-- Test the option at server level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'abc11');
+ERROR:  invalid option "enable_order_by_pushdown"
+HINT:  Valid options in this context are: address, port, use_remote_estimate.
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'false');
+ERROR:  invalid option "enable_order_by_pushdown"
+HINT:  Valid options in this context are: address, port, use_remote_estimate.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+ERROR:  option "enable_order_by_pushdown" not found
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'false');
+ERROR:  option "enable_order_by_pushdown" not found
+-- Test the option at table level.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (ADD enable_order_by_pushdown 'true');
+ERROR:  invalid option "enable_order_by_pushdown"
+HINT:  Valid options in this context are: database, collection.
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+  c1  | c4  
+------+-----
+  800 | 400
+ 1000 | 600
+ 1100 | 800
+ 1200 | 600
+ 1300 | 400
+ 1400 | 700
+(6 rows)
+
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'false');
+ERROR:  option "enable_order_by_pushdown" not found
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Filter: (f_test_tbl1.c1 > f_test_tbl1.c4)
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(7 rows)
+
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+  c1  | c4  
+------+-----
+  800 | 400
+ 1000 | 600
+ 1100 | 800
+ 1200 | 600
+ 1300 | 400
+ 1400 | 700
+(6 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+ERROR:  option "enable_order_by_pushdown" not found
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
+ERROR:  option "enable_order_by_pushdown" not found
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;

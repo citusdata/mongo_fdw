@@ -298,6 +298,12 @@ The following options are only supported with meta driver:
 	locally. This option can also be set for an individual table. The
 	table-level value of the option takes precedence over the server-level
 	option value. Default is `true`.
+  * `enable_order_by_pushdown`: If `true`, pushes the ORDER BY clause to the
+	foreign server instead of performing a sort locally. This option can also
+	be set for an individual table, and if any of the tables involved in the
+	query has set it to false then the ORDER BY will not be pushed down. The
+	table-level value of the option takes precedence over the server-level
+	option value. Default is `true`.
 
 The following parameters can be set on a MongoDB foreign table object:
 
@@ -309,6 +315,8 @@ The following parameters can be set on a MongoDB foreign table object:
     configured at table level as well. Default is `true`.
   * `enable_aggregate_pushdown`: Similar to the server-level option, but
     can be configured at table level as well. Default is `true`.
+  * `enable_order_by_pushdown`: Similar to the server-level option, but can
+	be configured at table level as well. Default is `true`.
 
 The following parameters can be supplied while creating user mapping:
 

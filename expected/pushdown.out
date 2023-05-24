@@ -756,6 +756,97 @@ SELECT MIN(a) FROM f_mongo_test ORDER BY 1 USING OPERATOR(public.<^);
          Output: $0
 (12 rows)
 
+-- FDW-589: Test enable_order_by_pushdown option at server and table level.
+-- Test the option at server level.
+-- Check only boolean values are accepted.
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'abc11');
+ERROR:  enable_order_by_pushdown requires a Boolean value
+ALTER SERVER mongo_server OPTIONS (ADD enable_order_by_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(6 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c4
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(3 rows)
+
+-- Test that setting option at table level does not affect the setting at
+-- server level.
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'false');
+-- Test the option at table level.
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (ADD enable_order_by_pushdown 'true');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Foreign Scan on public.f_test_tbl1
+   Output: c1, c4
+   Foreign Namespace: mongo_fdw_regress.test_tbl1
+(3 rows)
+
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+  c1  | c4  
+------+-----
+  800 | 400
+ 1000 | 600
+ 1100 | 800
+ 1200 | 600
+ 1300 | 400
+ 1400 | 700
+(6 rows)
+
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'false');
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: c1, c4
+   Sort Key: f_test_tbl1.c1 NULLS FIRST
+   ->  Foreign Scan on public.f_test_tbl1
+         Output: c1, c4
+         Foreign Namespace: mongo_fdw_regress.test_tbl1
+(6 rows)
+
+SELECT c1, c4 FROM f_test_tbl1
+  WHERE c1 > c4
+  ORDER BY c1 ASC NULLS FIRST;
+  c1  | c4  
+------+-----
+  800 | 400
+ 1000 | 600
+ 1100 | 800
+ 1200 | 600
+ 1300 | 400
+ 1400 | 700
+(6 rows)
+
+ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
+ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;
