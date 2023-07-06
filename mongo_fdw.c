@@ -45,6 +45,9 @@
 #include "optimizer/var.h"
 #endif
 #include "parser/parsetree.h"
+#if PG_VERSION_NUM >= 160000
+#include "parser/parse_relation.h"
+#endif
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "utils/jsonb.h"
@@ -1163,7 +1166,11 @@ mongoExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
 	else
+#if PG_VERSION_NUM >= 160000
+		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+#else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
+#endif
 	rte = rt_fetch(rtindex, estate->es_range_table);
 
 	if (list_length(fdw_private) > mongoFdwPrivateRelations)
@@ -1256,10 +1263,19 @@ mongoBeginForeignScan(ForeignScanState *node, int eflags)
 	if (fsplan->scan.scanrelid > 0)
 		rtindex = fsplan->scan.scanrelid;
 	else
+#if PG_VERSION_NUM >= 160000
+		rtindex = bms_next_member(fsplan->fs_base_relids, -1);
+#else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
+#endif
 
+#if PG_VERSION_NUM >= 160000
+	rte = exec_rt_fetch(rtindex, estate);
+	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
+#else
 	rte = rt_fetch(rtindex, estate->es_range_table);
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#endif
 
 	/* Get info about foreign table. */
 	fmstate->rel = node->ss.ss_currentRelation;
@@ -1455,12 +1471,32 @@ mongoPlanForeignModify(PlannerInfo *root,
 	}
 	else if (operation == CMD_UPDATE)
 	{
-		Bitmapset  *tmpset = bms_copy(rte->updatedCols);
+		Bitmapset  *tmpset;
+#if PG_VERSION_NUM >= 160000
+		RTEPermissionInfo *perminfo;
+		int			attidx;
+#endif
 		AttrNumber	col;
 
+#if PG_VERSION_NUM >= 160000
+		perminfo = getRTEPermissionInfo(root->parse->rteperminfos, rte);
+		tmpset = bms_copy(perminfo->updatedCols);
+		attidx = -1;
+#else
+		tmpset = bms_copy(rte->updatedCols);
+#endif
+
+#if PG_VERSION_NUM >= 160000
+		while ((attidx = bms_next_member(tmpset, attidx)) >= 0)
+#else
 		while ((col = bms_first_member(tmpset)) >= 0)
+#endif
 		{
+#if PG_VERSION_NUM >= 160000
+			col = attidx + FirstLowInvalidHeapAttributeNumber;
+#else
 			col += FirstLowInvalidHeapAttributeNumber;
+#endif
 			if (col <= InvalidAttrNumber)	/* Shouldn't happen */
 				elog(ERROR, "system-column update is not supported");
 
@@ -1516,6 +1552,12 @@ mongoBeginForeignModify(ModifyTableState *mtstate,
 	ForeignServer *server;
 	UserMapping *user;
 	ForeignTable *table;
+#if PG_VERSION_NUM >= 160000
+	ForeignScan *fsplan = (ForeignScan *) mtstate->ps.plan;
+#else
+	EState	   *estate = mtstate->ps.state;
+	RangeTblEntry *rte;
+#endif
 
 	/*
 	 * Do nothing in EXPLAIN (no ANALYZE) case.  resultRelInfo->ri_FdwState
@@ -1524,8 +1566,14 @@ mongoBeginForeignModify(ModifyTableState *mtstate,
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
 		return;
 
+#if PG_VERSION_NUM >= 160000
+	userid = fsplan->checkAsUser ? fsplan->checkAsUser : GetUserId();
+#else
+	rte = rt_fetch(resultRelInfo->ri_RangeTableIndex, estate->es_range_table);
+	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
+#endif
+
 	foreignTableId = RelationGetRelid(rel);
-	userid = GetUserId();
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(foreignTableId);
@@ -3626,7 +3674,18 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 			 * RestrictInfos, so we must make our own.
 			 */
 			Assert(!IsA(expr, RestrictInfo));
-#if PG_VERSION_NUM >= 140000
+#if PG_VERSION_NUM >= 160000
+			rinfo = make_restrictinfo(root,
+									  expr,
+									  true,
+									  false,
+									  false,
+									  false,
+									  root->qual_security_level,
+									  grouped_rel->relids,
+									  NULL,
+									  NULL);
+#elif PG_VERSION_NUM >= 140000
 			rinfo = make_restrictinfo(root,
 									  expr,
 									  true,

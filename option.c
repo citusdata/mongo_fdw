@@ -243,16 +243,16 @@ mongo_get_options(Oid foreignTableId)
 #endif
 
 		if (strcmp(def->defname, OPTION_NAME_ADDRESS) == 0)
-			options->svr_address = defGetString(def);
+			options->svr_address = pstrdup(defGetString(def));
 
 		else if (strcmp(def->defname, OPTION_NAME_PORT) == 0)
 			options->svr_port = atoi(defGetString(def));
 
 		else if (strcmp(def->defname, OPTION_NAME_DATABASE) == 0)
-			options->svr_database = defGetString(def);
+			options->svr_database = pstrdup(defGetString(def));
 
 		else if (strcmp(def->defname, OPTION_NAME_COLLECTION) == 0)
-			options->collectionName = defGetString(def);
+			options->collectionName = pstrdup(defGetString(def));
 
 		else if (strcmp(def->defname, OPTION_NAME_USERNAME) == 0)
 			options->svr_username = defGetString(def);
@@ -287,6 +287,7 @@ mongo_free_options(MongoFdwOptions *options)
 	{
 		pfree(options->svr_address);
 		pfree(options->svr_database);
+		pfree(options->collectionName);
 		pfree(options);
 	}
 }
