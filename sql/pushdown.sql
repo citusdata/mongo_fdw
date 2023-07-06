@@ -357,6 +357,14 @@ SELECT c1, c4 FROM f_test_tbl1
 ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
 ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
 
+-- FDW-631: Test pushdown of boolean expression
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, pass FROM f_test_tbl3 WHERE pass = false ORDER BY name;
+SELECT name, pass FROM f_test_tbl3 WHERE pass = false ORDER BY name;
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, pass FROM f_test_tbl3 WHERE pass = true ORDER BY name;
+SELECT name, pass FROM f_test_tbl3 WHERE pass = true ORDER BY name;
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;

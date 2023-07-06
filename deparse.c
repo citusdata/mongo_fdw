@@ -380,8 +380,7 @@ mongo_append_bool_expr(BoolExpr *node, BSON *child_doc, pipeline_cxt *context)
 			break;
 		case NOT_EXPR:
 			op = "$not";
-			mongo_append_expr(linitial(node->args), child_doc, context);
-			return;
+			break;
 	}
 
 	bsonAppendStartObject(child_doc, psprintf("%d", context->arrayIndex), &expr);

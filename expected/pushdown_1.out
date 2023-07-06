@@ -907,6 +907,45 @@ ALTER SERVER mongo_server OPTIONS (SET enable_order_by_pushdown 'true');
 ERROR:  option "enable_order_by_pushdown" not found
 ALTER FOREIGN TABLE f_test_tbl1 OPTIONS (SET enable_order_by_pushdown 'true');
 ERROR:  option "enable_order_by_pushdown" not found
+-- FDW-631: Test pushdown of boolean expression
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, pass FROM f_test_tbl3 WHERE pass = false ORDER BY name;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: name, pass
+   Sort Key: f_test_tbl3.name
+   ->  Foreign Scan on public.f_test_tbl3
+         Output: name, pass
+         Filter: (NOT f_test_tbl3.pass)
+         Foreign Namespace: mongo_fdw_regress.test_tbl3
+(7 rows)
+
+SELECT name, pass FROM f_test_tbl3 WHERE pass = false ORDER BY name;
+ name | pass 
+------+------
+ dvd  | f
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS FALSE)
+SELECT name, pass FROM f_test_tbl3 WHERE pass = true ORDER BY name;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Sort
+   Output: name, pass
+   Sort Key: f_test_tbl3.name
+   ->  Foreign Scan on public.f_test_tbl3
+         Output: name, pass
+         Filter: f_test_tbl3.pass
+         Foreign Namespace: mongo_fdw_regress.test_tbl3
+(7 rows)
+
+SELECT name, pass FROM f_test_tbl3 WHERE pass = true ORDER BY name;
+ name | pass 
+------+------
+ vdd  | t
+(1 row)
+
 -- Cleanup
 DELETE FROM f_mongo_test WHERE a != 0;
 DELETE FROM f_test_tbl2 WHERE c1 IS NULL;
