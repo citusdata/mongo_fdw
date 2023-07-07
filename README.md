@@ -176,12 +176,19 @@ EDB Postgres Advanced Server.
 
 4. Running regression test.
 
+    Run `mongodb_init.sh` file to load required collections.
+
+    ```sh
+    source mongodb_init.sh
+    ```
+    Finally, run regression.
+
     ```sh
     make USE_PGXS=1 installcheck
     ```
-   However, make sure to set the `MONGO_HOST`, `MONGO_PORT`, `MONGO_USER_NAME`,
-   and `MONGO_PWD` environment variables correctly. The default settings can be
-   found in the `mongodb_init.sh` script.
+    However, make sure to set the `MONGO_HOST`, `MONGO_PORT`, `MONGO_USER_NAME`,
+    and `MONGO_PWD` environment variables correctly. The default settings can
+    be found in the `mongodb_init.sh` script.
 
 
 If you run into any issues, please [let us know][2].
