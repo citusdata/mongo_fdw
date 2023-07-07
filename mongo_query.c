@@ -692,7 +692,6 @@ mongo_query_document(ForeignScanState *scanStateNode)
 		/* Add HAVING operation */
 		if (having_expr)
 		{
-			BSON		match_stage;
 			pipeline_cxt context;
 
 			context.colInfoHash = columnInfoHash;
@@ -1330,7 +1329,6 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 		if (var->varattno == 0)
 		{
 			List	   *wr_var_list;
-			RangeTblEntry *rte = rt_fetch(var->varno, root->parse->rtable);
 			Bitmapset  *attrs_used;
 #if PG_VERSION_NUM >= 160000
 			ListCell   *cell;
@@ -1370,7 +1368,6 @@ mongo_get_column_list(PlannerInfo *root, RelOptInfo *foreignrel,
 		if (IS_JOIN_REL(foreignrel) ||
 			(IS_UPPER_REL(foreignrel) && IS_JOIN_REL(scanrel)))
 		{
-			MongoFdwRelationInfo *fpinfo = (MongoFdwRelationInfo *) foreignrel->fdw_private;
 			char	   *columnName;
 
 			columnName = get_attname(rte->relid, var->varattno, false);

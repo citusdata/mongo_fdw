@@ -792,8 +792,6 @@ mongoGetForeignPlan(PlannerInfo *root,
 		 */
 		if (outer_plan)
 		{
-			ListCell   *lc;
-
 			/*
 			 * First, update the plan's qual list if possible.  In some cases,
 			 * the quals might be enforced below the topmost plan level, in
@@ -2215,9 +2213,7 @@ fill_tuple_slot(const BSON *bsonDocument, const char *bsonDocumentKey,
 		Oid			columnTypeId = InvalidOid;
 		Oid			columnArrayTypeId = InvalidOid;
 		bool		compatibleTypes = false;
-		bool		handleFound = false;
 		const char *bsonFullKey;
-		void	   *hashKey;
 		int32		attnum;
 		bool		is_agg = false;
 
@@ -3645,7 +3641,7 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 				 */
 				foreach(l, aggvars)
 				{
-					Expr	   *expr = (Expr *) lfirst(l);
+					expr = (Expr *) lfirst(l);
 
 					if (IsA(expr, Aggref))
 						tlist = add_to_flat_tlist(tlist, list_make1(expr));
@@ -3662,8 +3658,6 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 	 */
 	if (havingQual)
 	{
-		ListCell   *lc;
-
 		foreach(lc, (List *) havingQual)
 		{
 			Expr	   *expr = (Expr *) lfirst(lc);
@@ -3720,7 +3714,6 @@ mongo_foreign_grouping_ok(PlannerInfo *root, RelOptInfo *grouped_rel,
 	if (fpinfo->local_conds)
 	{
 		List	   *aggvars = NIL;
-		ListCell   *lc;
 
 		foreach(lc, fpinfo->local_conds)
 		{
