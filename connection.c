@@ -136,7 +136,6 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 								  ObjectIdGetDatum(user->umid));
 	}
 
-#ifdef META_DRIVER
 	/* Check if the existing or new connection is reachable/active or not? */
 	if (entry->conn != NULL)
 	{
@@ -154,7 +153,6 @@ mongo_get_connection(ForeignServer *server, UserMapping *user,
 							server->servername),
 					 errhint("Mongo error: \"%s\"", error.message)));
 	}
-#endif
 	return entry->conn;
 }
 

@@ -27,18 +27,13 @@ respectively. If these variables are not set then these libraries will be
 installed in the default location. Please note that you need to have the
 required permissions on the directory where you want to install the libraries.
 
-Build with [MongoDB][1]'s legacy branch driver (Deprecated in mongo_fdw 5.4.0)
-   * autogen.sh --with-legacy
+   * autogen.sh
 
-Build [MongoDB][1]'s master branch driver
-   * autogen.sh --with-master
-
-The script autogen.sh will do all the necessary steps to build with legacy and
-meta driver accordingly.
+The script autogen.sh will do all the necessary steps to build with mongoc
+driver accordingly.
 
 ## Steps for manual installation
 ### mongo-c
-#### meta driver
 1. Download and extract source code of mongoc driver for version `1.17.3`
 
 	```sh
@@ -70,21 +65,6 @@ meta driver accordingly.
 
 For more details on installation of mongo-c driver, you can refer [here][5].
 
-#### Legacy driver
-
-Deprecation Notice:
-The legacy driver support has been deprecated in mongo_fdw 5.4.0 and is
-expected to be removed entirely in a future release.
-
-* Checkout, extract legacy branch
-
-	```sh
-	wget https://github.com/mongodb/mongo-c-driver/archive/v0.8.tar.gz
-	tar -zxf v0.8.tar.gz
-	rm -rf mongo-c-driver
-	mv  mongo-c-driver-0.8 mongo-c-driver
-	```
-
 ### json-c
 1. Download and extract source code
 
@@ -115,20 +95,6 @@ expected to be removed entirely in a future release.
 	```
 
 For more details on installation of json-c library, you can refer [here][6].
-
-### How to compile against mongo-c Meta or Legacy driver?
-To compile against legacy driver, 'Makefile.legacy' must be used and
-'Makefile.meta' must be used to compile against the meta driver. For example,
-this can be achieved by copying required Makefile as shown below:
-For meta,
-
-	cp Makefile.meta Makefile
-
-For legacy (Deprecated in mongo_fdw 5.4.0),
-
-	cp Makefile.legacy Makefile
-
-The default compilation is with Meta driver.
 
 ## Mongo_fdw configuration, compilation and installation
 The `PKG_CONFIG_PATH` environment variable must be set to mongo-c-driver source
@@ -242,25 +208,6 @@ mongo_fdw now also supports limit offset push-down. Wherever possible,
 perform LIMIT and OFFSET operations on the remote server. This reduces
 network traffic between local PostgreSQL and remote MongoDB servers.
 
-### New MongoDB C Driver Support
-This enhancement is to add a new [MongoDB][1]' C driver. The current
-implementation is based on the legacy driver of MongoDB. But
-[MongoDB][1] is provided completely new library for driver called
-MongoDB's meta driver. Added support for the same. Now compile time
-option is available to use legacy and meta driver.
-
-In order to use MongoDB driver 1.17.0+, take the following steps:
-
-  * clone `libmongoc` version 1.17.0+
-    (https://github.com/mongodb/mongo-c-driver) and follow the install
-    directions given there.  `libbson` is now maintained in a subdirectory
-    of the `libmongoc`.
-    (https://github.com/mongodb/mongo-c-driver/tree/master/src/libbson).
-  * ensure pkg-config / pkgconf is installed on your system.
-  * run `make -f Makefile.meta && make -f Makefile.meta install`
-  * if you get an error when trying to `CREATE EXTENSION mongo_fdw;`,
-    then try running `ldconfig`
-
 Usage
 -----
 The following parameters can be set on a MongoDB foreign server object:
@@ -270,9 +217,6 @@ The following parameters can be set on a MongoDB foreign server object:
   * `port`: Port number of the MongoDB server. Defaults to `27017`.
   * `use_remote_estimate`: Controls whether mongo_fdw uses exact rows from
     remote collection to obtain cost estimates. Default is `false`.
-
-The following options are only supported with meta driver:
-
   * `authentication_database`: Database against which user will be
     authenticated against. Only valid with password based authentication.
   * `replica_set`: Replica set the server is member of. If set,

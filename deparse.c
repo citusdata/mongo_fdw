@@ -23,11 +23,7 @@
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
 #endif
-#ifdef META_DRIVER
 #include "mongoc.h"
-#else
-#include "mongo.h"
-#endif
 #include "mongo_query.h"
 #if PG_VERSION_NUM < 120000
 #include "nodes/relation.h"
