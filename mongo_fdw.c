@@ -4154,7 +4154,7 @@ mongo_add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	fpinfo->pushdown_safe = true;
 
 	/* TODO: Put accurate estimates */
-	startup_cost = 15;
+	startup_cost = 10;
 	total_cost = 10 + startup_cost;
 	rows = 10;
 
